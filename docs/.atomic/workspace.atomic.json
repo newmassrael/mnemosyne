@@ -16022,6 +16022,96 @@
         "WHAT THIS ROUND DID NOT MEASURE IS THE ETXTBSY ITSELF. The gate's mechanism is stated and believed, not reproduced: making it fire would mean racing a fork against an exec on purpose, and a test that has to lose a race to pass is one that passes on a fast machine for the wrong reason. The gate is the enforcement, and its own suite is where that claim belongs"
       ]
     },
+    "Round 1251 — the bound fired, and apt was asked to try once": {
+      "decision_summary": "R1251 (DEBT — main was red, and the bound this repository built is what fired). R1236 bounded six `apt-get` steps at five minutes after two of them stalled for 45 and 90 minutes; R1237 widened the bound to every step that waits on somebody else's server. On 2026-08-19 that bound FIRED, for real, on two runs two and a half hours apart: `Install protoc (mnemosyne-server build script)` timed out at five minutes, and the jobs behind it died with `exit code 127` looking for a protoc nothing had installed. A bound turns a hang into a red build sooner. It cannot turn one into a green build.\n\nTHE RED IS NOT THIS SESSION'S WORK, AND THAT WAS CHECKED RATHER THAN ASSUMED. The failing runs are `0379170` — the commit before this session started — and `d412b06`, and both fail at the same step; the last fully green run is `8ee676b`, five commits earlier. Four runs between them were `cancelled`, which R1242 already named: a session that pushes every round bites its own runs, and the content is covered by the green of a later commit. So what changed is the world, not the tree.\n\nWHAT WAS MISSING IS THAT APT WAS ASKED TO TRY ONCE. `Acquire::Retries` defaults to 0, so a fetch that fails ends the run; `Acquire::http::Timeout` defaults to 120 seconds, so a handful of stalled connections spends the whole five-minute bound before anything is retried. Three retries at twenty seconds turns the same stall into a few seconds of noise. The numbers are CHOSEN with one measurement behind them: on the last fully green run these steps took 9 to 18 seconds end to end, so twenty seconds is already longer than a healthy fetch of the whole index, and three tries of it fit inside the bound with room for the install.\n\nTHE POLICY IS A TRACKED FILE AND THE STEPS STAY PLAIN, and that is `ci_plan::read_command` deciding the shape rather than taste. It REFUSES an apt command with anything between the manager and `install` — on purpose, because a reader that cannot see what a step installs is a hole in the population that holds what CI installs against what the build machines declare. Six `-o Acquire::Retries=3` flags would have walked straight into that refusal, and a wrapper script would have taken all six installs out of that law's sight entirely. So the configuration lives in apt's configuration, `.github/apt-retries.conf`, copied in by each step before it fetches; the numbers and the reasoning have one home, and every existing reader still sees a plain `apt-get install -y <package>`.\n\nAND THE POLICY IS ASKED OF APT'S OWN PARSER. A configuration file apt cannot parse is IGNORED IN SILENCE: the copy succeeds, the step is green, every fetch is back to one attempt, and nothing in the run says so. So the law runs `apt-config -c <file> dump` and reads both settings back out of what apt reports — a file can parse and declare neither, which is measured rather than supposed, on a draft that declared one. A machine with no apt says NO VERDICT rather than passing.",
+      "changes_bullets": [
+        "`.github/apt-retries.conf` gives apt three retries at a twenty-second timeout, and every one of the six apt steps copies it in before it fetches",
+        "a law over that population: an apt install that never installs the policy, or installs it after its first apt command, is a finding",
+        "and the policy is held against apt's own parser — a file apt cannot read is one apt ignores in silence"
+      ],
+      "verification_bullets": [
+        "THE RED WAS ATTRIBUTED BEFORE IT WAS REPAIRED. `gh run view --json jobs` on both failing runs: `0379170` (one job) and `d412b06` (three), every one stopped at `Install protoc`, with `The action ... has timed out after 5 minutes` and `Process completed with exit code 127` as the annotations. The last green is `8ee676b`; the four runs between are `cancelled`, which is R1242's shape and not a failure",
+        "EIGHT INJECTIONS ON THIS LAW, red set EXHAUSTIVE, control 3 passed / 0 failed: the four R1237 already had, re-aimed at the step's new shape, plus a step with no policy, a policy copied AFTER the install it was for, a policy declaring one of its two numbers, and a policy that is not apt configuration at all",
+        "THE HARNESS REFUSED THE STALE ANCHORS RATHER THAN PASSING: changing the step's shape made two existing injections match zero times, and the pre-flight said so before any run — `the text to replace occurs 0 times, not once`",
+        "APT'S OWN PARSER IS THE ORACLE, and its failure modes were measured first: a malformed file exits 100, and a file declaring one setting parses cleanly with the other simply absent from the dump. Both are why the law reads the values back rather than checking the file exists",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, and `mnemosyne-cli validate-workspace` clean",
+        "AND THE LEDGER ENTRY WAS APPENDED BEFORE THAT FINAL VERIFICATION, with R1250's carry in hand: nothing but the verification runs after this line"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE FIX CANNOT BE MEASURED HERE, only the shape of it. Whether three retries at twenty seconds survives the archive that stalled needs that archive to stall again, which nothing in this repository can arrange; what IS measured is that the policy parses, declares both numbers, and is copied in before every apt command that reads it. The proof is the next run of a job that would have failed, and it arrives on somebody else's clock",
+        "THE NUMBERS ARE CHOSEN AND NOT DERIVED, with one measurement behind them — 9 to 18 seconds for the whole step on the last fully green run. What would make them derived is a record of how long these fetches take across runs, which is the same missing history N143 already names for job budgets, one layer down",
+        "AND THE NETWORK INSTALL ITSELF IS STILL THERE. Five of the six steps install nothing but `protobuf-compiler`, for one build script; a vendored protoc would delete this failure class rather than retrying around it. That is a dependency decision with a supply-chain side to it — a checked-in binary per platform — so it is registered as its own item rather than taken here"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1251 (DEBT — main was red, and the bound this repository built is what fired). R1236 bounded six `apt-get` steps at five minutes after two of them stalled for 45 and 90 minutes; R1237 widened the bound to every step that waits on somebody else's server. On 2026-08-19 that bound FIRED, for real, on two runs two and a half hours apart: `Install protoc (mnemosyne-server build script)` timed out at five minutes, and the jobs behind it died with `exit code 127` looking for a protoc nothing had installed. A bound turns a hang into a red build sooner. It cannot turn one into a green build.\n\nTHE RED IS NOT THIS SESSION'S WORK, AND THAT WAS CHECKED RATHER THAN ASSUMED. The failing runs are `0379170` — the commit before this session started — and `d412b06`, and both fail at the same step; the last fully green run is `8ee676b`, five commits earlier. Four runs between them were `cancelled`, which R1242 already named: a session that pushes every round bites its own runs, and the content is covered by the green of a later commit. So what changed is the world, not the tree.\n\nWHAT WAS MISSING IS THAT APT WAS ASKED TO TRY ONCE. `Acquire::Retries` defaults to 0, so a fetch that fails ends the run; `Acquire::http::Timeout` defaults to 120 seconds, so a handful of stalled connections spends the whole five-minute bound before anything is retried. Three retries at twenty seconds turns the same stall into a few seconds of noise. The numbers are CHOSEN with one measurement behind them: on the last fully green run these steps took 9 to 18 seconds end to end, so twenty seconds is already longer than a healthy fetch of the whole index, and three tries of it fit inside the bound with room for the install.\n\nTHE POLICY IS A TRACKED FILE AND THE STEPS STAY PLAIN, and that is `ci_plan::read_command` deciding the shape rather than taste. It REFUSES an apt command with anything between the manager and `install` — on purpose, because a reader that cannot see what a step installs is a hole in the population that holds what CI installs against what the build machines declare. Six `-o Acquire::Retries=3` flags would have walked straight into that refusal, and a wrapper script would have taken all six installs out of that law's sight entirely. So the configuration lives in apt's configuration, `.github/apt-retries.conf`, copied in by each step before it fetches; the numbers and the reasoning have one home, and every existing reader still sees a plain `apt-get install -y <package>`.\n\nAND THE POLICY IS ASKED OF APT'S OWN PARSER. A configuration file apt cannot parse is IGNORED IN SILENCE: the copy succeeds, the step is green, every fetch is back to one attempt, and nothing in the run says so. So the law runs `apt-config -c <file> dump` and reads both settings back out of what apt reports — a file can parse and declare neither, which is measured rather than supposed, on a draft that declared one. A machine with no apt says NO VERDICT rather than passing.",
+      "publishable_changes_bullets": [
+        "`.github/apt-retries.conf` gives apt three retries at a twenty-second timeout, and every one of the six apt steps copies it in before it fetches",
+        "a law over that population: an apt install that never installs the policy, or installs it after its first apt command, is a finding",
+        "and the policy is held against apt's own parser — a file apt cannot read is one apt ignores in silence"
+      ],
+      "publishable_verification_bullets": [
+        "THE RED WAS ATTRIBUTED BEFORE IT WAS REPAIRED. `gh run view --json jobs` on both failing runs: `0379170` (one job) and `d412b06` (three), every one stopped at `Install protoc`, with `The action ... has timed out after 5 minutes` and `Process completed with exit code 127` as the annotations. The last green is `8ee676b`; the four runs between are `cancelled`, which is R1242's shape and not a failure",
+        "EIGHT INJECTIONS ON THIS LAW, red set EXHAUSTIVE, control 3 passed / 0 failed: the four R1237 already had, re-aimed at the step's new shape, plus a step with no policy, a policy copied AFTER the install it was for, a policy declaring one of its two numbers, and a policy that is not apt configuration at all",
+        "THE HARNESS REFUSED THE STALE ANCHORS RATHER THAN PASSING: changing the step's shape made two existing injections match zero times, and the pre-flight said so before any run — `the text to replace occurs 0 times, not once`",
+        "APT'S OWN PARSER IS THE ORACLE, and its failure modes were measured first: a malformed file exits 100, and a file declaring one setting parses cleanly with the other simply absent from the dump. Both are why the law reads the values back rather than checking the file exists",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, and `mnemosyne-cli validate-workspace` clean",
+        "AND THE LEDGER ENTRY WAS APPENDED BEFORE THAT FINAL VERIFICATION, with R1250's carry in hand: nothing but the verification runs after this line"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE FIX CANNOT BE MEASURED HERE, only the shape of it. Whether three retries at twenty seconds survives the archive that stalled needs that archive to stall again, which nothing in this repository can arrange; what IS measured is that the policy parses, declares both numbers, and is copied in before every apt command that reads it. The proof is the next run of a job that would have failed, and it arrives on somebody else's clock",
+        "THE NUMBERS ARE CHOSEN AND NOT DERIVED, with one measurement behind them — 9 to 18 seconds for the whole step on the last fully green run. What would make them derived is a record of how long these fetches take across runs, which is the same missing history N143 already names for job budgets, one layer down",
+        "AND THE NETWORK INSTALL ITSELF IS STILL THERE. Five of the six steps install nothing but `protobuf-compiler`, for one build script; a vendored protoc would delete this failure class rather than retrying around it. That is a dependency decision with a supply-chain side to it — a checked-in binary per platform — so it is registered as its own item rather than taken here"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

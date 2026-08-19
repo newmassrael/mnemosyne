@@ -9,8 +9,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
-          "to": "        timeout-minutes: 90\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "        timeout-minutes: 90\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
         }
       ],
       "expect_red": [
@@ -24,8 +24,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
-          "to": "        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
         }
       ],
       "expect_red": [
@@ -33,6 +33,66 @@
       ],
       "tests": [
         "bounded_fetch_steps::every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    },
+    "an-apt-step-is-asked-to-try-once": {
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+        }
+      ],
+      "expect_red": [
+        "every_apt_install_runs_under_this_repositorys_apt_policy_first"
+      ],
+      "tests": [
+        "bounded_fetch_steps::every_apt_install_runs_under_this_repositorys_apt_policy_first"
+      ]
+    },
+    "the-policy-declares-one-of-its-two-numbers": {
+      "edits": [
+        {
+          "file": ".github/apt-retries.conf",
+          "from": "Acquire::Retries \"3\";\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "the_apt_policy_parses_as_apt_configuration_and_declares_both_settings"
+      ],
+      "tests": [
+        "bounded_fetch_steps::the_apt_policy_parses_as_apt_configuration_and_declares_both_settings"
+      ]
+    },
+    "the-policy-is-not-apt-configuration": {
+      "edits": [
+        {
+          "file": ".github/apt-retries.conf",
+          "from": "Acquire::Retries \"3\";",
+          "to": "Acquire::Retries 3"
+        }
+      ],
+      "expect_red": [
+        "the_apt_policy_parses_as_apt_configuration_and_declares_both_settings"
+      ],
+      "tests": [
+        "bounded_fetch_steps::the_apt_policy_parses_as_apt_configuration_and_declares_both_settings"
+      ]
+    },
+    "the-policy-lands-after-the-install-it-was-for": {
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne"
+        }
+      ],
+      "expect_red": [
+        "every_apt_install_runs_under_this_repositorys_apt_policy_first"
+      ],
+      "tests": [
+        "bounded_fetch_steps::every_apt_install_runs_under_this_repositorys_apt_policy_first"
       ]
     },
     "the-population-drops-back-to-this-laws-own-word": {

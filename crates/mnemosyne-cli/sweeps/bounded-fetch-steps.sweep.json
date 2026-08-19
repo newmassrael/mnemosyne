@@ -41,8 +41,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
-          "to": "        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
         }
       ],
       "expect_red": [
@@ -55,8 +55,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
-          "to": "        timeout-minutes: 90\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "        timeout-minutes: 90\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
         }
       ],
       "expect_red": [
@@ -90,6 +90,54 @@
       "expect_red": [
         "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
       ]
+    },
+    {
+      "name": "an-apt-step-is-asked-to-try-once",
+      "why": "R1251's subject, and the state every one of the six was in on 2026-08-19 when the bound fired twice: apt's `Acquire::Retries` defaults to 0, so a mirror that stalls once ends the step, and the jobs behind it die looking for a protoc nothing installed. The step still LOOKS installed and bounded",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+        }
+      ],
+      "expect_red": ["every_apt_install_runs_under_this_repositorys_apt_policy_first"]
+    },
+    {
+      "name": "the-policy-lands-after-the-install-it-was-for",
+      "why": "the quiet direction, and the one a reader skims past: the file is copied, the step mentions it, and the run that needed it has already fetched. A policy installed after the fact configures the NEXT run of a job that has already failed",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne"
+        }
+      ],
+      "expect_red": ["every_apt_install_runs_under_this_repositorys_apt_policy_first"]
+    },
+    {
+      "name": "the-policy-declares-one-of-its-two-numbers",
+      "why": "a file that copies, parses and configures half of what it claims. Twenty seconds without three retries still ends the fetch on the first stall, and the step, the law's population and apt itself all stay quiet about it",
+      "edits": [
+        {
+          "file": ".github/apt-retries.conf",
+          "from": "Acquire::Retries \"3\";\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["the_apt_policy_parses_as_apt_configuration_and_declares_both_settings"]
+    },
+    {
+      "name": "the-policy-is-not-apt-configuration",
+      "why": "the failure mode that leaves no trace anywhere: apt IGNORES a configuration file it cannot parse. The copy succeeds, the step is green, every fetch is back to one attempt, and nothing in the run says so — which is why this is asked of apt's own parser rather than of a pattern",
+      "edits": [
+        {
+          "file": ".github/apt-retries.conf",
+          "from": "Acquire::Retries \"3\";",
+          "to": "Acquire::Retries 3"
+        }
+      ],
+      "expect_red": ["the_apt_policy_parses_as_apt_configuration_and_declares_both_settings"]
     }
   ]
 }

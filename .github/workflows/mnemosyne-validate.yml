@@ -164,9 +164,20 @@ jobs:
       # ON EVERY COPY OF THIS STEP AND NOT ONLY THE ONE THAT STALLED: six jobs
       # install from the same archive, and a bound on the one that happened to
       # be unlucky is a habit rather than a rule.
+      # R1251 — AND THE BOUND THEN FIRED FOR REAL, twice, two and a half hours
+      # apart on 2026-08-19: this step timed out at five minutes and the jobs
+      # behind it died with `exit code 127` looking for a protoc nothing had
+      # installed. A bound turns a hang into a red build sooner; it cannot turn
+      # it into a green one. What was missing is that apt was asked to try ONCE
+      # — `Acquire::Retries` defaults to 0 and `Acquire::http::Timeout` to 120
+      # seconds — so `.github/apt-retries.conf` is copied in first and says
+      # otherwise. The reasoning and the numbers live in that file, once.
       - name: Install protoc (mnemosyne-server build script)
         timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace
+        run: |
+          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler strace
 
       - name: Install rust toolchain (rust-toolchain.toml)
         # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
@@ -526,7 +537,10 @@ jobs:
       - name: Install protoc (mnemosyne-server build script)
         # R1236 — see `validate`'s copy of this step for the measurement.
         timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: |
+          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
         # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
@@ -768,7 +782,10 @@ jobs:
       - name: Install protoc (mnemosyne-server build script)
         # R1236 — see `validate`'s copy of this step for the measurement.
         timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: |
+          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
         # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
@@ -920,7 +937,10 @@ jobs:
       - name: Install protoc (mnemosyne-server build script)
         # R1236 — see `validate`'s copy of this step for the measurement.
         timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: |
+          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
         # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
@@ -1140,7 +1160,10 @@ jobs:
       - name: Install protoc (mnemosyne-server build script)
         # R1236 — see `validate`'s copy of this step for the measurement.
         timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: |
+          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
         # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
@@ -1249,7 +1272,10 @@ jobs:
       - name: Install protoc (mnemosyne-server build script)
         # R1236 — see `validate`'s copy of this step for the measurement.
         timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: |
+          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
 
       - name: Read MSRV from Cargo.toml
         id: msrv

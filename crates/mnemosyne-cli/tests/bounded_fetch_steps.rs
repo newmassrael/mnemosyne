@@ -296,3 +296,123 @@ fn every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job
         unreadable.join("\n  ")
     );
 }
+
+/// Round 1251 — this repository's apt policy, and the one place its numbers live.
+const APT_POLICY: &str = ".github/apt-retries.conf";
+
+/// Where apt reads dropped-in configuration.
+const APT_POLICY_DIR: &str = "/etc/apt/apt.conf.d/";
+
+/// R1251 — EVERY APT INSTALL RUNS UNDER THAT POLICY, AND THE POLICY GOES FIRST.
+///
+/// R1236 bounded these steps at five minutes after two of them stalled for 45
+/// and 90; R1237 widened the bound to every fetching step. Then on 2026-08-19
+/// the bound FIRED, on two runs two and a half hours apart: the step timed out
+/// at five minutes and the jobs behind it died with `exit code 127` looking for
+/// a protoc nothing had installed. A bound turns a hang into a red build sooner
+/// and cannot turn it into a green one — what was missing is that apt was asked
+/// to try ONCE, because `Acquire::Retries` defaults to 0.
+///
+/// So the population is every step the shared reading calls an APT install, and
+/// each must copy the tracked policy in BEFORE the first apt command of the same
+/// step. Order is the whole point: a policy installed afterwards configures the
+/// next run of a job that has already failed.
+#[test]
+fn every_apt_install_runs_under_this_repositorys_apt_policy_first() {
+    let root = repository_root();
+    assert!(
+        root.join(APT_POLICY).is_file(),
+        "{APT_POLICY} is what every apt step copies in, and it is not in the tree"
+    );
+
+    let mut checked = 0usize;
+    let mut findings: Vec<String> = Vec::new();
+    for file in workflow_files(&root) {
+        let doc = load_workflow(&root, &file);
+        for step in run_steps(&doc) {
+            let commands = shell_commands(&step.script);
+            // The apt family and not every install: `rustup` reads no apt
+            // configuration, and a law that demanded this of it would be asking
+            // for a line that does nothing.
+            let Some(first_apt) = commands.iter().position(|words| {
+                matches!(read_command(words), InstallCommand::Read { ref manager, .. }
+                    if ci_plan::READ_IN_FULL.contains(&manager.as_str()))
+            }) else {
+                continue;
+            };
+            checked += 1;
+            let at: Where = (file.clone(), step.job.clone(), step.index);
+            let policy = commands.iter().position(|words| {
+                words.iter().any(|w| w == APT_POLICY)
+                    && words.iter().any(|w| w.starts_with(APT_POLICY_DIR))
+            });
+            match policy {
+                None => findings.push(format!(
+                    "{} — installs with apt and never copies {APT_POLICY} into \
+                     {APT_POLICY_DIR}, so apt runs with `Acquire::Retries` 0",
+                    named(&at, &step)
+                )),
+                Some(i) if i > first_apt => findings.push(format!(
+                    "{} — copies {APT_POLICY} in AFTER its first apt command, \
+                     which configures the next run rather than this one",
+                    named(&at, &step)
+                )),
+                Some(_) => {}
+            }
+        }
+    }
+    assert!(
+        findings.is_empty(),
+        "these apt step(s) are asked to try once:\n  {}",
+        findings.join("\n  ")
+    );
+    assert!(
+        checked > 0,
+        "no apt install was found anywhere in this repository's workflows, so \
+         this law judged nothing — a reading that failed, not a CI that installs \
+         nothing (six were here when this was written)"
+    );
+    println!("{checked} apt step(s) run under {APT_POLICY}");
+}
+
+/// R1251 — AND THE POLICY IS APT CONFIGURATION THAT SAYS WHAT IT CLAIMS, asked
+/// of apt's own parser rather than of a regular expression.
+///
+/// A file that fails to parse is silently ignored by apt: the copy succeeds, the
+/// step runs, and every fetch is back to one attempt with nothing to say so. The
+/// two settings are read back out of the dump because a file can parse and
+/// declare neither — measured, on a draft that declared one.
+#[test]
+fn the_apt_policy_parses_as_apt_configuration_and_declares_both_settings() {
+    let root = repository_root();
+    let path = root.join(APT_POLICY);
+    let out = match std::process::Command::new("apt-config")
+        .args(["-c", path.to_str().expect("utf-8 path"), "dump"])
+        .output()
+    {
+        Ok(out) => out,
+        Err(_) => {
+            // NOT A PASS. This machine has no apt, so the claim is unjudged, and
+            // saying so is the difference between a clean answer and an answer
+            // about nothing. Every runner this repository's CI uses has it.
+            println!(
+                "NO VERDICT — `apt-config` is not on this machine, so {APT_POLICY} was not parsed"
+            );
+            return;
+        }
+    };
+    assert!(
+        out.status.success(),
+        "apt's own parser rejects {APT_POLICY}, which apt would then IGNORE in \
+         silence:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let dump = String::from_utf8_lossy(&out.stdout);
+    for setting in ["Acquire::Retries \"3\";", "Acquire::http::Timeout \"20\";"] {
+        assert!(
+            dump.contains(setting),
+            "{APT_POLICY} parses and does not declare `{setting}` — the numbers \
+             are what the file is for"
+        );
+    }
+}
