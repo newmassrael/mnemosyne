@@ -15666,6 +15666,98 @@
         "THE JUDGE BAR IS A THRESHOLD ON A SUBJECTIVE QUANTITY, kept at v1's numbers so the two runs share a scale. It buys comparability and it does not buy precision: three judges at 4/5 and three at 3/5 are one authored sentence apart, and the per-axis prose is what a reader of the report should weigh"
       ]
     },
+    "Round 1247 — a store that will not open says how old it is": {
+      "decision_summary": "R1247 (BUILD — a store that will not open says how old it is). `AtomicStore::load` works out the generation a store declares before anything can fail on shape, runs the four forward-migration arms keyed off it, and then dropped that number on every failure path. Measured on 2026-08-19 against the two unattended-loop kits: their stores are generation 23, this build is 46, and `query` and `validate-workspace` alike answered with the name of one removed shape and no distance at all. The number was in a local variable the whole time. It is now on the refusal — `... (this store reads as schema generation 23; this build is 46)` — and every door that loads a store gets it for free.\n\nONE SHAPE NAME READS LIKE ONE REPAIR. Round 708 removed the free-text `value` object and the `scalar` predicate kind and built the reject-loud work-list that names every offender, which is the reason the message is actionable at all rather than a serde unknown-variant (the Round 625 brick lesson). What that work-list cannot say is whether it IS the crossing or the first of twenty-three generations of them, and that is the question the holder of an old store asks first.\n\nTHE READER WAS HALF THERE, NOT ABSENT, which is why nothing looked wrong. `schema_version` has always been read at load — in ONE direction. A store from the FUTURE is refused BY GENERATION and names both numbers; a store from the past is read as though it were current and fails on whichever shape trips first. Measured by stamping one kit's store 999, 46, 23 and 0 in turn: 999 answers `schema version mismatch: store=999 expected <= 46`, and the other three all answer Round 708.\n\nTHE WRAP IS CONDITIONAL, AND THE NUMBER IS THE ONE `load` ACTED ON. A store already at the current generation fails on its own terms and a distance of zero adds nothing to that sentence; a store from the future is already refused by generation and naming it twice would be two sentences saying one thing. A store with no `schema_version` key reads as the serde default, and that same reading chose which migration arms ran — so it is the honest number to report even though the file declared nothing, and the message says `reads as` rather than `declares`.\n\nTHE CAUSE COMES FIRST AND SURVIVES THE WRAPPING. Every caller that recognises a load refusal by its text still does, including the pinned-revision recheck that asserts the Round 708 sentence; a caller that wants the taxonomy reads `underlying()`, which is one hop and not a walk because nothing puts a wrapper inside a wrapper. Three existing tests went red on this change and all three were reading the cause of a refusal from a store that is behind — that they had to be pointed at `underlying()` is the accessor being load-bearing rather than decoration.\n\nMIGRATING THE EVIDENCE IS NOT ON THE TABLE, WHICH IS WHY THE MESSAGE IS THE WORK. R878 measured that 31 of 35 tracked experiment manifests no longer import; R879 repaired the one that was a transcription slip; re-typing the other 30 was REJECTED on a correctness ground, because a kit's pins are pre-committed claims about what a blind author produced and editing the author's output re-establishes the pin by editing the thing it measures. R880 built the alternative — keep the record byte-identical and move the TOOL — and R1084 put it on a clock. So an old store is not a thing to be repaired in place; it is a thing to be READ at its own revision, and the first fact a reader needs is how far back that revision is.",
+      "changes_bullets": [
+        "every `AtomicStore::load` refusal from a store that is BEHIND now carries the generation the load read and the one this build is, with the cause first so text-matching callers are unaffected",
+        "`AtomicStoreError::underlying()` is the way back to the taxonomy under that clause, one hop, because a wrapper that hides the refusal is worse than no wrapper",
+        "a law over the ERROR TYPE, matched exhaustively, asserts both halves: behind carries the distance, and bytes that never yielded a generation are never given an invented one"
+      ],
+      "verification_bullets": [
+        "RUN AGAINST THE TWO KITS THEMSELVES, which is where the defect was found. Before: `query --list-sections` in the v1 game workspace and `validate-workspace` in the v2 one both answered with Round 708 and no number. After: the same two commands answer with the same work-list and `(this store reads as schema generation 23; this build is 46)`",
+        "THE HALF-READER WAS MEASURED, NOT INFERRED. One kit store was stamped 999, 46, 23 and 0 and loaded four times: 999 answers `schema version mismatch: store=999 expected <= 46`, and 46, 23 and 0 all answer Round 708. That is the whole finding — the declaration is read in one direction",
+        "FOUR INJECTIONS ON THIS ROUND'S WORK, red set EXHAUSTIVE: the wrap never happening, the clause losing its numbers, the wrapper eating the cause a caller matches on, and a generation invented for bytes that are not JSON. Control 287 passed / 0 failed, every arm `0 unnamed, 0 missing, 0 extra`",
+        "THE LAW HAS A CONTROL, because \"everything old now fails\" would pass an assertion about failures. A generation-28 store with no removed shape still loads, asserted in the same test",
+        "AND IT ASSERTS THE NEGATIVE HALF: a directory in place of the store file and a file that is not JSON must NOT carry a generation clause, because neither ever produced a number. The classifier is an exhaustive match on the error type, so a variant added later does not compile until an author has put it on one side or the other",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, and `mnemosyne-cli validate-workspace` clean",
+        "AND THE LEDGER ENTRY WAS APPENDED BEFORE THAT FINAL VERIFICATION, which is also what makes the `Round 1247` citations in the new doc comments resolvable to the code-citation gate"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE MANIFEST WIRE HAS NO GENERATION AND CANNOT BE GIVEN ONE. A facts manifest carries no `schema_version`, and every tracked one is sealed by the sha256 its kit's replay declaration holds — R878/R880's contamination bound is precisely that the blind author's bytes are never edited to suit a later tool. So `import-facts` still names the shapes and no distance, and the number it would need lives in the kit's `replay.json` revision, which is a different reader in a different layer",
+        "THE DISTANCE IS A NUMBER, NOT A DIAGNOSIS. Twenty-three generations lie between a kit store and this build; how many of them that store must actually CROSS is a different question, because most bumps are additive and cost an older store nothing. Every bump from 2 to 46 is recorded in order with its reasoning — in comments above `CURRENT_SCHEMA_VERSION` — so a holder now learns the distance and still reads source to learn the crossings. Making that answerable by a program is registered as its own item, not carried here as though nobody had noticed",
+        "A LOAD THAT SUCCEEDS STILL SAYS NOTHING, and that is a decision this round did not revisit rather than a hole it left. `save` stamps the current generation, and the monotone guard is what makes an older binary refuse the result LOUDLY instead of dropping fields it does not know — so an old store that loads is carried forward visibly, by refusal, at the next binary that is behind it"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1247 (BUILD — a store that will not open says how old it is). `AtomicStore::load` works out the generation a store declares before anything can fail on shape, runs the four forward-migration arms keyed off it, and then dropped that number on every failure path. Measured on 2026-08-19 against the two unattended-loop kits: their stores are generation 23, this build is 46, and `query` and `validate-workspace` alike answered with the name of one removed shape and no distance at all. The number was in a local variable the whole time. It is now on the refusal — `... (this store reads as schema generation 23; this build is 46)` — and every door that loads a store gets it for free.\n\nONE SHAPE NAME READS LIKE ONE REPAIR. Round 708 removed the free-text `value` object and the `scalar` predicate kind and built the reject-loud work-list that names every offender, which is the reason the message is actionable at all rather than a serde unknown-variant (the Round 625 brick lesson). What that work-list cannot say is whether it IS the crossing or the first of twenty-three generations of them, and that is the question the holder of an old store asks first.\n\nTHE READER WAS HALF THERE, NOT ABSENT, which is why nothing looked wrong. `schema_version` has always been read at load — in ONE direction. A store from the FUTURE is refused BY GENERATION and names both numbers; a store from the past is read as though it were current and fails on whichever shape trips first. Measured by stamping one kit's store 999, 46, 23 and 0 in turn: 999 answers `schema version mismatch: store=999 expected <= 46`, and the other three all answer Round 708.\n\nTHE WRAP IS CONDITIONAL, AND THE NUMBER IS THE ONE `load` ACTED ON. A store already at the current generation fails on its own terms and a distance of zero adds nothing to that sentence; a store from the future is already refused by generation and naming it twice would be two sentences saying one thing. A store with no `schema_version` key reads as the serde default, and that same reading chose which migration arms ran — so it is the honest number to report even though the file declared nothing, and the message says `reads as` rather than `declares`.\n\nTHE CAUSE COMES FIRST AND SURVIVES THE WRAPPING. Every caller that recognises a load refusal by its text still does, including the pinned-revision recheck that asserts the Round 708 sentence; a caller that wants the taxonomy reads `underlying()`, which is one hop and not a walk because nothing puts a wrapper inside a wrapper. Three existing tests went red on this change and all three were reading the cause of a refusal from a store that is behind — that they had to be pointed at `underlying()` is the accessor being load-bearing rather than decoration.\n\nMIGRATING THE EVIDENCE IS NOT ON THE TABLE, WHICH IS WHY THE MESSAGE IS THE WORK. R878 measured that 31 of 35 tracked experiment manifests no longer import; R879 repaired the one that was a transcription slip; re-typing the other 30 was REJECTED on a correctness ground, because a kit's pins are pre-committed claims about what a blind author produced and editing the author's output re-establishes the pin by editing the thing it measures. R880 built the alternative — keep the record byte-identical and move the TOOL — and R1084 put it on a clock. So an old store is not a thing to be repaired in place; it is a thing to be READ at its own revision, and the first fact a reader needs is how far back that revision is.",
+      "publishable_changes_bullets": [
+        "every `AtomicStore::load` refusal from a store that is BEHIND now carries the generation the load read and the one this build is, with the cause first so text-matching callers are unaffected",
+        "`AtomicStoreError::underlying()` is the way back to the taxonomy under that clause, one hop, because a wrapper that hides the refusal is worse than no wrapper",
+        "a law over the ERROR TYPE, matched exhaustively, asserts both halves: behind carries the distance, and bytes that never yielded a generation are never given an invented one"
+      ],
+      "publishable_verification_bullets": [
+        "RUN AGAINST THE TWO KITS THEMSELVES, which is where the defect was found. Before: `query --list-sections` in the v1 game workspace and `validate-workspace` in the v2 one both answered with Round 708 and no number. After: the same two commands answer with the same work-list and `(this store reads as schema generation 23; this build is 46)`",
+        "THE HALF-READER WAS MEASURED, NOT INFERRED. One kit store was stamped 999, 46, 23 and 0 and loaded four times: 999 answers `schema version mismatch: store=999 expected <= 46`, and 46, 23 and 0 all answer Round 708. That is the whole finding — the declaration is read in one direction",
+        "FOUR INJECTIONS ON THIS ROUND'S WORK, red set EXHAUSTIVE: the wrap never happening, the clause losing its numbers, the wrapper eating the cause a caller matches on, and a generation invented for bytes that are not JSON. Control 287 passed / 0 failed, every arm `0 unnamed, 0 missing, 0 extra`",
+        "THE LAW HAS A CONTROL, because \"everything old now fails\" would pass an assertion about failures. A generation-28 store with no removed shape still loads, asserted in the same test",
+        "AND IT ASSERTS THE NEGATIVE HALF: a directory in place of the store file and a file that is not JSON must NOT carry a generation clause, because neither ever produced a number. The classifier is an exhaustive match on the error type, so a variant added later does not compile until an author has put it on one side or the other",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, and `mnemosyne-cli validate-workspace` clean",
+        "AND THE LEDGER ENTRY WAS APPENDED BEFORE THAT FINAL VERIFICATION, which is also what makes the `Round 1247` citations in the new doc comments resolvable to the code-citation gate"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE MANIFEST WIRE HAS NO GENERATION AND CANNOT BE GIVEN ONE. A facts manifest carries no `schema_version`, and every tracked one is sealed by the sha256 its kit's replay declaration holds — R878/R880's contamination bound is precisely that the blind author's bytes are never edited to suit a later tool. So `import-facts` still names the shapes and no distance, and the number it would need lives in the kit's `replay.json` revision, which is a different reader in a different layer",
+        "THE DISTANCE IS A NUMBER, NOT A DIAGNOSIS. Twenty-three generations lie between a kit store and this build; how many of them that store must actually CROSS is a different question, because most bumps are additive and cost an older store nothing. Every bump from 2 to 46 is recorded in order with its reasoning — in comments above `CURRENT_SCHEMA_VERSION` — so a holder now learns the distance and still reads source to learn the crossings. Making that answerable by a program is registered as its own item, not carried here as though nobody had noticed",
+        "A LOAD THAT SUCCEEDS STILL SAYS NOTHING, and that is a decision this round did not revisit rather than a hole it left. `save` stamps the current generation, and the monotone guard is what makes an older binary refuse the result LOUDLY instead of dropping fields it does not know — so an old store that loads is carried forward visibly, by refusal, at the next binary that is behind it"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

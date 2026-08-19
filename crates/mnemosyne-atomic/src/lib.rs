@@ -1413,6 +1413,52 @@ pub enum AtomicStoreError {
          re-declare each scalar predicate as token / quantity / fact."
     )]
     RemovedValueShape { detail: String },
+    /// Round 1247 — the generation the store was read AS, carried on the failure
+    /// that stopped it loading.
+    ///
+    /// [`AtomicStore::load`] works out `on_disk_version` before anything can
+    /// fail on shape, runs the forward-migration arms keyed off it, and then —
+    /// until this variant existed — DROPPED it on every failure path. So a store
+    /// written twenty-three generations ago was answered with the name of
+    /// whichever removed shape happened to trip first, which is true and is not
+    /// the fact its holder needs: one shape name reads like one repair, and the
+    /// distance says how much else to expect. Measured on 2026-08-19 against the
+    /// two unattended-loop kits, whose generation-23 stores answer `query` and
+    /// `validate-workspace` alike with Round 708 and no number.
+    ///
+    /// The number is the one `load` ACTED on, not a claim about what the file
+    /// says: a store with no `schema_version` key reads as
+    /// `default_schema_version()`, and the migration arms it did or did not run
+    /// were chosen by that same reading. Wrapping happens only when the store is
+    /// BEHIND — a current-generation store fails on its own terms, and a store
+    /// from the future is already refused by generation
+    /// ([`AtomicStoreError::SchemaVersionMismatch`], which names both numbers
+    /// itself and is therefore never wrapped).
+    ///
+    /// The cause comes FIRST in the message so every caller that recognises a
+    /// load refusal by its text still does.
+    #[error("{cause} (this store reads as schema generation {on_disk}; this build is {current})")]
+    StaleGeneration {
+        on_disk: u32,
+        current: u32,
+        #[source]
+        cause: Box<AtomicStoreError>,
+    },
+}
+
+impl AtomicStoreError {
+    /// Round 1247 — the refusal UNDER the generation clause, for a caller that
+    /// wants the taxonomy rather than the sentence.
+    ///
+    /// [`AtomicStoreError::StaleGeneration`] is a wrapper and never a cause of
+    /// its own, so this is one hop and not a walk: nothing puts a wrapper inside
+    /// a wrapper, and a loop here would hide it if something ever did.
+    pub fn underlying(&self) -> &AtomicStoreError {
+        match self {
+            Self::StaleGeneration { cause, .. } => cause,
+            other => other,
+        }
+    }
 }
 
 // Schema version 2 (Round 273): Phase 1A entry — adds AtomicStore.inventory_entries.
@@ -2026,6 +2072,24 @@ fn removed_shape_error(
     })
 }
 
+/// Round 1247 — THE ONE PLACE a load refusal picks up the generation it failed
+/// at, so no failure path can drift into answering without it.
+///
+/// `on_disk` is the number [`AtomicStore::load`] read and acted on, and the wrap
+/// is conditional on being BEHIND: a store already at
+/// [`CURRENT_SCHEMA_VERSION`] fails on its own terms, and there is nothing a
+/// distance of zero adds to that sentence.
+fn stale_generation(on_disk: u32, cause: AtomicStoreError) -> AtomicStoreError {
+    if on_disk >= CURRENT_SCHEMA_VERSION {
+        return cause;
+    }
+    AtomicStoreError::StaleGeneration {
+        on_disk,
+        current: CURRENT_SCHEMA_VERSION,
+        cause: Box::new(cause),
+    }
+}
+
 /// Round 708 — the reject-loud work-list for a STORE carrying EITHER removed
 /// shape: a `{kind:value}` typed object OR a `object_kind:"scalar"` predicate
 /// (both wire tokens were removed with the free-text shape). The strict parse
@@ -2175,10 +2239,11 @@ impl AtomicStore {
                 // lenient-parse the ORIGINAL bytes and list every fact still
                 // carrying a value object. If it is a DIFFERENT parse error,
                 // propagate it.
-                if let Some(err) = store_removed_shape_error(&bytes) {
-                    return Err(err);
-                }
-                return Err(e.into());
+                // Round 1247 — and whichever of the two it is, it leaves with the
+                // generation the read above worked from. The distance is what
+                // says whether one shape name is the whole repair.
+                let cause = store_removed_shape_error(&bytes).unwrap_or_else(|| e.into());
+                return Err(stale_generation(on_disk_version, cause));
             }
         };
         if on_disk_version < 4 {
@@ -12573,7 +12638,7 @@ mod tests {
  }, "schema_version": 28 }"#,
         )
         .unwrap_err();
-        match err {
+        match err.underlying() {
             AtomicStoreError::RemovedValueShape { detail } => {
                 assert!(detail.contains("f-a") && detail.contains("f-b"), "{detail}");
                 assert!(!detail.contains("f-prose"), "clean fact listed: {detail}");
@@ -12594,7 +12659,7 @@ mod tests {
  }, "schema_version": 28 }"#,
         )
         .unwrap_err();
-        match err {
+        match err.underlying() {
             AtomicStoreError::RemovedValueShape { detail } => {
                 assert!(
                     detail.contains("alive") && detail.contains("scalar"),
@@ -12623,9 +12688,164 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            matches!(err, AtomicStoreError::Json(_)),
+            matches!(err.underlying(), AtomicStoreError::Json(_)),
             "a different corruption must propagate the original serde error, got {err:?}"
         );
+    }
+
+    /// Round 1247 — EVERY way `load` can refuse says which generation it read.
+    ///
+    /// The population is the ERROR TYPE, not a list of failures somebody
+    /// remembered: `class` below matches [`AtomicStoreError`] exhaustively, so a
+    /// variant added later does not compile until an author has decided which
+    /// side of this law it falls on. The two sides are both asserted, because
+    /// "carries the clause" is only half a law — `Io` and the first `Json` come
+    /// from bytes that never became a number, and a build that started printing
+    /// a generation for them would be inventing one.
+    ///
+    /// Measured before this existed (2026-08-19): a generation-23 store — the
+    /// unattended-loop kits — answered `query` and `validate-workspace` with the
+    /// name of one removed shape and no distance at all, while `load` had the
+    /// number in a local variable the whole time.
+    #[test]
+    fn every_load_refusal_carries_the_generation_it_read() {
+        const CLAUSE: &str = "reads as schema generation";
+        let tmp = TempDir::new().unwrap();
+
+        // The generation is legible ONLY once the raw bytes parse, so the type
+        // splits in two and this test asserts both halves.
+        #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+        enum Class {
+            /// The bytes never yielded a number — the clause would be invented.
+            Illegible,
+            /// The store is AHEAD; the refusal names both numbers itself.
+            Ahead,
+            /// The store is BEHIND and the refusal must carry the distance.
+            Behind,
+        }
+        fn class(e: &AtomicStoreError) -> Class {
+            match e {
+                AtomicStoreError::Io(_) | AtomicStoreError::Json(_) => Class::Illegible,
+                AtomicStoreError::SchemaVersionMismatch { .. } => Class::Ahead,
+                // Reached UNWRAPPED only from a store already at the current
+                // generation; behind, it arrives inside `StaleGeneration`.
+                AtomicStoreError::RemovedValueShape { .. } => Class::Illegible,
+                AtomicStoreError::StaleGeneration { .. } => Class::Behind,
+            }
+        }
+
+        let value_store = |version: u32| {
+            format!(
+                r#"{{ "sections": {{}}, "changelog_entries": {{}}, "frames": {{ "gt": {{}} }},
+ "entities": {{ "kara": {{}} }},
+ "predicates": {{ "alive": {{ "object_kind": "scalar" }} }},
+ "narrative_facts": {{
+   "f-a": {{ "frame": "gt", "entities": ["kara"], "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+            "typed": {{ "subject": "kara", "predicate": "alive", "object": {{ "kind": "value", "value": "up" }} }} }}
+ }}, "schema_version": {version} }}"#
+            )
+        };
+
+        // A DIRECTORY where the store should be: `exists()` is true, so `load`
+        // gets past its missing-file arm and `read` fails as io.
+        let as_dir = tmp.path().join("a-directory.json");
+        std::fs::create_dir(&as_dir).unwrap();
+
+        let file = |name: &str, body: String| {
+            let p = tmp.path().join(name);
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+        let cases: Vec<(&str, PathBuf)> = vec![
+            ("io: the store path is a directory", as_dir),
+            (
+                "json: the bytes are not json",
+                file("bad.json", "not json".into()),
+            ),
+            (
+                "ahead: a store from a generation this build cannot read",
+                file(
+                    "ahead.json",
+                    format!(
+                        r#"{{ "schema_version": {}, "sections": {{}}, "changelog_entries": {{}} }}"#,
+                        CURRENT_SCHEMA_VERSION + 1
+                    ),
+                ),
+            ),
+            (
+                "current: a removed shape in a store that is not behind",
+                file("current.json", value_store(CURRENT_SCHEMA_VERSION)),
+            ),
+            (
+                "behind: a removed shape in a generation-28 store",
+                file("behind.json", value_store(28)),
+            ),
+        ];
+
+        let mut seen: Vec<Class> = Vec::new();
+        for (name, path) in cases {
+            let err = AtomicStore::load(&path)
+                .err()
+                .unwrap_or_else(|| panic!("{name}: load must refuse"));
+            let said = err.to_string();
+            match class(&err) {
+                Class::Behind => {
+                    let AtomicStoreError::StaleGeneration {
+                        on_disk, current, ..
+                    } = &err
+                    else {
+                        unreachable!("only the wrapper is classified Behind")
+                    };
+                    assert!(
+                        said.contains(CLAUSE)
+                            && said.contains(&on_disk.to_string())
+                            && said.contains(&current.to_string()),
+                        "{name}: the distance is missing from `{said}`"
+                    );
+                    assert!(
+                        *on_disk < *current,
+                        "{name}: wrapped a store that is not behind ({on_disk} -> {current})"
+                    );
+                    // The taxonomy survives the wrapping — a caller reading the
+                    // cause must still find the migration work-list.
+                    assert!(
+                        matches!(err.underlying(), AtomicStoreError::RemovedValueShape { .. }),
+                        "{name}: the wrapper swallowed the cause: {:?}",
+                        err.underlying()
+                    );
+                }
+                Class::Ahead => assert!(
+                    said.contains(&CURRENT_SCHEMA_VERSION.to_string())
+                        && said.contains(&(CURRENT_SCHEMA_VERSION + 1).to_string()),
+                    "{name}: the refusal must name both generations: `{said}`"
+                ),
+                Class::Illegible => assert!(
+                    !said.contains(CLAUSE),
+                    "{name}: a generation was claimed for bytes that never gave one: `{said}`"
+                ),
+            }
+            seen.push(class(&err));
+        }
+        seen.sort();
+        seen.dedup();
+        assert_eq!(
+            seen,
+            vec![Class::Illegible, Class::Ahead, Class::Behind],
+            "a class no case produced is a class this law never judged"
+        );
+
+        // CONTROL — the wrap refuses nothing on its own. A generation-28 store
+        // with no removed shape still loads, so a green run above cannot be
+        // "everything old fails now".
+        let ok = file(
+            "clean-old.json",
+            r#"{ "sections": {}, "changelog_entries": {}, "frames": { "gt": {} },
+ "narrative_facts": {
+   "f-prose": { "frame": "gt", "entities": [], "claim": "p", "canon_from": "ch-1", "evidence": ["ch-1"] }
+ }, "schema_version": 28 }"#
+                .into(),
+        );
+        AtomicStore::load(&ok).expect("an old store with no removed shape still loads");
     }
 
     /// Round 873 — the same work-list on the wire a migration actually EDITS.
@@ -12761,8 +12981,12 @@ mod tests {
  }, "schema_version": 28 }"#,
         )
         .unwrap();
-        let store_detail = match AtomicStore::load(&path).unwrap_err() {
-            AtomicStoreError::RemovedValueShape { detail } => detail,
+        // Round 1247 — the STORE wire now leaves with the generation clause the
+        // manifest wire has no number for, so the comparison is between the two
+        // work-lists and not between two whole sentences.
+        let store_err = AtomicStore::load(&path).unwrap_err();
+        let store_detail = match store_err.underlying() {
+            AtomicStoreError::RemovedValueShape { detail } => detail.clone(),
             other => panic!("store must reject-loud, got {other:?}"),
         };
         let manifest_detail = match parse_facts_manifest(

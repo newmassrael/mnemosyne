@@ -1,0 +1,73 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-generation-is-invented-for-bytes-that-never-gave-one": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        let mut raw: serde_json::Value = serde_json::from_slice(&bytes)?;",
+          "to": "        let mut raw: serde_json::Value =\n            serde_json::from_slice(&bytes).map_err(|e| stale_generation(1, e.into()))?;"
+        }
+      ],
+      "expect_red": [
+        "every_load_refusal_carries_the_generation_it_read"
+      ],
+      "tests": [
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ]
+    },
+    "the-clause-loses-its-numbers": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    #[error(\"{cause} (this store reads as schema generation {on_disk}; this build is {current})\")]",
+          "to": "    #[error(\"{cause}\")]"
+        }
+      ],
+      "expect_red": [
+        "every_load_refusal_carries_the_generation_it_read"
+      ],
+      "tests": [
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ]
+    },
+    "the-wrap-never-happens": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    if on_disk >= CURRENT_SCHEMA_VERSION {",
+          "to": "    if on_disk <= CURRENT_SCHEMA_VERSION {"
+        }
+      ],
+      "expect_red": [
+        "every_load_refusal_carries_the_generation_it_read"
+      ],
+      "tests": [
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ]
+    },
+    "the-wrapper-eats-the-cause": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "            Self::StaleGeneration { cause, .. } => cause,",
+          "to": "            Self::StaleGeneration { .. } => self,"
+        }
+      ],
+      "expect_red": [
+        "every_load_refusal_carries_the_generation_it_read",
+        "load_rejects_removed_value_shape_with_named_worklist",
+        "the_store_and_manifest_worklists_phrase_one_migration"
+      ],
+      "tests": [
+        "tests::every_load_refusal_carries_the_generation_it_read",
+        "tests::load_rejects_removed_value_shape_with_named_worklist",
+        "tests::the_store_and_manifest_worklists_phrase_one_migration"
+      ]
+    }
+  }
+}

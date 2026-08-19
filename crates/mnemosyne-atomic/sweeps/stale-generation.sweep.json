@@ -1,0 +1,92 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1247's LAW IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-atomic/sweeps/stale-generation.sweep.json",
+    "",
+    "WHAT THE LAW IS. `AtomicStore::load` works out the generation the file",
+    "declares before anything can fail on shape, runs the forward-migration arms",
+    "keyed off it, and — until R1247 — dropped it on every failure path. So the",
+    "two unattended-loop kits, whose stores are generation 23, answered `query`",
+    "and `validate-workspace` with the name of one removed shape and no distance",
+    "at all. One shape name reads like one repair.",
+    "",
+    "SO THE FOUR INJECTIONS ARE THE FOUR WAYS THE DISTANCE STOPS BEING TOLD, and",
+    "every one of them is silent in the direction that reads as a working build:",
+    "the wrap never happens, the clause loses its numbers, the wrapper eats the",
+    "cause a caller matches on, and a generation is invented for bytes that never",
+    "yielded one. None of them fails to compile and none prints an error.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy (R1205's carry, and the `writes` line in the declaration)."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-atomic",
+    "--lib",
+    "--locked",
+    "--no-fail-fast"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-wrap-never-happens",
+      "why": "the whole repair, reverted by one character. A store that is behind leaves with its shape error exactly as it did before R1247, which is the state the two kits were measured in: true, actionable about one shape, and silent about the twenty-three generations behind it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    if on_disk >= CURRENT_SCHEMA_VERSION {",
+          "to": "    if on_disk <= CURRENT_SCHEMA_VERSION {"
+        }
+      ],
+      "expect_red": ["every_load_refusal_carries_the_generation_it_read"]
+    },
+    {
+      "name": "the-clause-loses-its-numbers",
+      "why": "the wrapper still wraps, so every match arm and every caller behaves, and the only thing missing is the sentence a person reads. A refusal that carries the distance in a field nothing prints is the same as one that never carried it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    #[error(\"{cause} (this store reads as schema generation {on_disk}; this build is {current})\")]",
+          "to": "    #[error(\"{cause}\")]"
+        }
+      ],
+      "expect_red": ["every_load_refusal_carries_the_generation_it_read"]
+    },
+    {
+      "name": "the-wrapper-eats-the-cause",
+      "why": "the cost of wrapping, if the way back out is wrong. Callers that match the taxonomy rather than the sentence — the migration work-list is one — get the wrapper handed back instead of the refusal under it, and a match arm that no longer fires reads as a store that no longer has that problem. Three tests name it because the R708 and R873 work-list laws were BOTH written against a store that is behind, so they read the cause through this accessor: that they go red here is the accessor being load-bearing, not a stray",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "            Self::StaleGeneration { cause, .. } => cause,",
+          "to": "            Self::StaleGeneration { .. } => self,"
+        }
+      ],
+      "expect_red": [
+        "every_load_refusal_carries_the_generation_it_read",
+        "load_rejects_removed_value_shape_with_named_worklist",
+        "the_store_and_manifest_worklists_phrase_one_migration"
+      ]
+    },
+    {
+      "name": "a-generation-is-invented-for-bytes-that-never-gave-one",
+      "why": "the other half of the law, and the direction a later refactor is likeliest to break: wrapping the raw parse too would put a generation on a file whose bytes are not JSON, which is a number nobody read off anything. The clause would then be decoration rather than a reading",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        let mut raw: serde_json::Value = serde_json::from_slice(&bytes)?;",
+          "to": "        let mut raw: serde_json::Value =\n            serde_json::from_slice(&bytes).map_err(|e| stale_generation(1, e.into()))?;"
+        }
+      ],
+      "expect_red": ["every_load_refusal_carries_the_generation_it_read"]
+    }
+  ]
+}
