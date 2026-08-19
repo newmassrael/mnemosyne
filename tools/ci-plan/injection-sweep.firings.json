@@ -65,6 +65,36 @@
         "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
       ]
     },
+    "a-jobs-budget-is-read-from-nowhere": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            timeout: scalar(&job[\"timeout-minutes\"]),",
+          "to": "            timeout: None,"
+        }
+      ],
+      "expect_red": [
+        "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ],
+      "tests": [
+        "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ]
+    },
+    "a-jobs-shown-name-is-read-off-the-wrong-key": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            shown_as: scalar(&job[\"name\"]),",
+          "to": "            shown_as: scalar(&job[\"runs-on\"]),"
+        }
+      ],
+      "expect_red": [
+        "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ],
+      "tests": [
+        "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ]
+    },
     "a-runner-is-resolved-for-every-job-not-every-caching-job": {
       "edits": [
         {
@@ -361,6 +391,21 @@
       ],
       "tests": [
         "the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"
+      ]
+    },
+    "the-population-of-jobs-is-whatever-a-misspelling-finds": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    let Some(jobs) = doc[\"jobs\"].as_hash() else {\n        return Vec::new();\n    };",
+          "to": "    let Some(jobs) = doc[\"job\"].as_hash() else {\n        return Vec::new();\n    };"
+        }
+      ],
+      "expect_red": [
+        "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ],
+      "tests": [
+        "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
       ]
     },
     "the-ref-is-cut-at-the-last-at-sign": {

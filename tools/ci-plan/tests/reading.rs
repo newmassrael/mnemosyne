@@ -1671,3 +1671,62 @@ fn a_reference_that_is_not_there_at_all_is_refused_rather_than_guessed() {
         );
     }
 }
+
+/// Every job this repository's CI runs says what it is allowed to take.
+///
+/// THE BUDGET NOBODY CHOSE IS 360 MINUTES. A job with no `timeout-minutes` gets
+/// GitHub's default, which is six hours — long enough that a job stuck on
+/// somebody else's server burns most of an afternoon before anything says so,
+/// and quiet enough that nobody notices it is there. R1229 changed the work of a
+/// job's longest step and left its number alone; the first run answered with a
+/// cancellation, and nothing between the edit and that answer had an opinion.
+///
+/// AND EVERY JOB'S CHECK NAME IS ITS OWN, which is the half a reader needs NEXT:
+/// what a commit's answer carries is the `name:` a job declares, or its id when
+/// it declares none — this repository's `validate` is the one job with no name of
+/// its own. Two jobs a commit cannot tell apart are two jobs nothing can hold to
+/// their own budgets, and the clash would be silent: GitHub prints both rows
+/// under one name and a join keyed on it takes whichever came first.
+#[test]
+fn every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own() {
+    let root = repository_root();
+    let jobs = ci_plan::workflow_job_budgets(&root);
+
+    // NON-VACUITY FIRST: a walk that found no jobs holds every job it found to
+    // the rule, which is also what it would do the day the `jobs:` key moved.
+    assert!(
+        jobs.len() > 5,
+        "this repository's workflows declare {} job(s), which is a walk that \
+         stopped reading rather than a CI that emptied",
+        jobs.len()
+    );
+
+    let unbounded: Vec<String> = jobs
+        .iter()
+        .filter(|(_, job)| job.timeout.is_none())
+        .map(|(file, job)| format!("{file} job `{}`", job.id))
+        .collect();
+    assert!(
+        unbounded.is_empty(),
+        "{} job(s) declare no `timeout-minutes`, so GitHub gives them its own \
+         360-minute default — a budget nobody in this repository chose, and one \
+         nothing can be held to:\n  {}",
+        unbounded.len(),
+        unbounded.join("\n  ")
+    );
+
+    let mut seen: BTreeSet<(&str, &str)> = BTreeSet::new();
+    let mut clashing = Vec::new();
+    for (file, job) in &jobs {
+        if !seen.insert((file.as_str(), job.check_name())) {
+            clashing.push(format!("{file} shows two jobs as `{}`", job.check_name()));
+        }
+    }
+    assert!(
+        clashing.is_empty(),
+        "{} check name(s) belong to more than one job of the same workflow, so a \
+         commit's answer cannot say which job a row is:\n  {}",
+        clashing.len(),
+        clashing.join("\n  ")
+    );
+}

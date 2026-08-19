@@ -394,6 +394,42 @@
         }
       ],
       "expect_red": ["a_fallback_that_cannot_serve_an_earlier_generation_is_named"]
+    },
+    {
+      "name": "a-jobs-budget-is-read-from-nowhere",
+      "why": "the quiet 360 minutes. A job with no `timeout-minutes` gets GitHub's own default, and a reader that finds none in a file that has them makes every job look like that — six hours a person can spend on somebody else's server before anything says so, and the file itself still reads as bounded",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            timeout: scalar(&job[\"timeout-minutes\"]),",
+          "to": "            timeout: None,"
+        }
+      ],
+      "expect_red": ["every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"]
+    },
+    {
+      "name": "a-jobs-shown-name-is-read-off-the-wrong-key",
+      "why": "the half that a join depends on. Every job in this repository declares the same `runs-on`, so a reader that takes its shown name from there gives every job one name — and a commit's answer, keyed on that name, then attributes one job's minutes to another. Reading a neighbouring key is the misread that looks least like one",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            shown_as: scalar(&job[\"name\"]),",
+          "to": "            shown_as: scalar(&job[\"runs-on\"]),"
+        }
+      ],
+      "expect_red": ["every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"]
+    },
+    {
+      "name": "the-population-of-jobs-is-whatever-a-misspelling-finds",
+      "why": "a law over no jobs holds every job it found, which is what it would also do the day the `jobs:` key moved or a workflow stopped parsing. One letter is the whole distance between `every job is bounded` and `nothing was looked at`, and only a count says which one a green run means",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    let Some(jobs) = doc[\"jobs\"].as_hash() else {\n        return Vec::new();\n    };",
+          "to": "    let Some(jobs) = doc[\"job\"].as_hash() else {\n        return Vec::new();\n    };"
+        }
+      ],
+      "expect_red": ["every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"]
     }
   ]
 }

@@ -1135,6 +1135,68 @@ pub fn job_needs(doc: &Yaml) -> BTreeMap<String, Vec<String>> {
     out
 }
 
+/// One job, as the two things a reader holding it to a budget needs.
+///
+/// A JOB'S NAME ON GITHUB IS NOT ITS ID. `needs:` spells the id; a check run on a
+/// commit carries the `name:` the job declares, and only falls back to the id
+/// when it declares none — this repository's `validate` is the one job that does.
+/// Anything joining what a job WAS ALLOWED TO TAKE to what it TOOK has to cross
+/// that gap, and a reader that returned only ids would leave every caller to
+/// re-derive it from the same file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobBudget {
+    /// The job id — the spelling `needs:` uses.
+    pub id: String,
+    /// The `name:` GitHub shows, when the job declares one.
+    pub shown_as: Option<String>,
+    /// Its `timeout-minutes`, VERBATIM, or `None` when it declares none — in
+    /// which case GitHub applies its own 360-minute default, which is a budget
+    /// nobody in this repository chose.
+    ///
+    /// KEPT AS WRITTEN, for [`RunStep::timeout`]'s reason: an expression is a
+    /// declaration this reader cannot evaluate, and parsing to a number would
+    /// answer `None` for it — the same word it answers for a job nobody bounded.
+    pub timeout: Option<String>,
+}
+
+impl JobBudget {
+    /// What a check run on a commit is called: the declared name, or the id.
+    #[must_use]
+    pub fn check_name(&self) -> &str {
+        self.shown_as.as_deref().unwrap_or(&self.id)
+    }
+}
+
+/// Every job one workflow declares, with what it is allowed to take.
+pub fn job_budgets(doc: &Yaml) -> Vec<JobBudget> {
+    let Some(jobs) = doc["jobs"].as_hash() else {
+        return Vec::new();
+    };
+    jobs.iter()
+        .map(|(name, job)| JobBudget {
+            id: name.as_str().unwrap_or("<unnamed>").to_string(),
+            shown_as: scalar(&job["name"]),
+            timeout: scalar(&job["timeout-minutes"]),
+        })
+        .collect()
+}
+
+/// Every job this repository's workflows declare, workflow by workflow.
+///
+/// THE PAIR IS KEPT, because a job id is unique within its file and a CHECK NAME
+/// is what a commit's answer carries — so a caller joining the two needs to say
+/// which file a name came from when two files disagree.
+pub fn workflow_job_budgets(root: &Path) -> Vec<(String, JobBudget)> {
+    let mut out = Vec::new();
+    for path in workflow_files(root) {
+        let doc = load_workflow(root, &path);
+        for job in job_budgets(&doc) {
+            out.push((path.clone(), job));
+        }
+    }
+    out
+}
+
 // --- cargo commands ---------------------------------------------------------
 
 /// One cargo invocation, as CI writes it.
