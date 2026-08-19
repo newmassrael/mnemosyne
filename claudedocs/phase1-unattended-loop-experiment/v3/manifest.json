@@ -1,0 +1,52 @@
+{
+  "manifest": "unattended-loop-experiment/v3",
+  "designed": "R1246 (Mnemosyne narrative-authoring track) — DESIGN round, code 0, written BEFORE the run",
+  "lineage_note": "Design/manifest round. This lineage is the ORCHESTRATOR: it seeds the fresh workspace, spawns blind subagents, and re-derives every pin on a fresh rebuild. It does NOT author, repair, render, or judge (R469 contamination bound). Self-report is not trusted (R500) — pins are verified from the agent's JSON, never from its store or its log.",
+
+  "why_now": "The unattended loop was last run END TO END at R598 (v2), and v2 dropped the render + judge half, so the last COHERENCE measurement is v1 (R594). The surfaces have moved roughly six hundred and fifty rounds since. That is not an argument, it is measured: v2's own corpus no longer LOADS — `report-authoring-frontier` over `v2/run/verify` refuses with `removed value/scalar object shape (Round 708): 9 fact(s) … 3 predicate(s)`. The artifact of the last end-to-end proof went stale and nothing said so for six hundred rounds. So a re-run is a NEW measurement rather than a repetition.",
+
+  "question": "On TODAY's surfaces, does the unattended loop still converge — and does it choose CONTENT a blind reader calls a real game? v1 proved the loop runs and that its output was coherent on the surfaces of R594. v2 proved two frictions were removed and deliberately skipped coherence. The north star's own question is the one neither answered on today's substrate: the surfaces can gate store-consistency and cannot gate coherence (R476), so the only instrument for the second half is a blind render + blind judges.",
+
+  "premise": "../v1/premise.md — 'The Ban Tower', UNCHANGED from v1 and v2. The same premise is the control: it holds difficulty fixed, so a judge score is comparable to v1's and a friction is comparable to v2's. The agent authors everything; the orchestrator seeds only the premise and an empty workspace.",
+
+  "firewall": {
+    "rule": "R469 contamination bound. The blind loop agent authors and self-repairs with NO orchestrator help. Separate blind subagents render, re-extract, and judge. This lineage runs only the deterministic setup, the verification rebuild, and the gates.",
+    "blind_subagents": ["loop agent (author + gate + repair, unattended)", "render agent", "extractor", "judge x3"],
+    "orchestrator_may": ["seed the premise + a fresh empty workspace", "run describe-schema / propose-verdict / import-* / report-* / validate-* for VERIFICATION only", "assemble the outlines and the quest briefing handed to the render agent", "run the leak + fidelity gates", "apply the decision rule"],
+    "orchestrator_may_not": ["author or repair any manifest", "hint the loop agent", "render prose", "judge", "tell the loop agent that the render-acceptance gates exist — see PIN-v3-2b, which is void if the brief names them"]
+  },
+
+  "deterministic_pins": {
+    "PIN-v3-1_convergence": "The blind loop agent, using ONLY `describe-schema` + the premise + the CLI (no source), reaches a state where — re-derived by the orchestrator on a FRESH rebuild from the agent's own `sections.json` + `facts*.json` + its order artifact — (a) `propose-verdict` on each manifest re-applies at `commit` (idempotent no-op), (b) `report-authoring-frontier --telling <plan>` reports no remaining gap of any axis except never-planned disclosures, (c) `validate-workspace` and `validate-continuity` are clean. The agent's own store and its log are NOT evidence for this pin.",
+
+    "PIN-v3-2_the_worklist_steered_it": "From `loop-log.md`: every repair traces to a NAMED output — a `propose-verdict` violation or a `report-authoring-frontier` gap — and not to a guess, a source read, or a hint. Falsifiable: a convergence reached by reading the crate, or by trying shapes until one stuck, FAILS this. Records the iteration count and every friction / guess / missing-contract-info point (that list is the deliverable).",
+
+    "PIN-v3-2b_the_contract_carried_the_render_gates": "R598's finding 2 was that a clean frontier does NOT certify a correct telling, and the repair was to say so in `describe-schema`. This pin tests that repair on a live run: the brief's stop condition is `frontier clean` and the brief does NOT name the leak gate, the fidelity gate, or `report-playthrough-manuscript`. PIN-v3-2b HOLDS iff the agent runs at least one render-acceptance check anyway AND its log credits the contract for the reason. A loop that stops at frontier-clean fails this pin — which is a finding about the documentation fix, not about the agent.",
+
+    "PIN-v3-3_coherence": "A warm render of one road by a blind agent, re-extracted blind: the disclosure leak gate reports 0 leaks with `vocab_shared > 0` (non-vacuous — a leak gate over prose that shares no vocabulary with the store has not been asked anything), and `validate-render-fidelity` reports off_path = 0, unplaced = 0, reached_terminal = true. THEN 3 blind judges return a MAJORITY of Overall game-feel >= 4/5 AND Coherence >= 4/5 with 'a real game? yes'. This is the only instrument for the half the deterministic surfaces cannot gate."
+  },
+
+  "judged_no_pin": "The judges' per-axis scores (knowledge-realism, choice-and-consequence, quest-legibility) and the named weakest link — texture, recorded, never gated. Compared against v1's scores on the SAME premise, which is what holding the premise fixed buys.",
+
+  "decision_rule_pre_committed": {
+    "loop_still_proven": "PIN-v3-1 AND PIN-v3-2 AND PIN-v3-3 all hold => the loop survives six hundred rounds of surface change and still chooses content a blind reader calls a game. Deliverable = the honest NEXT gap from PIN-v3-2's friction list.",
+    "surfaces_regressed": "PIN-v3-1 fails => the surfaces that carried a blind agent at R598 no longer do. The finding names exactly which surface fell short, grounded in the loop-log — a build target, and a measured regression rather than a suspicion.",
+    "coherence_gap": "PIN-v3-1 AND PIN-v3-2 hold and PIN-v3-3 fails => the loop converged to a gate-clean husk on today's surfaces. That is R476's band ladder reproduced at the loop level, and the finding is the measured residue rather than a build.",
+    "contaminated": "PIN-v3-2 fails (the agent read source, or its repairs do not trace to named outputs) => inconclusive on surface sufficiency; re-run with a tighter brief. Not a substrate finding.",
+    "documentation_insufficient": "PIN-v3-2b fails while the others hold => R598's repair to `describe-schema` did not reach a blind agent in practice. The loop still stops at a bar its own contract says is necessary-but-not-sufficient, and the build target is a LOOP-VISIBLE signal rather than a paragraph."
+  },
+
+  "predictions_preregistered": [
+    "PRED-1: PIN-v3-1 HOLDS, and the agent hits at least one gap class that did not exist at R598 — the map/rule declarations, the disclosure SEAT (`surface`), or the unplaced-scenes axis. The surfaces grew; the loop's friction should have moved with them rather than vanished.",
+    "PRED-2: PIN-v3-2b HOLDS but only just — the agent runs a render-acceptance check because the contract's disclosure paragraph tells it to, and it does so LATE (after frontier-clean) rather than as part of its loop. The honest reading of a late check is that a paragraph moved the agent and a worklist entry would have moved it sooner.",
+    "PRED-3: the honest next gap is STILL guidance-shaped rather than gate-shaped — the surfaces say WHAT is incomplete and not what narrative SHAPE would fill it. This was v1's PRED-3 and it held; if it holds a third time on a substrate this much larger, it stops being a prediction and becomes a measured property of the band ladder."
+  ],
+
+  "honest_caveats": [
+    "n = 1 premise / 1 loop agent / 1 render / 3 judges / one road. The same n as v1, deliberately: the comparison to v1 is the point, and a wider n would answer a different question.",
+    "The loop agent is a capable model; 'unattended' means no human and no orchestrator help, not a weak agent. The claim is about the SURFACES' sufficiency for a competent agent, never about the floor.",
+    "COMPARABILITY TO v1 IS BY PREMISE, NOT BY MODEL. The model behind the blind agents is not the one v1 used, so a better score is not evidence that the surfaces improved — it is evidence that the pair (surfaces, agent) still clears the bar. Any claim that the SURFACES did it must come from the loop-log's attributions, which is what PIN-v3-2 is for.",
+    "PIN-v3-3's judge bar (majority >= 4/5) is v1's bar, kept verbatim so the two runs are on one scale. It is a threshold on a subjective quantity and the per-axis prose is the real evidence.",
+    "A pass on PIN-v3-1 + PIN-v3-2 with a MARGINAL PIN-v3-3 remains the most informative outcome, not a clean sweep."
+  ]
+}
