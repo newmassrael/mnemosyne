@@ -162,6 +162,43 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
     // needs it; printed here, because this is where a reader looks for it.
     lines.extend(notes);
     lines.extend(ci_state::annotation_report(sha, declared, &read));
+
+    // WHAT EACH JOB COST, AGAINST WHAT IT DECLARED (R1245). The budget is written
+    // in the workflow and read by `ci-plan`; what the job took is in the answer
+    // already in hand. Neither half is new and nothing joined them, which is how
+    // R1229 changed the work of a job's longest step, left the number alone, and
+    // learned about it from a cancellation.
+    //
+    // NO EXTRA CALL: the stamps ride on the check rows this reporter already
+    // fetched, and the budgets come off the tracked workflow files.
+    //
+    // AND THE READING IS THE FALLIBLE ONE, because a reporter is not a law: the
+    // asserting reader beside it is right to die where a repository tracks no
+    // workflow at all, and this program runs in whatever tree a push happens in.
+    let (budgets, unreadable) = ci_plan::readable_job_budgets(root);
+    let (spent, mut unread) = ci_state::spent_against_budgets(&checks, &budgets);
+    unread.extend(
+        unreadable
+            .into_iter()
+            .map(|why| ci_state::Unmeasured::Workflow { why }),
+    );
+    if budgets.is_empty() {
+        // A REFUSAL RATHER THAN SILENCE: no workflow read means no job's cost was
+        // held against anything, and a block that simply vanished would read as
+        // "nothing was close to its budget".
+        lines.push(
+            "NOT MEASURED no workflow of this repository was readable from here, so no \
+             job's cost was held against a budget"
+                .to_string(),
+        );
+        lines.extend(
+            unread
+                .into_iter()
+                .map(|why| format!("  NOT MEASURED {why}")),
+        );
+    } else {
+        lines.extend(ci_state::budget_report(&spent, &unread));
+    }
     lines
 }
 

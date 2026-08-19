@@ -56,8 +56,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    pub output: Output,",
-          "to": "    pub conclusion: Option<String>,\n    pub output: Output,"
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    /// When the job began",
+          "to": "    pub conclusion: Option<String>,\n    /// When the job began"
         }
       ],
       "expect_red": [
@@ -95,6 +95,21 @@
       ],
       "tests": [
         "a_long_message_is_cut_by_characters_and_survives_a_non_ascii_one"
+      ]
+    },
+    "a-name-two-workflows-declare-is-joined-to-the-first-one-found": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            many => {\n                unread.push(Unmeasured::Ambiguous {\n                    check: check.name.clone(),\n                    files: many.iter().map(|(file, _)| file.clone()).collect(),\n                });\n                continue;\n            }",
+          "to": "            many => &many[0].1,"
+        }
+      ],
+      "expect_red": [
+        "a_name_two_workflows_declare_is_a_refusal_rather_than_the_first_one_found"
+      ],
+      "tests": [
+        "a_name_two_workflows_declare_is_a_refusal_rather_than_the_first_one_found"
       ]
     },
     "a-red-commit-does-not-say-how-much-of-it-was-somebody-elses": {
@@ -174,7 +189,8 @@
         "the_paginated_recording_reports_the_same_commit",
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
-        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
       ],
       "tests": [
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
@@ -183,7 +199,8 @@
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "the_paginated_recording_reports_the_same_commit",
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
-        "the_skipped_check_in_the_recording_is_not_read_as_a_failure"
+        "the_skipped_check_in_the_recording_is_not_read_as_a_failure",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
       ]
     },
     "a-step-conclusion-github-stops-sending-reads-as-a-step-still-running": {
@@ -231,6 +248,21 @@
       "tests": [
         "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_shorter_commit",
         "an_answer_the_reporter_cannot_read_is_printed_rather_than_swallowed"
+      ]
+    },
+    "an-inverted-pair-of-stamps-is-clamped-to-a-number": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let (from, to) = (epoch_seconds(started)?, epoch_seconds(completed)?);\n    u64::try_from(to - from).ok()",
+          "to": "    let (from, to) = (epoch_seconds(started)?, epoch_seconds(completed)?);\n    Some((to - from).unsigned_abs())"
+        }
+      ],
+      "expect_red": [
+        "a_pair_of_stamps_is_a_duration_and_an_inverted_pair_is_a_refusal"
+      ],
+      "tests": [
+        "a_pair_of_stamps_is_a_duration_and_an_inverted_pair_is_a_refusal"
       ]
     },
     "no-failing-check-is-asked-what-step-ended-it": {
@@ -303,6 +335,21 @@
         "a_run_a_later_push_retired_is_no_verdict_rather_than_red"
       ]
     },
+    "the-binary-never-asks-what-a-job-was-allowed": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    let (budgets, unreadable) = ci_plan::readable_job_budgets(root);",
+          "to": "    let (budgets, unreadable): (Vec<(String, ci_plan::JobBudget)>, Vec<String>) =\n        (Vec::new(), Vec::new());"
+        }
+      ],
+      "expect_red": [
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+      ],
+      "tests": [
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+      ]
+    },
     "the-binary-never-asks-whether-the-run-was-retired": {
       "edits": [
         {
@@ -316,6 +363,21 @@
       ],
       "tests": [
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    "the-calendar-forgets-that-a-century-is-not-a-leap-year": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;",
+          "to": "    let day_of_era = year_of_era * 365 + year_of_era / 4 + day_of_year;"
+        }
+      ],
+      "expect_red": [
+        "githubs_stamp_reads_as_seconds_and_nothing_else_does"
+      ],
+      "tests": [
+        "githubs_stamp_reads_as_seconds_and_nothing_else_does"
       ]
     },
     "the-check-that-said-it-is-thrown-away-again": {
@@ -354,6 +416,23 @@
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
       ]
     },
+    "the-closest-job-is-printed-only-when-it-is-already-bad": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if let Some(worst) = spent.iter().max_by_key(|one| one.percent()) {\n        lines.push(format!(\n            \"of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)\",\n            spent.len(),\n            worst.check,\n            clock(worst.took),\n            worst.budget_minutes,\n            worst.percent()\n        ));\n    }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "the_closest_job_to_its_budget_is_printed_even_when_every_job_is_fine",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+      ],
+      "tests": [
+        "the_closest_job_to_its_budget_is_printed_even_when_every_job_is_fine",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+      ]
+    },
     "the-conclusion-this-reporter-treats-as-routine-is-misspelled": {
       "edits": [
         {
@@ -382,6 +461,21 @@
       ],
       "tests": [
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ]
+    },
+    "the-jobs-that-have-not-finished-are-listed-one-by-one": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        .filter(|why| !matches!(why, Unmeasured::NotFinished { .. }))\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));",
+          "to": "        .filter(|_| true)\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));"
+        }
+      ],
+      "expect_red": [
+        "a_job_near_its_budget_is_named_and_the_unfinished_are_counted"
+      ],
+      "tests": [
+        "a_job_near_its_budget_is_named_and_the_unfinished_are_counted"
       ]
     },
     "the-last-failing-step-is-named-instead-of-the-first": {

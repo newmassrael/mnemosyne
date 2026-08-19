@@ -66,8 +66,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    pub output: Output,",
-          "to": "    pub conclusion: Option<String>,\n    pub output: Output,"
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    /// When the job began",
+          "to": "    pub conclusion: Option<String>,\n    /// When the job began"
         }
       ],
       "expect_red": [
@@ -91,7 +91,8 @@
         "the_paginated_recording_reports_the_same_commit",
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
-        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
       ]
     },
     {
@@ -421,6 +422,81 @@
         }
       ],
       "expect_red": ["a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"]
+    },
+    {
+      "name": "the-binary-never-asks-what-a-job-was-allowed",
+      "why": "the R1096 shape again, and the one this whole round is: the library can be handed checks and budgets and every law about the join passes, while the BINARY never asks for a budget at all. What that looks like is what this reporter printed before — a census, annotations, and no idea what anything cost",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    let (budgets, unreadable) = ci_plan::readable_job_budgets(root);",
+          "to": "    let (budgets, unreadable): (Vec<(String, ci_plan::JobBudget)>, Vec<String>) =\n        (Vec::new(), Vec::new());"
+        }
+      ],
+      "expect_red": ["what_a_job_cost_is_held_against_its_budget_through_this_binary"]
+    },
+    {
+      "name": "the-closest-job-is-printed-only-when-it-is-already-bad",
+      "why": "a count published only on failure is a count nobody can watch fall — R1241 measured that shape one gate over. The warning band is the alarm; the line above it is the NUMBER, and a reader who never sees it on a green push cannot notice the round it started climbing",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if let Some(worst) = spent.iter().max_by_key(|one| one.percent()) {\n        lines.push(format!(\n            \"of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)\",\n            spent.len(),\n            worst.check,\n            clock(worst.took),\n            worst.budget_minutes,\n            worst.percent()\n        ));\n    }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "the_closest_job_to_its_budget_is_printed_even_when_every_job_is_fine",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+      ]
+    },
+    {
+      "name": "an-inverted-pair-of-stamps-is-clamped-to-a-number",
+      "why": "GitHub really writes one — the recording this crate keeps has a skipped job ending a second before it starts. A duration clamped there is a number nobody wrote sitting where a measurement is expected, and it is indistinguishable from a job that took no time",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let (from, to) = (epoch_seconds(started)?, epoch_seconds(completed)?);\n    u64::try_from(to - from).ok()",
+          "to": "    let (from, to) = (epoch_seconds(started)?, epoch_seconds(completed)?);\n    Some((to - from).unsigned_abs())"
+        }
+      ],
+      "expect_red": ["a_pair_of_stamps_is_a_duration_and_an_inverted_pair_is_a_refusal"]
+    },
+    {
+      "name": "the-calendar-forgets-that-a-century-is-not-a-leap-year",
+      "why": "a hand-written calendar is the one piece of arithmetic here that can be subtly wrong, and this is the term everybody drops. It is invisible in a difference between two stamps of the same year — which is every duration this program reads — so nothing but a known epoch catches it",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;",
+          "to": "    let day_of_era = year_of_era * 365 + year_of_era / 4 + day_of_year;"
+        }
+      ],
+      "expect_red": ["githubs_stamp_reads_as_seconds_and_nothing_else_does"]
+    },
+    {
+      "name": "a-name-two-workflows-declare-is-joined-to-the-first-one-found",
+      "why": "`ci-plan`'s law makes a check name unique WITHIN a workflow and can say nothing across them, and a commit's rows carry no workflow at all. Taking the first match is a number about the wrong job, printed with the same confidence as a right one — and the only reader who could catch it is the one being fooled",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            many => {\n                unread.push(Unmeasured::Ambiguous {\n                    check: check.name.clone(),\n                    files: many.iter().map(|(file, _)| file.clone()).collect(),\n                });\n                continue;\n            }",
+          "to": "            many => &many[0].1,"
+        }
+      ],
+      "expect_red": ["a_name_two_workflows_declare_is_a_refusal_rather_than_the_first_one_found"]
+    },
+    {
+      "name": "the-jobs-that-have-not-finished-are-listed-one-by-one",
+      "why": "the ordinary commit a push builds on has several jobs still going, and a line each turns the state of the world into a block of alarm — which is how a reader learns to skip the block, and then misses the line that matters. Counting them is what keeps the shortfall visible without making it noise",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        .filter(|why| !matches!(why, Unmeasured::NotFinished { .. }))\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));",
+          "to": "        .filter(|_| true)\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));"
+        }
+      ],
+      "expect_red": ["a_job_near_its_budget_is_named_and_the_unfinished_are_counted"]
     }
   ]
 }

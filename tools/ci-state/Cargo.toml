@@ -29,6 +29,19 @@ categories = ["development-tools"]
 # `gh` that prints every conclusion as `-`, so a red commit reports clean.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# WHAT A JOB IS ALLOWED TO TAKE, ASKED OF THE PROGRAM THAT READS THE WORKFLOWS.
+# This crate knows what a job DID; the budget it was given is written in the
+# workflow file, and `ci-plan` is the one answer to what that file says. A second
+# YAML reader here would be a second population, and the two would disagree the
+# first time a workflow used a shape only one of them understood.
+#
+# ⚠ A `tools/` CRATE DEPENDING ON ANOTHER, WHICH WAS MEASURED BEFORE IT WAS
+# WRITTEN. R1237 met `error: multiple workspace roots found in the same workspace`
+# and paid for it twice — but that was a ROOT MEMBER reaching into a `tools/`
+# crate that carries its own `[workspace]` inside the root's own tree. This is the
+# other direction and cargo resolves it: `ci-plan` is a root member with no
+# `[workspace]` of its own, and this workspace simply builds it.
+ci-plan = { path = "../ci-plan" }
 
 # THE ENTRANCE TESTS RUN THIS BINARY AS A PROCESS with a stubbed `gh` on `PATH`,
 # and each needs a directory where writing an executable is harmless and cleanup

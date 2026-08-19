@@ -55,23 +55,38 @@ use yaml_rust2::{Yaml, YamlLoader};
 
 // --- workflows --------------------------------------------------------------
 
-/// Every workflow file this repository tracks, sorted.
-pub fn workflow_files(root: &Path) -> Vec<String> {
+/// Every workflow file a repository tracks, sorted, or why it could not be asked.
+///
+/// THE FALLIBLE HALF, FOR CALLERS THAT ARE NOT LAWS. [`workflow_files`] asserts
+/// the list is non-empty, and that assertion is right for a law — a check over
+/// zero workflows is the empty answer that looks like a clean one. It is wrong
+/// for a REPORTER, which may be standing in a directory that has none and must
+/// say so rather than die: `ci-state` runs in whatever tree a push is happening
+/// in, and its entrance cases stand in a throwaway directory on purpose.
+pub fn tracked_workflow_files(root: &Path) -> Result<Vec<String>, String> {
     let out = Command::new("git")
         .args(["ls-files", ".github/workflows"])
         .current_dir(root)
         .output()
-        .expect("git ls-files runs");
-    assert!(
-        out.status.success(),
-        "git ls-files failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
+        .map_err(|why| format!("git ls-files in {} — {why}", root.display()))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git ls-files in {} failed — {}",
+            root.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
     let mut files: Vec<String> = String::from_utf8_lossy(&out.stdout)
         .lines()
         .map(str::to_string)
         .collect();
     files.sort();
+    Ok(files)
+}
+
+/// Every workflow file this repository tracks, sorted.
+pub fn workflow_files(root: &Path) -> Vec<String> {
+    let files = tracked_workflow_files(root).expect("git ls-files runs");
     assert!(
         !files.is_empty(),
         "this repository tracks no workflow at all — a check over zero of them \
@@ -86,6 +101,23 @@ pub fn workflow_files(root: &Path) -> Vec<String> {
 pub fn load_workflow(root: &Path, path: &str) -> Yaml {
     let raw = std::fs::read_to_string(root.join(path)).expect("read workflow");
     parse_workflow(&raw, path)
+}
+
+/// The same, for a caller that must not die on somebody else's file.
+///
+/// A REPORTER IS NOT A LAW, which is the whole of the difference: a workflow that
+/// will not parse is one GitHub silently does not run, and a LAW should stop
+/// dead at it. A reporter run inside a push has to name it and carry on, because
+/// exiting on it would take out the reading of everything else.
+pub fn read_workflow(root: &Path, path: &str) -> Result<Yaml, String> {
+    let raw = std::fs::read_to_string(root.join(path))
+        .map_err(|why| format!("{path} could not be read — {why}"))?;
+    let docs = YamlLoader::load_from_str(&raw)
+        .map_err(|why| format!("{path} is not parseable YAML — GitHub would not run it: {why}"))?;
+    match docs.len() {
+        1 => Ok(docs.into_iter().next().expect("one document")),
+        other => Err(format!("{path} holds {other} YAML documents, not one")),
+    }
 }
 
 /// The same parse, over text rather than a file — so a test can pin a reading
@@ -1195,6 +1227,32 @@ pub fn workflow_job_budgets(root: &Path) -> Vec<(String, JobBudget)> {
         }
     }
     out
+}
+
+/// The same, for a caller that must not die where there are no workflows.
+///
+/// A FILE THAT WILL NOT PARSE IS NAMED AND THE REST ARE STILL READ, which is the
+/// reporter's half of the rule beside [`load_workflow`]: one unreadable workflow
+/// must not take the budgets of every other one down with it, and the caller
+/// prints what could not be read rather than answering as though it were empty.
+pub fn readable_job_budgets(root: &Path) -> (Vec<(String, JobBudget)>, Vec<String>) {
+    let mut out = Vec::new();
+    let mut unread = Vec::new();
+    let files = match tracked_workflow_files(root) {
+        Ok(files) => files,
+        Err(why) => return (out, vec![why]),
+    };
+    for path in files {
+        match read_workflow(root, &path) {
+            Ok(doc) => {
+                for job in job_budgets(&doc) {
+                    out.push((path.clone(), job));
+                }
+            }
+            Err(why) => unread.push(why),
+        }
+    }
+    (out, unread)
 }
 
 // --- cargo commands ---------------------------------------------------------

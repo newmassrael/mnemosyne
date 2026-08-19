@@ -48,6 +48,15 @@ fn link_gh(at: &Path, program: &str) {
 /// A directory holding one `gh`, and the log of anything it was asked wrongly.
 struct Stub {
     dir: TempDir,
+    /// Whether this machine's own `PATH` follows the stub's directory.
+    ///
+    /// OFF FOR EVERY CASE BUT ONE, because `PATH` being the stub's directory and
+    /// NOTHING ELSE is what lets a case produce "gh is not installed" rather than
+    /// assert about it in prose. The one case that turns it on is about the budget
+    /// block, which is read out of the tracked workflow files — and asking which
+    /// files a repository tracks means running `git`, a program that case cannot
+    /// stub without stubbing the answer it is checking.
+    beside_the_machines_programs: bool,
 }
 
 impl Stub {
@@ -55,8 +64,18 @@ impl Stub {
     fn recording() -> Self {
         let stub = Stub {
             dir: TempDir::new().expect("tempdir"),
+            beside_the_machines_programs: false,
         };
         link_gh(&stub.dir.path().join("gh"), env!("CARGO_BIN_EXE_gh-stub"));
+        stub
+    }
+
+    /// The same, with this machine's `PATH` behind the stub's directory — see
+    /// [`Stub::beside_the_machines_programs`]. `gh` still resolves to the stub,
+    /// because the stub's directory comes first.
+    fn recording_beside_git() -> Self {
+        let mut stub = Self::recording();
+        stub.beside_the_machines_programs = true;
         stub
     }
 
@@ -64,6 +83,7 @@ impl Stub {
     fn unreachable() -> Self {
         let stub = Stub {
             dir: TempDir::new().expect("tempdir"),
+            beside_the_machines_programs: false,
         };
         link_gh(
             &stub.dir.path().join("gh"),
@@ -76,6 +96,17 @@ impl Stub {
     fn absent() -> Self {
         Stub {
             dir: TempDir::new().expect("tempdir"),
+            beside_the_machines_programs: false,
+        }
+    }
+
+    /// What the reporter's `PATH` is, for this stub.
+    fn path(&self) -> String {
+        let mine = self.dir.path().display().to_string();
+        if self.beside_the_machines_programs {
+            format!("{mine}:{}", std::env::var("PATH").unwrap_or_default())
+        } else {
+            mine
         }
     }
 
@@ -123,8 +154,9 @@ impl Stub {
             .args(arguments)
             .current_dir(self.dir.path())
             // THE WHOLE OF `PATH`, so "gh is not installed" is a state this test
-            // can actually produce rather than one it asserts about in prose.
-            .env("PATH", self.dir.path())
+            // can actually produce rather than one it asserts about in prose. One
+            // case widens it, and says why where the flag is declared.
+            .env("PATH", self.path())
             .env("GH_STUB_LOG", self.log())
             .env("GH_STUB_SHA", SHA)
             .env("GH_STUB_CHECK", "93478488570")
@@ -254,6 +286,61 @@ fn a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary() {
          about this commit, and a reader who sees `stopped at step 6` under a \
          cancelled row reads a diagnosis. What is NOT asked is counted rather than \
          dropped:\n{said}"
+    );
+}
+
+/// What a job COST, held against what its workflow allows, out of this binary.
+///
+/// THE JOIN LIVES IN `main.rs` AND NOWHERE ELSE (R1096): the library can be handed
+/// checks and budgets and every law about it passes while the binary never asks
+/// `ci-plan` for a budget at all. What that would look like is exactly what this
+/// reporter printed before this round — a census, annotations, and no idea what
+/// anything cost.
+///
+/// THE WORKFLOW IS WRITTEN AND TRACKED HERE, because the budgets are read out of
+/// what a repository TRACKS. `validate` in the recording ran 13:40:53 to 14:00:50,
+/// which is 19m57s; against the 90 minutes this fixture declares that is 22%.
+#[test]
+fn what_a_job_cost_is_held_against_its_budget_through_this_binary() {
+    let stub = Stub::recording_beside_git();
+    let tree = stub.dir.path();
+    fs::create_dir_all(tree.join(".github/workflows")).expect("the workflow directory");
+    fs::write(
+        tree.join(".github/workflows/recorded.yml"),
+        "name: recorded\non: push\njobs:\n  validate:\n    runs-on: ubuntu-latest\n\
+         \x20   timeout-minutes: 90\n    steps:\n      - run: 'true'\n",
+    )
+    .expect("the workflow");
+    for argv in [
+        vec!["init", "-q", "."],
+        vec!["config", "user.email", "ci-state@test"],
+        vec!["config", "user.name", "ci-state test"],
+        vec!["add", "-A"],
+    ] {
+        let out = Command::new("git")
+            .args(&argv)
+            .current_dir(tree)
+            .output()
+            .expect("git, which is how a repository is asked what it tracks");
+        assert!(out.status.success(), "git {argv:?}: {out:?}");
+    }
+
+    let out = stub.run(&[SHA], &fixture("check-runs.one-page.json"));
+    let said = said(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "reporting is not failing: {said}"
+    );
+    assert!(
+        said.contains("the closest to its budget was `validate` — 19m57s of 90m (22%)"),
+        "the binary has to ASK for the budget and join it to what the job took; \
+         the library being able to do it is not the same fact:\n{said}"
+    );
+    assert!(
+        said.contains("NOT MEASURED") && said.contains("no job of this repository"),
+        "and the eight checks this one-job workflow does not declare are NAMED \
+         rather than quietly left out of the count:\n{said}"
     );
 }
 

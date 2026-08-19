@@ -55,9 +55,9 @@ pub const FAILING: [&str; 4] = ["failure", "cancelled", "timed_out", "startup_fa
 /// field GitHub renames stops this program rather than emptying it, and
 /// `tests/github.rs` holds that rename against a RECORDED REAL body so the day it
 /// happens is a red test. Every other field on the row — `app`, `check_suite`,
-/// `html_url`, `started_at`, `completed_at`, `pull_requests` — is ignored on
-/// purpose: a reader that refused unknown fields would go red the day GitHub adds
-/// one, which is a gate failing for somebody else's work.
+/// `html_url`, `pull_requests` — is ignored on purpose: a reader that refused
+/// unknown fields would go red the day GitHub adds one, which is a gate failing
+/// for somebody else's work.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Check {
     pub id: u64,
@@ -95,6 +95,20 @@ pub struct Check {
     /// refusal and only an explicit `null` is a check still running.
     #[serde(deserialize_with = "present_but_nullable")]
     pub conclusion: Option<String>,
+    /// When the job began, as GitHub stamps it, or `None` when it has not.
+    ///
+    /// READ SINCE R1244's SUCCESSOR, and ignored before it for the same reason
+    /// `details_url` was: a conclusion says whether a job passed and says nothing
+    /// about what it COST. R1229 changed the work of a job's longest step, left
+    /// its `timeout-minutes` alone, and learned about it from a cancellation —
+    /// with these two fields and the budget the workflow declares, the run before
+    /// that one could have said the job was already at ninety per cent.
+    #[serde(deserialize_with = "present_but_nullable")]
+    pub started_at: Option<String>,
+    /// When it ended. `None` while it is still running, which is a fact and not
+    /// a missing field — hence the same `deserialize_with` as `conclusion`.
+    #[serde(deserialize_with = "present_but_nullable")]
+    pub completed_at: Option<String>,
     pub output: Output,
 }
 
@@ -527,6 +541,295 @@ pub struct Said {
     /// The check that reported it, by the name the run shows.
     pub check: String,
     pub annotation: Annotation,
+}
+
+/// Seconds since the epoch for GitHub's own timestamp, or `None`.
+///
+/// NOT A GENERAL RFC 3339 READER, AND SAYING SO IS THE POINT. What arrives here
+/// is one shape — `YYYY-MM-DDTHH:MM:SSZ`, always UTC, always twenty characters —
+/// and a parser that accepted offsets, fractional seconds and a lower-case `t`
+/// would be claiming to read a format this program has never been handed. The
+/// narrower reader REFUSES anything else, which is the loud direction: a stamp it
+/// cannot read stops a comparison rather than producing a plausible one.
+///
+/// THE CALENDAR IS THE CLOSED-FORM `days_from_civil`, exact for every date in
+/// this range, and it is here rather than in a dependency because the whole of
+/// what this needs is a DIFFERENCE between two stamps of one fixed shape. The
+/// cases hold it against known epochs, a leap day, and both boundaries it could
+/// plausibly get wrong.
+#[must_use]
+pub fn epoch_seconds(stamp: &str) -> Option<i64> {
+    let bytes = stamp.as_bytes();
+    if bytes.len() != 20 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+    if bytes[10] != b'T' || bytes[13] != b':' || bytes[16] != b':' || bytes[19] != b'Z' {
+        return None;
+    }
+    let number = |from: usize, to: usize| stamp.get(from..to)?.parse::<i64>().ok();
+    let (year, month, day) = (number(0, 4)?, number(5, 7)?, number(8, 10)?);
+    let (hour, minute, second) = (number(11, 13)?, number(14, 16)?, number(17, 19)?);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    if hour > 23 || minute > 59 || second > 60 {
+        return None;
+    }
+    let shifted = if month <= 2 { year - 1 } else { year };
+    let era = shifted.div_euclid(400);
+    let year_of_era = shifted - era * 400;
+    let day_of_year = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    Some(days * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
+/// How long a job took, or `None` when either end cannot be read.
+///
+/// A NEGATIVE DIFFERENCE IS A REFUSAL RATHER THAN A ZERO. GitHub stamps a skipped
+/// job's completion BEFORE its start — the recording this crate keeps has one,
+/// `13:40:41` beginning and `13:40:36` ending — and a duration clamped to zero
+/// there is a number nobody wrote, sitting where a measurement is expected.
+#[must_use]
+pub fn seconds_between(started: &str, completed: &str) -> Option<u64> {
+    let (from, to) = (epoch_seconds(started)?, epoch_seconds(completed)?);
+    u64::try_from(to - from).ok()
+}
+
+/// What one job took, against what it was allowed to take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Spent {
+    /// The check row's name, which is the job's `name:` or its id.
+    pub check: String,
+    /// Seconds between the job's two stamps.
+    pub took: u64,
+    /// The declared budget, in minutes.
+    pub budget_minutes: u64,
+}
+
+impl Spent {
+    /// How much of the budget the job used, rounded down, as a whole percent.
+    #[must_use]
+    pub fn percent(&self) -> u64 {
+        if self.budget_minutes == 0 {
+            return 0;
+        }
+        self.took * 100 / (self.budget_minutes * 60)
+    }
+}
+
+/// Why one check's cost could not be held against a budget.
+///
+/// A TYPE RATHER THAN A SENTENCE, because one of these is NOT a shortfall: a job
+/// that has not finished is a state of the world, and the ordinary commit a push
+/// builds on has several. Printing one line each turns the ordinary case into six
+/// lines of alarm, and printing nothing turns a block that shrank into a block
+/// that was clean — so the kinds are told apart and the common one is COUNTED.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unmeasured {
+    /// A check no job of this repository's workflows declares — another app's
+    /// status, or a job that has been renamed out from under its history.
+    NoSuchJob { check: String },
+    /// A name more than one workflow declares, so a budget read by it would be
+    /// somebody else's.
+    Ambiguous { check: String, files: Vec<String> },
+    /// A budget written as an expression: a bound, and not a number.
+    BudgetIsAnExpression { check: String, written: String },
+    /// The job has not finished. A state, not a defect.
+    NotFinished { check: String },
+    /// Two stamps this reader cannot turn into a duration.
+    Unreadable {
+        check: String,
+        started: String,
+        completed: String,
+    },
+    /// A workflow file that could not be read at all.
+    Workflow { why: String },
+}
+
+impl std::fmt::Display for Unmeasured {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoSuchJob { check } => write!(
+                formatter,
+                "`{check}` is a check no job of this repository's workflows declares, so \
+                 there is no budget to hold it to"
+            ),
+            Self::Ambiguous { check, files } => write!(
+                formatter,
+                "`{check}` is declared by {} jobs across workflows ({}), so a budget read \
+                 by name would be somebody else's",
+                files.len(),
+                files.join(", ")
+            ),
+            Self::BudgetIsAnExpression { check, written } => write!(
+                formatter,
+                "`{check}` declares `{written}`, which is a bound this reader cannot \
+                 evaluate — it is a budget and it is not a number"
+            ),
+            Self::NotFinished { check } => {
+                write!(formatter, "`{check}` has not finished")
+            }
+            Self::Unreadable {
+                check,
+                started,
+                completed,
+            } => write!(
+                formatter,
+                "`{check}` is stamped {started} to {completed}, which this reader cannot \
+                 read as a duration"
+            ),
+            Self::Workflow { why } => write!(formatter, "{why}"),
+        }
+    }
+}
+
+/// The share of its budget a job may use before this reporter says so.
+///
+/// A WARNING BAND AND NOT A LIMIT — the limit is the timeout, and it ends the job.
+/// What this number is for is NOTICE: R1229 changed the work of a job's longest
+/// step, left the budget alone, and the first run answered with a cancellation, so
+/// what was missing was a round's warning rather than a stricter rule. Measured on
+/// the last fully green run before this was written, the worst job in this
+/// repository sat at 44% (`validate`, 40m24s of 90m), so seventy-five leaves room
+/// for an ordinary bad day and still speaks a round before the job dies.
+pub const CREEPING: u64 = 75;
+
+/// What each job took against what it declared, and what could not be compared.
+///
+/// AMBIGUITY IS A REFUSAL. `ci-plan`'s law makes a check name unique WITHIN a
+/// workflow; ACROSS workflows two jobs may share one, and this reader is handed a
+/// commit's checks with no workflow written on them. A name two workflows both
+/// declare is named and skipped rather than joined to whichever came first —
+/// which is the difference between "I cannot say" and a number about the wrong
+/// job.
+///
+/// EVERY OTHER WAY A ROW CANNOT BE COMPARED IS ALSO NAMED, because a block that
+/// silently shrinks is how a reader comes to believe every job was measured. A
+/// check no job declares, a job still running, a budget written as an expression
+/// and a stamp this cannot read are four different sentences.
+#[must_use]
+pub fn spent_against_budgets(
+    checks: &[Check],
+    budgets: &[(String, ci_plan::JobBudget)],
+) -> (Vec<Spent>, Vec<Unmeasured>) {
+    let mut spent = Vec::new();
+    let mut unread = Vec::new();
+    for check in checks {
+        let declaring: Vec<&(String, ci_plan::JobBudget)> = budgets
+            .iter()
+            .filter(|(_, job)| job.check_name() == check.name)
+            .collect();
+        let job = match declaring.as_slice() {
+            [] => {
+                unread.push(Unmeasured::NoSuchJob {
+                    check: check.name.clone(),
+                });
+                continue;
+            }
+            [one] => &one.1,
+            many => {
+                unread.push(Unmeasured::Ambiguous {
+                    check: check.name.clone(),
+                    files: many.iter().map(|(file, _)| file.clone()).collect(),
+                });
+                continue;
+            }
+        };
+        let Some(budget_minutes) = job
+            .timeout
+            .as_deref()
+            .and_then(|written| written.parse().ok())
+        else {
+            unread.push(Unmeasured::BudgetIsAnExpression {
+                check: check.name.clone(),
+                written: job
+                    .timeout
+                    .clone()
+                    .unwrap_or_else(|| "no timeout-minutes".to_string()),
+            });
+            continue;
+        };
+        let (Some(started), Some(completed)) =
+            (check.started_at.as_deref(), check.completed_at.as_deref())
+        else {
+            unread.push(Unmeasured::NotFinished {
+                check: check.name.clone(),
+            });
+            continue;
+        };
+        let Some(took) = seconds_between(started, completed) else {
+            unread.push(Unmeasured::Unreadable {
+                check: check.name.clone(),
+                started: started.to_string(),
+                completed: completed.to_string(),
+            });
+            continue;
+        };
+        spent.push(Spent {
+            check: check.name.clone(),
+            took,
+            budget_minutes,
+        });
+    }
+    (spent, unread)
+}
+
+/// `40m24s`, as this reporter prints a duration.
+fn clock(seconds: u64) -> String {
+    format!("{}m{:02}s", seconds / 60, seconds % 60)
+}
+
+/// What this reporter says about what a commit's jobs cost.
+///
+/// THE WORST ONE IS PRINTED EVEN WHEN EVERYTHING IS FINE, which is the whole
+/// difference between a number a reader watches and a number that appears once it
+/// is too late. R1241 measured that shape one gate over: a count published only on
+/// failure is a count nobody can see fall.
+#[must_use]
+pub fn budget_report(spent: &[Spent], unread: &[Unmeasured]) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(worst) = spent.iter().max_by_key(|one| one.percent()) {
+        lines.push(format!(
+            "of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)",
+            spent.len(),
+            worst.check,
+            clock(worst.took),
+            worst.budget_minutes,
+            worst.percent()
+        ));
+    }
+    for one in spent.iter().filter(|one| one.percent() >= CREEPING) {
+        lines.push(format!(
+            "  `{}` took {} of the {}m it declares ({}%) — the budget is what ends the \
+             job, and it is close",
+            one.check,
+            clock(one.took),
+            one.budget_minutes,
+            one.percent()
+        ));
+    }
+    // THE UNFINISHED ARE COUNTED AND THE REST ARE NAMED. A commit a push builds on
+    // routinely has jobs still going, and one line each for those turns the
+    // ordinary state of the world into six lines of alarm — while dropping them
+    // would leave a reader believing every job was measured.
+    let unfinished = unread
+        .iter()
+        .filter(|why| matches!(why, Unmeasured::NotFinished { .. }))
+        .count();
+    if unfinished > 0 {
+        lines.push(format!(
+            "  {unfinished} job(s) have not finished, so what they took is not a fact \
+             about this commit yet"
+        ));
+    }
+    for why in unread
+        .iter()
+        .filter(|why| !matches!(why, Unmeasured::NotFinished { .. }))
+    {
+        lines.push(format!("  NOT MEASURED {why}"));
+    }
+    lines
 }
 
 /// What a commit's checks add up to.

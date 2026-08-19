@@ -46,6 +46,12 @@ fn check_in_run(
             "in_progress".to_string()
         },
         conclusion: conclusion.map(str::to_string),
+        // A MINUTE, SO EVERY CASE THAT IS NOT ABOUT COST HAS A READABLE ONE. The
+        // cases about what a job took build their own pair; the point here is that
+        // no case gets a duration by accident, which is what `None` on both ends
+        // would have made every one of them do.
+        started_at: Some("2026-08-18T13:40:00Z".to_string()),
+        completed_at: Some("2026-08-18T13:41:00Z".to_string()),
         output: Output {
             annotations_count: annotations,
         },
@@ -197,6 +203,270 @@ fn the_commit_is_printed_short_and_it_is_the_commit_asked_about() {
     assert!(
         !said.contains(SHA),
         "the whole sha is forty characters of noise in a hook's output: {said}"
+    );
+}
+
+/// One job of a workflow, as `ci-plan` reads one.
+fn job(id: &str, shown_as: Option<&str>, timeout: Option<&str>) -> (String, ci_plan::JobBudget) {
+    (
+        "recorded.yml".to_string(),
+        ci_plan::JobBudget {
+            id: id.to_string(),
+            shown_as: shown_as.map(str::to_string),
+            timeout: timeout.map(str::to_string),
+        },
+    )
+}
+
+/// A check with its two stamps, which is what a cost is read out of.
+fn ran(name: &str, started: &str, completed: Option<&str>) -> Check {
+    let mut row = check(1, name, Some("success"), 0);
+    row.started_at = Some(started.to_string());
+    row.completed_at = completed.map(str::to_string);
+    row
+}
+
+/// The stamp GitHub writes, read as seconds — and anything else refused.
+///
+/// A CALENDAR IS THE ONE PIECE OF ARITHMETIC HERE THAT CAN BE SUBTLY WRONG, so it
+/// is held against values that can be checked by hand: the epoch itself, the day
+/// after a leap day, the first second of a year, and the stamp this repository's
+/// own recording carries.
+#[test]
+fn githubs_stamp_reads_as_seconds_and_nothing_else_does() {
+    assert_eq!(ci_state::epoch_seconds("1970-01-01T00:00:00Z"), Some(0));
+    assert_eq!(
+        ci_state::epoch_seconds("1970-01-02T00:00:00Z"),
+        Some(86_400)
+    );
+    assert_eq!(
+        ci_state::epoch_seconds("2000-03-01T00:00:00Z"),
+        Some(951_868_800),
+        "the day after a leap day in a century year that IS a leap year"
+    );
+    assert_eq!(
+        ci_state::epoch_seconds("2024-02-29T12:00:00Z"),
+        Some(1_709_208_000),
+        "a leap day itself"
+    );
+    assert_eq!(
+        ci_state::epoch_seconds("2026-01-01T00:00:00Z"),
+        Some(1_767_225_600),
+        "the first second of a year"
+    );
+
+    for refused in [
+        "2026-08-18T13:40:00",      // no zone
+        "2026-08-18T13:40:00.5Z",   // fractional
+        "2026-08-18t13:40:00Z",     // lower case
+        "2026-08-18T13:40:00+0100", // an offset
+        "2026-13-01T00:00:00Z",     // no such month
+        "2026-08-18T24:00:00Z",     // no such hour
+        "",
+    ] {
+        assert_eq!(
+            ci_state::epoch_seconds(refused),
+            None,
+            "`{refused}` is not the one shape this reader claims to read, and a \
+             plausible number out of it is worse than none"
+        );
+    }
+}
+
+/// A pair of stamps reads as a duration, and an inverted pair reads as nothing.
+///
+/// GITHUB REALLY WRITES ONE. The recording this crate keeps has a skipped job
+/// starting at `14:01:37` and completing at `14:01:36` — a duration clamped to
+/// zero there is a number nobody wrote, sitting where a measurement is expected.
+#[test]
+fn a_pair_of_stamps_is_a_duration_and_an_inverted_pair_is_a_refusal() {
+    assert_eq!(
+        ci_state::seconds_between("2026-08-18T13:40:53Z", "2026-08-18T14:00:50Z"),
+        Some(1_197)
+    );
+    assert_eq!(
+        ci_state::seconds_between("2026-08-10T14:01:37Z", "2026-08-10T14:01:36Z"),
+        None,
+        "the skipped job in this crate's own recording ends before it starts"
+    );
+    assert_eq!(
+        ci_state::seconds_between("2026-08-18T13:40:53Z", "nonsense"),
+        None
+    );
+}
+
+/// What a job took is held against what its job declares, by the name a check
+/// carries — and every way that cannot be done is a kind of its own.
+#[test]
+fn a_jobs_cost_is_joined_to_its_budget_by_the_name_a_check_carries() {
+    let budgets = [
+        job("validate", None, Some("90")),
+        job(
+            "cache-budget",
+            Some("every cache declared is one CI keeps"),
+            Some("60"),
+        ),
+        job(
+            "expressive",
+            Some("an expression"),
+            Some("${{ env.BUDGET }}"),
+        ),
+    ];
+    let checks = [
+        ran(
+            "validate",
+            "2026-08-18T13:40:53Z",
+            Some("2026-08-18T14:00:50Z"),
+        ),
+        ran(
+            "every cache declared is one CI keeps",
+            "2026-08-18T13:40:00Z",
+            Some("2026-08-18T14:34:00Z"),
+        ),
+        ran(
+            "an expression",
+            "2026-08-18T13:40:00Z",
+            Some("2026-08-18T13:41:00Z"),
+        ),
+        ran(
+            "posted by another app",
+            "2026-08-18T13:40:00Z",
+            Some("2026-08-18T13:41:00Z"),
+        ),
+        ran("validate", "2026-08-18T13:40:00Z", None),
+    ];
+    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets);
+
+    assert_eq!(spent.len(), 2, "{spent:?}");
+    assert_eq!(spent[0].took, 1_197);
+    assert_eq!(spent[0].percent(), 22, "1197s of 90m");
+    assert_eq!(
+        spent[1].percent(),
+        90,
+        "54m of 60m — and this is the one a reader has to be told about"
+    );
+
+    let said: Vec<String> = unread.iter().map(ToString::to_string).collect();
+    assert!(
+        said.iter().any(|why| why.contains("cannot evaluate")),
+        "a budget written as an expression is a bound and not a number: {said:?}"
+    );
+    assert!(
+        said.iter()
+            .any(|why| why.contains("no job of this repository")),
+        "a check no job declares is named rather than dropped: {said:?}"
+    );
+    assert!(
+        said.iter().any(|why| why.contains("has not finished")),
+        "and a job still running is a state of the world: {said:?}"
+    );
+}
+
+/// A check name two workflows both declare is refused rather than joined.
+///
+/// `ci-plan`'s law makes a name unique WITHIN a workflow and can say nothing
+/// across them, and a commit's checks carry no workflow at all — so the only
+/// honest answer for a name two files declare is that this reader cannot say
+/// which budget is the row's. A number about the wrong job is worse than none.
+#[test]
+fn a_name_two_workflows_declare_is_a_refusal_rather_than_the_first_one_found() {
+    let budgets = [
+        job("here", Some("shared"), Some("30")),
+        (
+            "other.yml".to_string(),
+            ci_plan::JobBudget {
+                id: "there".to_string(),
+                shown_as: Some("shared".to_string()),
+                timeout: Some("90".to_string()),
+            },
+        ),
+    ];
+    let checks = [ran(
+        "shared",
+        "2026-08-18T13:40:00Z",
+        Some("2026-08-18T13:55:00Z"),
+    )];
+    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets);
+    assert!(spent.is_empty(), "{spent:?}");
+    let said = unread
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        said.contains("recorded.yml") && said.contains("other.yml"),
+        "{said}"
+    );
+}
+
+/// The worst job is printed even when nothing is wrong.
+///
+/// A COUNT PUBLISHED ONLY ON FAILURE IS A COUNT NOBODY CAN WATCH FALL — the shape
+/// R1241 measured one gate over. What this block is FOR is notice, so the number
+/// has to be on the screen of an ordinary green push.
+#[test]
+fn the_closest_job_to_its_budget_is_printed_even_when_every_job_is_fine() {
+    let spent = [
+        ci_state::Spent {
+            check: "quick".to_string(),
+            took: 60,
+            budget_minutes: 90,
+        },
+        ci_state::Spent {
+            check: "validate".to_string(),
+            took: 2_003,
+            budget_minutes: 90,
+        },
+    ];
+    let said = ci_state::budget_report(&spent, &[]).join("\n");
+    assert!(said.contains("of 2 job(s) measured"), "{said}");
+    assert!(
+        said.contains("`validate` — 33m23s of 90m (37%)"),
+        "the worst one, its clock and its share: {said}"
+    );
+    assert!(
+        !said.contains("and it is close"),
+        "nothing here is close, so nothing says it is: {said}"
+    );
+}
+
+/// A job in the warning band gets a line of its own, and unfinished jobs are
+/// counted rather than listed.
+#[test]
+fn a_job_near_its_budget_is_named_and_the_unfinished_are_counted() {
+    let spent = [ci_state::Spent {
+        check: "validate".to_string(),
+        took: 4_500,
+        budget_minutes: 90,
+    }];
+    let unread = [
+        ci_state::Unmeasured::NotFinished {
+            check: "one".to_string(),
+        },
+        ci_state::Unmeasured::NotFinished {
+            check: "two".to_string(),
+        },
+        ci_state::Unmeasured::NoSuchJob {
+            check: "somebody else's".to_string(),
+        },
+    ];
+    let said = ci_state::budget_report(&spent, &unread).join("\n");
+    assert!(
+        said.contains("(83%)") && said.contains("and it is close"),
+        "83% is over the warning band, so the job gets its own line: {said}"
+    );
+    assert!(
+        said.contains("2 job(s) have not finished"),
+        "the ordinary state of a commit a push builds on is COUNTED, not six lines \
+         of alarm: {said}"
+    );
+    assert!(
+        !said.contains("`one`") && !said.contains("`two`"),
+        "and counted means not also listed: {said}"
+    );
+    assert!(
+        said.contains("NOT MEASURED") && said.contains("somebody else's"),
+        "while every other kind is still named: {said}"
     );
 }
 
