@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THE RECORDER'S CLOCK IS NOT DECORATION — run it from",
     "the repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/rustc-log/injection-sweep.json",
     "",
     "This round stopped the wrapper `exec`-ing the compiler and made it wait for",

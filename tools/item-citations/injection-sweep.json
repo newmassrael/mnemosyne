@@ -1,7 +1,8 @@
 {
   "_": [
-    "THIS GATE AIMED AT ITS OWN SUITE — run it from the harness's directory:",
-    "    cd tools/injection-harness && cargo run -- ../item-citations/injection-sweep.json",
+    "THIS GATE AIMED AT ITS OWN SUITE — run it from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        tools/item-citations/injection-sweep.json",
     "Every property this gate holds is a property its suite claims to hold, and a",
     "claim nobody has broken is a claim nobody has measured. Each injection here",
     "removes ONE of them and names the tests that must go red. A green run says",

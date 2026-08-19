@@ -1,7 +1,8 @@
 {
   "_": [
-    "A REAL, RUNNABLE SWEEP — run it from this crate's directory:",
-    "    cargo run -- example.sweep.json",
+    "A REAL, RUNNABLE SWEEP — run it from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        tools/injection-harness/example.sweep.json",
     "It reverts the wire Round 1056 shipped (payoff substantiation naming the",
     "setups no payoff credits) and names the three tests that should go red.",
     "Round 1057 ran this same injection by hand and got exactly those three.",

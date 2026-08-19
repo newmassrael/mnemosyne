@@ -3,7 +3,7 @@
     "THE SWEEP THAT SAYS THE LOCKFILE LAW IS NOT VACUOUS — run it from the",
     "repository root:",
     "    cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml \\",
-    "        -- tools/ci-plan/locked-resolution-sweep.json",
+    "        -- sweep tools/ci-plan/locked-resolution-sweep.json",
     "",
     "A SECOND SWEEP BESIDE `injection-sweep.json` BECAUSE IT RUNS A DIFFERENT",
     "SUITE. That one breaks the READING rules and watches `ci-plan`'s own tests;",

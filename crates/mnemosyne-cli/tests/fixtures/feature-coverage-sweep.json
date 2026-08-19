@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS `feature_coverage_smoke` IS NOT VACUOUS — run it from",
     "the repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/tests/fixtures/feature-coverage-sweep.json",
     "",
     "The gate passes today because both of its sides answer: two features are",

@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS ROUND 1138's CONTRACT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/sweeps/frame-view-playable-agreement.sweep.json",
     "",
     "WHY THE CONTRACT SWEEPS LIVE HERE AND NOT BESIDE THE CONTRACTS (Round 1138).",

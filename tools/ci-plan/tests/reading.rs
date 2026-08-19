@@ -957,11 +957,28 @@ fn the_declaration_is_read_for_the_commands_it_issues() {
         "a command issued directly is carried by nothing, so the two cases are \
          distinguishable rather than assumed: {sweep:?}"
     );
+    // AND CARGO'S OWN BARE `--` STILL SEPARATES IT FROM WHAT IT PASSES ON.
+    // R1258 gave the harness verbs, so what it passes on is a verb and then the
+    // manifest — asserted as those two words rather than as a count, because a
+    // length is the same number for `sweep <manifest>` and for a header that
+    // lost its verb and gained a flag.
+    assert_eq!(
+        sweep.harness_args.first().map(String::as_str),
+        Some("sweep"),
+        "the declaration names the verb the harness answers to: {sweep:?}"
+    );
+    assert!(
+        sweep
+            .harness_args
+            .last()
+            .is_some_and(|last| last.ends_with("sweep.json")),
+        "and the sweep it proves the contracts with: {sweep:?}"
+    );
     assert_eq!(
         sweep.harness_args.len(),
-        1,
-        "and cargo's own bare `--` still separates it from what it passes on: \
-         {sweep:?}"
+        2,
+        "and nothing else — a flag nobody reads back is one that can stop \
+         existing in silence: {sweep:?}"
     );
 }
 

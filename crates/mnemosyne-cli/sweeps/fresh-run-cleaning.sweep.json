@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THE WRAPPER'S SIDE OF THE FRESHNESS PASS IS NOT VACUOUS",
     "— run it from the repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/sweeps/fresh-run-cleaning.sweep.json",
     "",
     "WHAT THE CONTRACT IS. `--fresh` is what `scripts/verify.sh` does when nobody",

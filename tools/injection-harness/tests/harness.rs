@@ -189,8 +189,34 @@ fn manifest_body(
     path
 }
 
-fn harness(manifest: &Path) -> std::process::Output {
+/// This binary, told to SWEEP.
+///
+/// R1258 — THE VERB IS SPELLED ONCE. Eight cases below build this invocation,
+/// and a word repeated eight times is eight chances for one of them to go on
+/// exercising an argument shape the tool no longer has — which is the failure
+/// this whole file is about, one level up.
+fn sweep_command() -> Command {
+    let mut command = Command::new(binary());
+    command.arg("sweep");
+    command
+}
+
+/// The same binary told to FORGET one row, with the reason it answers to
+/// nothing.
+fn harness_forget(manifest: &Path, name: &str, because: &str) -> std::process::Output {
     Command::new(binary())
+        .arg("forget")
+        .arg(manifest)
+        .arg("--injection")
+        .arg(name)
+        .arg("--because")
+        .arg(because)
+        .output()
+        .expect("harness runs")
+}
+
+fn harness(manifest: &Path) -> std::process::Output {
+    sweep_command()
         .arg(manifest)
         .output()
         .expect("harness runs")
@@ -198,7 +224,7 @@ fn harness(manifest: &Path) -> std::process::Output {
 
 /// The same, naming which injections to run.
 fn harness_only(manifest: &Path, only: &[&str]) -> std::process::Output {
-    let mut command = Command::new(binary());
+    let mut command = sweep_command();
     command.arg(manifest);
     for name in only {
         command.arg("--only").arg(name);
@@ -579,7 +605,7 @@ fn the_control_can_be_asked_for_on_its_own() {
     let root = tempdir();
     tree(root.path(), "the wire is HEALTHY here\n");
     let path = manifest(root.path(), serde_json::json!([]));
-    let out = Command::new(binary())
+    let out = sweep_command()
         .arg(&path)
         .arg("--control-only")
         .output()
@@ -628,7 +654,7 @@ fn every_report_names_the_suite_whose_counts_it_carries() {
         "{}",
         String::from_utf8_lossy(&full.stderr)
     );
-    let control_only = Command::new(binary())
+    let control_only = sweep_command()
         .arg(&path)
         .arg("--control-only")
         .output()
@@ -858,7 +884,7 @@ fn a_floor_this_machine_clears_lets_the_run_through() {
     let root = tempdir();
     tree(root.path(), "the wire is HEALTHY here\n");
     let path = manifest_with(root.path(), serde_json::json!([]), serde_json::json!(0u64));
-    let out = Command::new(binary())
+    let out = sweep_command()
         .arg(&path)
         .arg("--control-only")
         .output()
@@ -1247,7 +1273,7 @@ fn sweep_in_flight(root: &Path) -> (std::process::Child, i32, i32) {
             "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
         }]),
     );
-    let harness = Command::new(binary())
+    let harness = sweep_command()
         .arg(&path)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -1401,7 +1427,7 @@ fn a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place() {
     // base was changed under it.
     let elsewhere = root.path().join("elsewhere");
     fs::create_dir_all(&elsewhere).expect("mkdir");
-    let out = Command::new(binary())
+    let out = sweep_command()
         .arg("../tool/manifest.json")
         .current_dir(&elsewhere)
         .output()
@@ -1460,6 +1486,7 @@ fn a_suite_that_replaces_the_tool_does_not_end_the_sweep() {
         ]),
     );
     let out = Command::new(tool.path())
+        .arg("sweep")
         .arg(&path)
         .output()
         .expect("the tool runs");
@@ -1574,7 +1601,7 @@ fn harness_run(root: &Path) -> std::process::Output {
             "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
         }]),
     );
-    Command::new(binary())
+    sweep_command()
         .arg(&path)
         .arg("--control-only")
         .output()
@@ -1589,8 +1616,29 @@ fn harness_run(root: &Path) -> std::process::Output {
 /// reader of one, in the same way the manifests above are input rather than
 /// sweeps somebody runs.
 fn record(manifest: &Path, complete: bool, rows: serde_json::Value) {
+    record_body(
+        manifest,
+        serde_json::json!({ "complete": complete, "fired": rows }),
+    )
+}
+
+/// The same, with rows a person has already retired.
+fn record_with_forgotten(
+    manifest: &Path,
+    complete: bool,
+    rows: serde_json::Value,
+    forgotten: serde_json::Value,
+) {
+    record_body(
+        manifest,
+        serde_json::json!({ "complete": complete, "fired": rows, "forgotten": forgotten }),
+    )
+}
+
+/// The one place a fixture record is written, so the two builders above cannot
+/// come to disagree about its shape — the correction `manifest_body` above is.
+fn record_body(manifest: &Path, body: serde_json::Value) {
     let path = injection_harness::firings_path(manifest);
-    let body = serde_json::json!({ "complete": complete, "fired": rows });
     fs::write(&path, serde_json::to_string(&body).expect("json")).expect("write record");
 }
 
@@ -1687,6 +1735,230 @@ fn evidence_that_still_matches_is_left_alone_and_so_is_the_claim_it_supports() {
     assert!(
         read_record(&path).complete,
         "and the completeness claim is untouched by a run that voided nothing"
+    );
+}
+
+/// A row for an injection `two_injections` does not hold — what a rename or a
+/// re-aiming leaves behind, and the only thing `forget` is ever about.
+fn row_for_a_gone_injection() -> serde_json::Value {
+    serde_json::json!({
+        "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "GONE"}],
+        "expect_red": ["the_law"],
+        "tests": ["the_law", "the_other"],
+    })
+}
+
+/// A record holding one live row and one that answers to nothing.
+fn record_with_a_gone_row(path: &Path) {
+    record(
+        path,
+        true,
+        serde_json::json!({ "I1": matching_row_for_i1(), "GONE": row_for_a_gone_injection() }),
+    );
+}
+
+#[test]
+fn evidence_about_an_injection_the_manifest_no_longer_has_is_retired_by_a_decision() {
+    // R1258 — THE WAY OUT THAT DOES NOT DESTROY THE DECISION. The law over these
+    // records catches a row whose injection is gone, and it is right to: a
+    // rename and a withdrawal look identical to a program, and which one it was
+    // is a fact only a person holds. Until this verb there were two ways past
+    // it, and both threw that fact away — delete the whole record and re-prove
+    // every injection in it (five here, sixty-six in `tools/twice-compiled`), or
+    // edit the row out by hand, which leaves the file looking as though the
+    // question was never asked. R1257 walked into this and paid the first one.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    record_with_a_gone_row(&path);
+
+    let out = harness_forget(
+        &path,
+        "GONE",
+        "re-aimed: the read it broke moved into `open::kit_units` and the \
+         injection there covers it",
+    );
+    let said = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        said.contains("re-aimed: the read it broke moved into"),
+        "the decision is said out loud at the moment it is made: {said}"
+    );
+    assert!(
+        said.contains("the_law") && said.contains("the_other"),
+        "and so is what is being given up — the reds that row was proven to \
+         raise: {said}"
+    );
+
+    let after = read_record(&path);
+    assert!(
+        !after.fired.contains_key("GONE"),
+        "the record no longer CLAIMS it as live evidence: {after:?}"
+    );
+    let retired = &after.forgotten["GONE"];
+    assert!(
+        retired.because.starts_with("re-aimed:"),
+        "the reason is what was recorded: {retired:?}"
+    );
+    assert_eq!(
+        retired.was.tests,
+        vec!["the_law".to_string(), "the_other".to_string()],
+        "and the row itself is kept WHOLE — nothing about the proof is \
+         destroyed, it has only stopped being claimed: {retired:?}"
+    );
+    assert!(
+        after.fired.contains_key("I1"),
+        "a row this decision was not about is not this decision's to touch: {after:?}"
+    );
+    assert!(
+        after.complete,
+        "AND THE COMPLETENESS CLAIM SURVIVES: it says every injection the \
+         manifest holds has a row, and retiring one for an injection the \
+         manifest does NOT hold cannot uncover one. Withdrawing it here would \
+         demote the record to partial, and a partial record demands nothing of \
+         the rows beside it — which is the tooth this file exists for: {after:?}"
+    );
+}
+
+#[test]
+fn forgetting_a_row_an_injection_still_needs_is_refused() {
+    // THE LAUNDERING PATH, WHOLE. `I1` is still in the manifest, so it still
+    // owes evidence; dropping its row would leave the sweep looking proven while
+    // one of its claims had quietly stopped being measured. `--only I1` costs
+    // one injection, which is exactly why this refusal can be absolute.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    record_with_a_gone_row(&path);
+
+    let out = harness_forget(&path, "I1", "I would rather not run it again");
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(!out.status.success(), "it must refuse: {why}");
+    assert!(
+        why.contains("still names the injection `I1`") && why.contains("--only I1"),
+        "and name the way to discharge it honestly: {why}"
+    );
+    let after = read_record(&path);
+    assert!(
+        after.fired.contains_key("I1") && after.forgotten.is_empty(),
+        "a refusal writes NOTHING — a file half-changed by a rejected decision \
+         is the state nobody can read: {after:?}"
+    );
+}
+
+#[test]
+fn forgetting_a_row_that_is_not_there_is_refused_rather_than_recorded() {
+    // A NAME NOBODY CAN FIND IS A CALLER ALREADY WRONG about this file — a typo,
+    // or the wrong record of the two in a directory. Succeeding silently would
+    // let them believe a decision was recorded when nothing was, which is the
+    // "0 means suspect the injection" rule one level up.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    record_with_a_gone_row(&path);
+
+    let out = harness_forget(&path, "GON", "a typo for the one I meant");
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(!out.status.success(), "it must refuse: {why}");
+    assert!(
+        why.contains("records no firing for `GON`") && why.contains("GONE"),
+        "and say what it does hold, because the name is usually nearly right: {why}"
+    );
+    assert!(
+        read_record(&path).forgotten.is_empty(),
+        "and nothing is recorded"
+    );
+}
+
+#[test]
+fn a_row_already_forgotten_keeps_the_first_reason() {
+    // THE OLDER REASON IS THE BETTER-ATTESTED ONE: it was written by whoever
+    // still remembered what happened to that injection. Overwriting it would
+    // make this verb a way to rewrite the record of a decision as well as to
+    // make one.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    record_with_forgotten(
+        &path,
+        true,
+        serde_json::json!({ "I1": matching_row_for_i1() }),
+        serde_json::json!({
+            "GONE": {
+                "because": "renamed to `I2` and re-proven there",
+                "was": row_for_a_gone_injection(),
+            }
+        }),
+    );
+
+    let out = harness_forget(&path, "GONE", "no idea, it was here when I arrived");
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(!out.status.success(), "it must refuse: {why}");
+    assert!(
+        why.contains("renamed to `I2` and re-proven there"),
+        "and the refusal carries the reason that already stands: {why}"
+    );
+    assert_eq!(
+        read_record(&path).forgotten["GONE"].because,
+        "renamed to `I2` and re-proven there",
+        "which is still the one in the file"
+    );
+}
+
+#[test]
+fn a_decision_with_no_reason_written_down_is_refused() {
+    // THE REASON IS THE ARTEFACT. A row retired with a blank one has thrown the
+    // decision away exactly as deleting it by hand would, and left a file behind
+    // that looks like a record of it — which is worse than the deletion, because
+    // it reads as answered.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    record_with_a_gone_row(&path);
+
+    for blank in ["", "   \n"] {
+        let out = harness_forget(&path, "GONE", blank);
+        let why = String::from_utf8_lossy(&out.stderr).to_string();
+        assert!(!out.status.success(), "{blank:?} is not a reason: {why}");
+        assert!(why.contains("records a DECISION"), "{why}");
+    }
+    // AND THE FLAG LEFT OUT ALTOGETHER, which is the shape a person actually
+    // types — the refusal has to arrive there too rather than at a default.
+    let out = Command::new(binary())
+        .arg("forget")
+        .arg(&path)
+        .arg("--injection")
+        .arg("GONE")
+        .output()
+        .expect("harness runs");
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(!out.status.success(), "{why}");
+    assert!(why.contains("--because"), "{why}");
+    assert!(
+        read_record(&path).forgotten.is_empty(),
+        "and none of those wrote anything"
+    );
+}
+
+#[test]
+fn a_word_this_tool_does_not_answer_to_is_refused_by_name() {
+    // R1258 — THE FIRST WORD IS A VERB, and nothing else. While the manifest sat
+    // in that position a misspelled flag could be read as a path and a missing
+    // one as a manifest; the tool now has two actions and the position has one
+    // meaning. A refusal that did not name the verbs would just move the guess.
+    let out = Command::new(binary())
+        .arg("crates/whatever/sweeps/some.sweep.json")
+        .output()
+        .expect("harness runs");
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(!out.status.success(), "{why}");
+    assert!(
+        why.contains("unknown verb") && why.contains("sweep") && why.contains("forget"),
+        "{why}"
     );
 }
 

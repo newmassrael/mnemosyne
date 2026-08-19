@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1253's CONTRACT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/experiment-harness/replay-kit.sweep.json",
     "",
     "WHAT THE CONTRACT IS. Rebuilding the store a kit's record says it built is",

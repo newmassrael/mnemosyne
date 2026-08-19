@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1254's CONTRACT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-atomic/sweeps/schema-ladder.sweep.json",
     "",
     "WHAT THE CONTRACT IS. The schema ladder is DATA, and three things read it:",

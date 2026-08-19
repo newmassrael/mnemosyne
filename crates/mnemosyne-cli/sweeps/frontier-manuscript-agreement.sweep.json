@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS ROUND 1088's CONTRACT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/sweeps/frontier-manuscript-agreement.sweep.json",
     "",
     "`frontier_manuscript_agreement.rs` states seven laws plus the reading copy,",

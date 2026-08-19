@@ -171,4 +171,4 @@ verify = "scripts/verify.sh --no-fresh --label bx-verify -- cargo test --workspa
 # 주입 스윕 — 계약이 공허하지 않은지 증명한다. 컨트롤 1회 + 주입 16회이고 매번
 # 전체 스위트를 돌리므로 오래 걸린다. 32코어 / 125 GB 머신에서 테스트 실행만
 # 런당 389초 실측.
-sweep = "cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml -- crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json"
+sweep = "cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml -- sweep crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json"

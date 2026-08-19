@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1247's LAW IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-atomic/sweeps/stale-generation.sweep.json",
     "",
     "WHAT THE LAW IS. `AtomicStore::load` works out the generation the file",

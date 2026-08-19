@@ -5,6 +5,120 @@
   ],
   "complete": false,
   "fired": {
+    "a-decision-with-no-reason-is-recorded-anyway": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if because.trim().is_empty() {",
+          "to": "    if because.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": [
+        "a_decision_with_no_reason_written_down_is_refused"
+      ],
+      "tests": [
+        "a_decision_with_no_reason_written_down_is_refused",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-documented-invocation-is-read-from-the-line-break": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        let separator = words.iter().position(|word| *word == \"--\")?;",
+          "to": "        let separator = 1;"
+        }
+      ],
+      "expect_red": [
+        "a_wrapped_invocation_is_read_as_the_one_command_it_is",
+        "every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run"
+      ],
+      "tests": [
+        "a_wrapped_invocation_is_read_as_the_one_command_it_is",
+        "every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-header-may-carry-words-nobody-reads": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if command.argv.len() > 2 {",
+          "to": "    if command.argv.len() > usize::MAX {"
+        }
+      ],
+      "expect_red": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"
+      ],
+      "tests": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-header-may-name-any-crates-binary": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        Some(named) if named.ends_with(HARNESS_MANIFEST) => {}",
+          "to": "        Some(_) => {}"
+        }
+      ],
+      "expect_red": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"
+      ],
+      "tests": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-header-may-name-any-sweep": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        Some(named) if named == manifest => {}",
+          "to": "        Some(_) => {}"
+        }
+      ],
+      "expect_red": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"
+      ],
+      "tests": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-header-may-name-any-word-as-its-verb": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        Some(word) if Verb::of(word).is_some() => {}",
+          "to": "        Some(_) => {}"
+        }
+      ],
+      "expect_red": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"
+      ],
+      "tests": [
+        "a_header_that_would_run_something_else_is_named_by_which_half_is_wrong",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-name-in-both-halves-is-not-a-contradiction": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        if about.injections.iter().any(|i| &i.name == name) {",
+          "to": "        if about.injections.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": [
+        "a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone"
+      ],
+      "tests": [
+        "a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "a-record-belongs-to-a-directory-rather-than-a-sweep": {
       "edits": [
         {
@@ -57,6 +171,85 @@
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
+    "a-retired-row-is-deleted-rather-than-recorded": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    record.forgotten.insert(name.to_string(), retired.clone());",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "evidence_about_an_injection_the_manifest_no_longer_has_is_retired_by_a_decision"
+      ],
+      "tests": [
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "evidence_about_an_injection_the_manifest_no_longer_has_is_retired_by_a_decision"
+      ]
+    },
+    "a-retired-row-with-no-reason-reads-as-a-decision": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        if decision.because.trim().is_empty() {",
+          "to": "        if decision.because.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": [
+        "a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone"
+      ],
+      "tests": [
+        "a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-retirement-withdraws-the-completeness-claim": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    let retired = Forgotten {\n        because: because.trim().to_string(),",
+          "to": "    record.complete = false;\n    let retired = Forgotten {\n        because: because.trim().to_string(),"
+        }
+      ],
+      "expect_red": [
+        "evidence_about_an_injection_the_manifest_no_longer_has_is_retired_by_a_decision"
+      ],
+      "tests": [
+        "evidence_about_an_injection_the_manifest_no_longer_has_is_retired_by_a_decision"
+      ]
+    },
+    "a-row-an-injection-still-needs-can-be-forgotten": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if sweep.injections.iter().any(|i| i.name == name) {",
+          "to": "    if sweep.injections.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": [
+        "forgetting_a_row_an_injection_still_needs_is_refused"
+      ],
+      "tests": [
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "forgetting_a_row_an_injection_still_needs_is_refused"
+      ]
+    },
+    "an-already-forgotten-row-takes-the-newer-reason": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if let Some(already) = record.forgotten.get(name) {",
+          "to": "    if let Some(already) = None::<&Forgotten> {"
+        }
+      ],
+      "expect_red": [
+        "a_row_already_forgotten_keeps_the_first_reason"
+      ],
+      "tests": [
+        "a_row_already_forgotten_keeps_the_first_reason",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "an-edited-injection-keeps-the-evidence-of-the-old-one": {
       "edits": [
         {
@@ -71,6 +264,22 @@
       "tests": [
         "every_tracked_sweep_still_applies_to_the_tree_it_names",
         "tests::an_edited_injection_is_not_covered_by_the_old_evidence"
+      ]
+    },
+    "forgetting-a-name-nobody-holds-succeeds-quietly": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    let Some(was) = record.fired.remove(name) else {\n        let held: Vec<&String> = record.fired.keys().collect();\n        return Err(format!(\n            \"{} records no firing for `{name}` — it holds {held:?}\",\n            path.display()\n        ));\n    };",
+          "to": "    let was = record.fired.remove(name).unwrap_or(Firing {\n        edits: Vec::new(),\n        expect_red: Vec::new(),\n        tests: Vec::new(),\n    });"
+        }
+      ],
+      "expect_red": [
+        "forgetting_a_row_that_is_not_there_is_refused_rather_than_recorded"
+      ],
+      "tests": [
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "forgetting_a_row_that_is_not_there_is_refused_rather_than_recorded"
       ]
     },
     "the-evidence-a-run-is-replacing-outlives-the-control-it-reddens": {
@@ -89,6 +298,22 @@
         "a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited",
         "every_tracked_sweep_still_applies_to_the_tree_it_names",
         "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it"
+      ]
+    },
+    "the-first-word-is-a-manifest-again": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        Some((word, None)) => Err(format!(\n            \"unknown verb {word:?} — usage: injection-harness {}\",\n            Verb::USAGE\n        )),",
+          "to": "        Some((_, None)) => run(&argv),"
+        }
+      ],
+      "expect_red": [
+        "a_word_this_tool_does_not_answer_to_is_refused_by_name"
+      ],
+      "tests": [
+        "a_word_this_tool_does_not_answer_to_is_refused_by_name",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
     "the-population-of-sweeps-is-whatever-a-glob-finds": {
@@ -116,5 +341,6 @@
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     }
-  }
+  },
+  "forgotten": {}
 }

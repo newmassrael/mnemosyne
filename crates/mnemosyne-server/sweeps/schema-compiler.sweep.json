@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1252's CONTRACT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-server/sweeps/schema-compiler.sweep.json",
     "",
     "WHAT THE CONTRACT IS. The descriptor set this crate embeds and serves is one",

@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THIS CENSUS IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/outside-reach/injection-sweep.json",
     "",
     "This gate had none until R1233, and it is the gate this repository has",

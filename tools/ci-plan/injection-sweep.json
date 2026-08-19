@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THE CACHE-READING RULES ARE NOT VACUOUS — run it from",
     "the repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/ci-plan/injection-sweep.json",
     "",
     "`reading.rs` pins these rules against TEXT rather than against the tree,",

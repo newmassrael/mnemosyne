@@ -309,7 +309,7 @@ fn in_its_own_group(command: &mut Command, die_with_parent: bool) {
     }
 }
 
-/// Wrap a command in a supervisor: `<the sweep's copy> --supervise <index|-> --
+/// Wrap a command in a supervisor: `<the sweep's copy> supervise <index|-> --
 /// argv…`.
 ///
 /// The supervisor is this same program because the alternative is a shell
@@ -323,7 +323,7 @@ pub fn supervised_command(
     argv: &[String],
 ) -> Result<Command, String> {
     let mut command = Command::new(supervisor);
-    command.arg("--supervise").arg(
+    command.arg("supervise").arg(
         originals_index
             .map(|path| path.as_os_str().to_os_string())
             .unwrap_or_else(|| std::ffi::OsString::from("-")),
@@ -334,17 +334,17 @@ pub fn supervised_command(
     Ok(command)
 }
 
-/// The `--supervise` half: run the suite, and be the one still standing.
+/// The `supervise` half: run the suite, and be the one still standing.
 ///
 /// Never returns — the whole point is that the status this process exits with IS
 /// the suite's status, including death by signal.
 pub fn supervise(originals_index: Option<PathBuf>, argv: &[String]) -> ! {
     if argv.is_empty() {
-        eprintln!("injection-harness --supervise: no command to supervise");
+        eprintln!("injection-harness supervise: no command to supervise");
         std::process::exit(2);
     }
     if let Err(problem) = block_interrupts() {
-        eprintln!("injection-harness --supervise: {problem}");
+        eprintln!("injection-harness supervise: {problem}");
         std::process::exit(2);
     }
     let mut command = Command::new(&argv[0]);
@@ -353,7 +353,7 @@ pub fn supervise(originals_index: Option<PathBuf>, argv: &[String]) -> ! {
     let child = match command.spawn() {
         Ok(child) => child,
         Err(problem) => {
-            eprintln!("injection-harness --supervise: {:?}: {problem}", argv);
+            eprintln!("injection-harness supervise: {:?}: {problem}", argv);
             std::process::exit(2);
         }
     };
@@ -374,7 +374,7 @@ pub fn supervise(originals_index: Option<PathBuf>, argv: &[String]) -> ! {
     let status = match child.wait() {
         Ok(status) => status,
         Err(problem) => {
-            eprintln!("injection-harness --supervise: cannot wait for the suite: {problem}");
+            eprintln!("injection-harness supervise: cannot wait for the suite: {problem}");
             std::process::exit(2);
         }
     };
@@ -386,11 +386,11 @@ pub fn supervise(originals_index: Option<PathBuf>, argv: &[String]) -> ! {
         if let Some(index) = originals_index {
             match read_originals(&index).and_then(|originals| restore_originals(&originals)) {
                 Ok(()) => eprintln!(
-                    "injection-harness --supervise: {} — suite killed, tree restored",
+                    "injection-harness supervise: {} — suite killed, tree restored",
                     signal_name(interrupted)
                 ),
                 Err(problem) => eprintln!(
-                    "injection-harness --supervise: {} — suite killed, TREE NOT RESTORED: {problem}",
+                    "injection-harness supervise: {} — suite killed, TREE NOT RESTORED: {problem}",
                     signal_name(interrupted)
                 ),
             }

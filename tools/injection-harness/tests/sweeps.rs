@@ -1162,6 +1162,10 @@ fn every_injection_a_record_covers_is_one_that_has_fired() {
     let mut unproven: Vec<(String, usize)> = Vec::new();
     let mut proven = 0usize;
     let mut partial = 0usize;
+    // Every decision this repository has recorded about evidence it stopped
+    // claiming — PRINTED rather than merely counted, because a reason nobody
+    // ever reads back is a field and not a decision.
+    let mut retired: Vec<String> = Vec::new();
     let mut recorded_sweeps = 0usize;
     let mut whole_sweeps = 0usize;
 
@@ -1249,10 +1253,42 @@ fn every_injection_a_record_covers_is_one_that_has_fired() {
                 findings.push(format!(
                     "{}: records `{name}` firing and the manifest has no such \
                      injection — a renamed or deleted one leaves evidence that \
-                     answers to nothing",
-                    record_path.display()
+                     answers to nothing. Say which it was: `forget {} \
+                     --injection {name} --because <why>`",
+                    record_path.display(),
+                    path
                 ));
             }
+        }
+
+        // AND THE DECISIONS SOMEBODY RECORDED ABOUT ROWS THAT USED TO BE THERE
+        // (R1258). `forget` is the way past the finding above, so it is the
+        // obvious place for that finding to be laundered away rather than
+        // answered — and this is what keeps it from being one. The judgement is
+        // `injection_harness::unsound_decisions` because a fixture has to be
+        // able to ask it: the verb refuses to create either fault, so over a
+        // repository whose decisions were all made through it this walk finds
+        // nothing, and a check nobody has seen answer is not one.
+        for (name, fault) in injection_harness::unsound_decisions(&record, &manifest) {
+            findings.push(match fault {
+                injection_harness::Unsound::CameBack => format!(
+                    "{}: `{name}` is recorded as forgotten and the manifest \
+                     names it again — an injection that came back owes a proof \
+                     of its own, and the note saying it was withdrawn is not \
+                     one. Prove it with `--only {name}`",
+                    record_path.display()
+                ),
+                injection_harness::Unsound::NoReason => format!(
+                    "{}: `{name}` is recorded as forgotten with no reason — the \
+                     reason is the whole of the decision, and a row retired \
+                     without one has thrown away exactly what this record was \
+                     holding out for",
+                    record_path.display()
+                ),
+            });
+        }
+        for (name, decision) in &record.forgotten {
+            retired.push(format!("{path} `{name}` — {}", decision.because));
         }
     }
 
@@ -1263,11 +1299,16 @@ fn every_injection_a_record_covers_is_one_that_has_fired() {
     println!(
         "[firings] {proven} injection(s) proven across {recorded_sweeps} recorded sweep(s), \
          {whole_sweeps} of them proven whole; {partial} injection(s) beside a partial record \
-         and {outstanding} in {} sweep(s) with no record at all",
-        unproven.len()
+         and {outstanding} in {} sweep(s) with no record at all; {} row(s) retired \
+         by a recorded decision",
+        unproven.len(),
+        retired.len()
     );
     for (path, count) in &unproven {
         println!("[firings] no record: {path} ({count} injection(s))");
+    }
+    for decision in &retired {
+        println!("[firings] forgotten: {decision}");
     }
 
     assert!(
@@ -1281,6 +1322,324 @@ fn every_injection_a_record_covers_is_one_that_has_fired() {
         "no sweep in this repository has been proven WHOLE, so the half of this \
          law with teeth holds over nothing — which is the empty answer that \
          reads like a clean one"
+    );
+}
+
+/// R1258 — WHAT A SWEEP SAYS ABOUT RUNNING ITSELF IS ALSO A THING THAT DECAYS.
+///
+/// Thirty-one tracked manifests open with the command line that runs them,
+/// wrapped over two prose lines the way a shell wraps one. Nothing had ever read
+/// a single one of them, and this round proved what that is worth: giving the
+/// tool verbs invalidated ALL thirty-one at once, in silence, and the only
+/// reason none of them survived into this commit is that a person went through
+/// them by hand. That is the same shape as the anchor this file is named for —
+/// exact text about a thing that moves, with no reader between the two.
+///
+/// WHAT IS CHECKED IS WHAT WOULD BE PASTED: the words after the `--` separator
+/// have to be a verb this tool answers to, and the manifest the reader is being
+/// told to run has to be THIS one. The second half is not hypothetical with
+/// thirty-one near-identical headers, one paste apart from each other.
+#[test]
+fn every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run() {
+    let root = repository_root();
+    let mut findings: Vec<String> = Vec::new();
+    let mut documented = 0usize;
+
+    // THE POPULATION IS THE LIBRARY'S ANSWER — `tracked_sweeps` is what this
+    // crate means by "the sweeps this repository runs", test inputs already
+    // excluded, and its own doc says why a second spelling of that set is a
+    // disagreement waiting to happen.
+    let sweeps = injection_harness::tracked_sweeps(&root).expect("git ls-files runs");
+    for (path, manifest) in &sweeps {
+        let Some(command) = injection_harness::documented_command(&manifest.prose) else {
+            // EVERY TRACKED SWEEP DOCUMENTS HOW TO RUN ITSELF. All thirty-four
+            // do today, so this is a property this repository already has rather
+            // than one being asked for — and without it the way past this law is
+            // to delete the header, which is the same silence one worse.
+            findings.push(format!(
+                "{path}: documents no way to run itself. The header every other \
+                 sweep here opens with is one line — `cargo run -q \
+                 --manifest-path {} -- sweep {path}` — and a reader who has to \
+                 reconstruct it guesses at the tool, the verb and the path",
+                injection_harness::HARNESS_MANIFEST
+            ));
+            continue;
+        };
+        documented += 1;
+        for fault in injection_harness::misdirected(&command, path) {
+            findings.push(match fault {
+                injection_harness::Misdirected::NoTool => format!(
+                    "{path}: its header does not say which crate's binary to \
+                     run, so what it runs is whatever the reader's working \
+                     directory builds — it must name `--manifest-path {}`",
+                    injection_harness::HARNESS_MANIFEST
+                ),
+                injection_harness::Misdirected::AnotherTool(named) => {
+                    format!("{path}: its header runs `{named}`, which is not this tool")
+                }
+                injection_harness::Misdirected::NotAVerb(word) => format!(
+                    "{path}: its header says to run it with `{word}`, which is \
+                     not a verb this tool answers to — usage: {}",
+                    injection_harness::Verb::USAGE
+                ),
+                injection_harness::Misdirected::NoManifest => {
+                    format!("{path}: its header passes this tool no manifest")
+                }
+                injection_harness::Misdirected::Extra(words) => format!(
+                    "{path}: its header carries {words:?} past the manifest — a \
+                     header is `sweep <this file>` and nothing else, and a flag \
+                     nobody reads back is one that can stop existing in silence"
+                ),
+                injection_harness::Misdirected::AnotherManifest(named) => format!(
+                    "{path}: its header tells a reader to run `{named}`, which \
+                     is a different manifest — following it measures something \
+                     other than the file it is written in"
+                ),
+            });
+        }
+    }
+
+    println!(
+        "[invocation] {documented} of {} tracked sweep(s) document how to run \
+         themselves",
+        sweeps.len()
+    );
+    assert!(
+        findings.is_empty(),
+        "{} manifest(s) document a command that would not do what they say:\n  {}",
+        findings.len(),
+        findings.join("\n  ")
+    );
+    assert!(
+        documented > 5,
+        "this law read {documented} documented invocation(s), which is a listing \
+         that stopped answering rather than a repository that stopped saying how \
+         to run its sweeps"
+    );
+}
+
+/// R1258 — THE CONTROL FOR THE HALF OF THE LAW ABOVE THAT READS DECISIONS.
+///
+/// `forget` refuses to record either fault, so over a repository whose
+/// decisions were all made through the verb the walk above finds nothing to
+/// say — and a check that has only ever been asked of a corpus with no
+/// decisions in it is one nobody has seen answer. That is the same emptiness
+/// the census line beside it exists to expose, one level down.
+///
+/// So the judgement is asked here directly, of a record built to hold each
+/// fault, and of one built to hold neither.
+#[test]
+fn a_wrapped_invocation_is_read_as_the_one_command_it_is() {
+    // THE CONTROL FOR THE LAW ABOVE, and what makes it a reader rather than a
+    // walk. Both wrappings this repository uses are here, and they differ in the
+    // one place that matters: which side of the line break the `--` separator
+    // falls on. A parser that took the words after the break, or the words after
+    // the first `--`-looking thing, would answer for one of these and quietly
+    // mis-read the other.
+    let before_the_break = vec![
+        "THE SWEEP — run it from the repository root:".to_string(),
+        "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\"
+            .to_string(),
+        "        tools/twice-compiled/injection-sweep.json".to_string(),
+    ];
+    let after_the_break = vec![
+        "THE SWEEP — run it from the repository root:".to_string(),
+        "    cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml \\"
+            .to_string(),
+        "        -- sweep tools/ci-plan/locked-resolution-sweep.json".to_string(),
+    ];
+    let words =
+        |line: &str| -> Vec<String> { line.split_whitespace().map(str::to_string).collect() };
+    assert_eq!(
+        injection_harness::documented_command(&before_the_break),
+        Some(injection_harness::DocumentedCommand {
+            cargo: words("cargo run -q --manifest-path tools/injection-harness/Cargo.toml"),
+            argv: words("sweep tools/twice-compiled/injection-sweep.json"),
+        })
+    );
+    assert_eq!(
+        injection_harness::documented_command(&after_the_break),
+        Some(injection_harness::DocumentedCommand {
+            cargo: words(
+                "cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml"
+            ),
+            argv: words("sweep tools/ci-plan/locked-resolution-sweep.json"),
+        })
+    );
+    // AND PROSE THAT DOCUMENTS NOTHING IS AN ABSENCE, not an empty command —
+    // a manifest with no header is told so in those words, which the law can
+    // only do if it arrives as `None` rather than as a command of no words.
+    assert_eq!(
+        injection_harness::documented_command(&["a sweep nobody wrote a header for".to_string()]),
+        None
+    );
+    // AND A SENTENCE ABOUT THIS TOOL IS NOT A COMMAND FOR IT. Prose talks about
+    // cargo — `tools/stale-artifacts/injection-sweep.json` says "two cargo runs"
+    // a few lines under its own header — and the separator is what tells the
+    // two apart.
+    assert_eq!(
+        injection_harness::documented_command(&[
+            "flock stops two cargo runs of injection-harness from corrupting one \
+             build directory"
+                .to_string()
+        ]),
+        None
+    );
+}
+
+#[test]
+fn a_header_that_would_run_something_else_is_named_by_which_half_is_wrong() {
+    // THE JUDGEMENT, ASKED OF HEADERS THAT ARE WRONG — which the walk over the
+    // tracked manifests cannot do, because all thirty-four of them are right.
+    // The two halves fail differently and a reader has to be told which: a
+    // header pointed at another crate runs a DIFFERENT PROGRAM, one pointed at
+    // another sweep runs this program over a DIFFERENT FILE, and only the second
+    // looks like anything happened.
+    let words =
+        |line: &str| -> Vec<String> { line.split_whitespace().map(str::to_string).collect() };
+    let command = |cargo: &str, argv: &str| injection_harness::DocumentedCommand {
+        cargo: words(cargo),
+        argv: words(argv),
+    };
+    let mine = "tools/twice-compiled/injection-sweep.json";
+    let right = command(
+        "cargo run -q --manifest-path tools/injection-harness/Cargo.toml",
+        "sweep tools/twice-compiled/injection-sweep.json",
+    );
+    assert!(
+        injection_harness::misdirected(&right, mine).is_empty(),
+        "the shape every tracked header is in"
+    );
+    for (bad, expected) in [
+        (
+            command(
+                "cargo run -q --manifest-path tools/twice-compiled/Cargo.toml",
+                "sweep tools/twice-compiled/injection-sweep.json",
+            ),
+            injection_harness::Misdirected::AnotherTool(
+                "tools/twice-compiled/Cargo.toml".to_string(),
+            ),
+        ),
+        (
+            command(
+                "cargo run -q",
+                "sweep tools/twice-compiled/injection-sweep.json",
+            ),
+            injection_harness::Misdirected::NoTool,
+        ),
+        (
+            command(
+                "cargo run -q --manifest-path tools/injection-harness/Cargo.toml",
+                "run tools/twice-compiled/injection-sweep.json",
+            ),
+            injection_harness::Misdirected::NotAVerb("run".to_string()),
+        ),
+        (
+            command(
+                "cargo run -q --manifest-path tools/injection-harness/Cargo.toml",
+                "sweep tools/cache-price/injection-sweep.json",
+            ),
+            injection_harness::Misdirected::AnotherManifest(
+                "tools/cache-price/injection-sweep.json".to_string(),
+            ),
+        ),
+        (
+            command(
+                "cargo run -q --manifest-path tools/injection-harness/Cargo.toml",
+                "sweep",
+            ),
+            injection_harness::Misdirected::NoManifest,
+        ),
+        (
+            command(
+                "cargo run -q --manifest-path tools/injection-harness/Cargo.toml",
+                "sweep tools/twice-compiled/injection-sweep.json --only a-name",
+            ),
+            injection_harness::Misdirected::Extra(vec!["--only".to_string(), "a-name".to_string()]),
+        ),
+    ] {
+        assert_eq!(
+            injection_harness::misdirected(&bad, mine),
+            vec![expected.clone()],
+            "one fault, named: {expected:?}"
+        );
+    }
+}
+
+#[test]
+fn a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone() {
+    let injection = |name: &str| injection_harness::Injection {
+        name: name.to_string(),
+        why: String::new(),
+        edits: vec![injection_harness::Edit {
+            file: "src.rs".to_string(),
+            from: "HEALTHY".to_string(),
+            to: "BROKEN".to_string(),
+        }],
+        expect_red: vec!["the_law".to_string()],
+    };
+    let manifest = injection_harness::Manifest {
+        prose: Vec::new(),
+        repo: PathBuf::from("."),
+        test_command: vec!["true".to_string()],
+        logs: PathBuf::from("logs"),
+        min_free_mb: None,
+        red_set: injection_harness::RedSet::AtLeast,
+        injections: vec![injection("came-back")],
+    };
+    let decision = |because: &str| injection_harness::Forgotten {
+        because: because.to_string(),
+        was: injection_harness::Firing {
+            edits: injection("gone").edits,
+            expect_red: vec!["the_law".to_string()],
+            tests: vec!["the_law".to_string()],
+        },
+    };
+    let record = |rows: [(&str, injection_harness::Forgotten); 2]| injection_harness::Firings {
+        prose: Vec::new(),
+        complete: true,
+        fired: BTreeMap::new(),
+        forgotten: rows
+            .into_iter()
+            .map(|(name, decision)| (name.to_string(), decision))
+            .collect(),
+    };
+
+    // BOTH FAULTS, IN ONE RECORD, so that finding one is not mistaken for
+    // finding the other: the injection that came back is named for coming back
+    // and the blank one for being blank.
+    let faulty = record([
+        ("came-back", decision("withdrawn when the read moved")),
+        ("blank", decision("  \n ")),
+    ]);
+    assert_eq!(
+        injection_harness::unsound_decisions(&faulty, &manifest),
+        vec![
+            ("blank".to_string(), injection_harness::Unsound::NoReason),
+            (
+                "came-back".to_string(),
+                injection_harness::Unsound::CameBack
+            ),
+        ],
+        "a decision the manifest contradicts and a decision with nothing in it"
+    );
+
+    // AND THE CONTROL FOR THAT CONTROL: the same shapes, sound. Without this the
+    // case above says only that the rule rejects something.
+    let sound = record([
+        (
+            "gone",
+            decision("renamed to `came-back` and re-proven there"),
+        ),
+        (
+            "also-gone",
+            decision("the injection was withdrawn with its read"),
+        ),
+    ]);
+    assert!(
+        injection_harness::unsound_decisions(&sound, &manifest).is_empty(),
+        "a row the manifest does not name, retired with a reason, is exactly \
+         what this record is FOR"
     );
 }
 

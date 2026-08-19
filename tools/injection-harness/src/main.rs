@@ -59,7 +59,7 @@ static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
 // reader of every sweep this repository tracks needs them and a decision in
 // `main.rs` has no reader (R1096). See `lib.rs`.
 use injection_harness::{
-    answers_to, reached, replace_once, Edit, Injection, Manifest, RedSet, Scope,
+    answers_to, reached, replace_once, Edit, Injection, Manifest, RedSet, Scope, Verb,
 };
 
 /// How many test targets one run reached under each name cargo prints.
@@ -295,27 +295,93 @@ struct InjectionResult {
     expect_red: Vec<String>,
 }
 
+/// R1258 — THE FIRST WORD IS READ IN ONE PLACE, and what it may be is
+/// [`Verb`]'s to say. Until this round the tool had one unnamed action and the
+/// manifest was simply the first argument, with `--supervise` sitting in that
+/// same position as a flag; a second action would have had to be either a word
+/// that means a verb unless it looks like a path, or a mode flag that changes
+/// what the whole invocation is. Both put two meanings in one position, and this
+/// file's own laws are largely about readers that cannot tell two things apart.
 fn main() {
-    // `--supervise <index|-> -- argv…` is this binary re-exec'd as the owner of
-    // one suite run. It never returns: it exits AS the suite did.
     let argv: Vec<String> = std::env::args().skip(1).collect();
-    if argv.first().map(String::as_str) == Some("--supervise") {
-        let index = match argv.get(1).map(String::as_str) {
-            Some("-") | None => None,
-            Some(path) => Some(PathBuf::from(path)),
-        };
-        let command: Vec<String> = argv
-            .iter()
-            .skip_while(|argument| argument.as_str() != "--")
-            .skip(1)
-            .cloned()
-            .collect();
-        supervise::supervise(index, &command);
-    }
-    if let Err(problem) = run() {
+    let outcome = match argv.first().map(|word| (word, Verb::of(word))) {
+        // `supervise <index|-> -- argv…` is this binary re-exec'd as the owner
+        // of one suite run — spelled by `supervise::supervised_command` and by
+        // nobody else. It never returns: it exits AS the suite did.
+        Some((_, Some(Verb::Supervise))) => {
+            let index = match argv.get(1).map(String::as_str) {
+                Some("-") | None => None,
+                Some(path) => Some(PathBuf::from(path)),
+            };
+            let command: Vec<String> = argv
+                .iter()
+                .skip_while(|argument| argument.as_str() != "--")
+                .skip(1)
+                .cloned()
+                .collect();
+            supervise::supervise(index, &command);
+        }
+        Some((_, Some(Verb::Sweep))) => run(&argv[1..]),
+        Some((_, Some(Verb::Forget))) => forget(&argv[1..]),
+        Some((word, None)) => Err(format!(
+            "unknown verb {word:?} — usage: injection-harness {}",
+            Verb::USAGE
+        )),
+        None => Err(format!("usage: injection-harness {}", Verb::USAGE)),
+    };
+    if let Err(problem) = outcome {
         eprintln!("injection-harness: {problem}");
         std::process::exit(1);
     }
+}
+
+/// `forget <manifest.json> --injection <name> --because <why>` — record that a
+/// row is evidence about an injection this manifest no longer has.
+///
+/// THE VERB IS THIN AND THE DECISION IS THE LIBRARY'S, for the reason this
+/// crate's `lib.rs` opens with: what lives in `main.rs` has no reader but a
+/// person. Everything this refuses is refused in
+/// [`injection_harness::forget`], where the suite can ask it.
+fn forget(argv: &[String]) -> Result<(), String> {
+    let mut args = argv.iter();
+    let manifest_path = args
+        .next()
+        .ok_or_else(|| format!("usage: injection-harness {}", Verb::USAGE))?;
+    let mut name: Option<String> = None;
+    let mut because: Option<String> = None;
+    while let Some(word) = args.next() {
+        // A FLAG'S VALUE IS NOT A POSITIONAL ARGUMENT — the same rule the sweep
+        // verb below reads its own flags by, and for the same reason: a reason
+        // that went missing must not be read as the next flag.
+        let value = |args: &mut std::slice::Iter<'_, String>| {
+            args.next()
+                .cloned()
+                .ok_or_else(|| format!("{word} takes a value"))
+        };
+        match word.as_str() {
+            "--injection" => name = Some(value(&mut args)?),
+            "--because" => because = Some(value(&mut args)?),
+            other => return Err(format!("unknown argument {other:?}")),
+        }
+    }
+    let name = name.ok_or("forget names the injection: `--injection <name>`")?;
+    let because = because.ok_or_else(|| {
+        format!(
+            "forgetting `{name}` is a decision and `--because <why>` is where it \
+             is written down — a row retired without one has thrown away exactly \
+             what the law was holding out for"
+        )
+    })?;
+    let retired = injection_harness::forget(Path::new(manifest_path), &name, &because)?;
+    // THE RETIRED EVIDENCE IS PRINTED, not merely filed. What is being given up
+    // is the interesting part: a reader of this line sees the reds that row was
+    // proven to raise, at the moment somebody decides they answer to nothing.
+    println!(
+        "[record] `{name}` forgotten, because: {}\n\
+         [record] what it was proven to redden: {:?}",
+        retired.because, retired.was.tests
+    );
+    Ok(())
 }
 
 /// The interrupt this sweep has been asked to stop on, if one has arrived.
@@ -351,11 +417,11 @@ impl Drop for OriginalsGuard {
     }
 }
 
-fn run() -> Result<(), String> {
-    let mut args = std::env::args().skip(1);
+fn run(argv: &[String]) -> Result<(), String> {
+    let mut args = argv.iter().cloned();
     let manifest_path = args
         .next()
-        .ok_or("usage: injection-harness <manifest.json> [--control-only] [--only <name>]...")?;
+        .ok_or_else(|| format!("usage: injection-harness {}", Verb::USAGE))?;
     // A FLAG'S VALUE IS NOT A POSITIONAL ARGUMENT: `--only` consumes the word
     // after it, so a misspelled flag cannot be read as a manifest and a missing
     // value cannot silently swallow `--control-only`.

@@ -107,6 +107,36 @@ pub struct Firing {
     pub tests: Vec<String>,
 }
 
+/// Evidence a person has decided answers to nothing, and their reason.
+///
+/// R1258 — THE DECISION IS THE ARTEFACT, NOT THE DELETION. A row for an
+/// injection the manifest no longer has is caught by the law over these records,
+/// and that is right: a rename or a deletion has left a proof pointing at
+/// nothing, and somebody has to say which it was. What was missing is a way to
+/// SAY it. The only way out was to delete the whole record and re-prove every
+/// injection in it — here that was five, in `tools/twice-compiled` it is
+/// sixty-six — and the cheap way out, editing the row out of the file by hand,
+/// destroys the very decision the law existed to force. Both of those end with
+/// the reason unwritten.
+///
+/// SO THE ROW IS KEPT, WHOLE, BESIDE THE REASON IT WAS RETIRED. Nothing is
+/// destroyed: a reader who later meets an injection whose edits look familiar
+/// can see that it was proven once, under another name, and what it reddened
+/// then. The record stops CLAIMING it as live evidence, which is all the law
+/// ever asked.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Forgotten {
+    /// Why the person who ran `forget` says this evidence answers to nothing —
+    /// the renamed-to, the re-aiming, the injection that was withdrawn. It is
+    /// the whole content of the decision, so it is refused when it is blank.
+    pub because: String,
+    /// The row as it stood, unaltered. `Firing` and not a summary of one: a
+    /// second spelling of "what was proven" would be free to disagree with the
+    /// first, and this is a file whose worth is that nobody can type into it.
+    pub was: Firing,
+}
+
 /// Every injection of one sweep that has been shown to fire.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -129,6 +159,15 @@ pub struct Firings {
     pub complete: bool,
     /// By injection name.
     pub fired: BTreeMap<String, Firing>,
+    /// Rows retired by name, by the person who decided they answer to nothing.
+    ///
+    /// WRITTEN EVEN WHEN EMPTY, and that is the same distinction `read_firings`
+    /// refuses to blur one line up: a key that disappears when there is nothing
+    /// in it makes "nobody has forgotten anything here" and "this record was
+    /// written before the decision could be recorded at all" the same file. One
+    /// of those is an answer and the other is an absence.
+    #[serde(default)]
+    pub forgotten: BTreeMap<String, Forgotten>,
 }
 
 /// What this repository suffixes a sweep's firing record with.
@@ -254,6 +293,292 @@ pub fn stale_evidence(record: &Firings, about: &[Injection]) -> Vec<String> {
         })
         .map(|injection| injection.name.clone())
         .collect()
+}
+
+/// Retire one row by name, with the reason it answers to nothing. Returns what
+/// was retired.
+///
+/// R1258 — THE VERB THE VOIDING PASS ABOVE IS NOT. Those two look alike and are
+/// opposite in the thing that matters: voiding is about an injection the
+/// manifest STILL HAS, it is decided by a predicate rather than by a person, and
+/// the run that does it is on its way to proving that injection again in the
+/// next minute. Forgetting is about an injection the manifest DOES NOT HAVE, it
+/// is a judgement nothing can derive — a rename, a re-aiming, a withdrawal —
+/// and no run is coming to replace what it retires. A pass that decided this one
+/// by itself would be a program deciding that a proof is no longer owed, which
+/// is the one thing this record exists to stop.
+///
+/// WHAT IT REFUSES, AND WHY EACH REFUSAL HAS NO FLAG TO TURN IT OFF:
+///
+///   - THE MANIFEST STILL NAMES IT. This is the laundering path, whole: an
+///     injection that is still in the sweep still owes evidence, and dropping
+///     its row would leave the manifest looking proven-enough while one of its
+///     claims has quietly stopped being measured. `--only <name>` re-proves it
+///     for the price of one injection; that is the answer, and it is cheap
+///     precisely so this refusal can be absolute.
+///   - THE RECORD HOLDS NO SUCH ROW. A name nobody can find is a caller whose
+///     belief about this file is already wrong — most often a typo, sometimes a
+///     record other than the one they meant — and a silent success would let
+///     them believe a decision was recorded when nothing was.
+///   - IT IS ALREADY FORGOTTEN. Answering "done" would overwrite the first
+///     person's reason with the second's, and the first reason is the older and
+///     better-attested of the two.
+///   - THE REASON IS BLANK. The reason IS the artefact. A row retired with an
+///     empty one has thrown the decision away just as surely as deleting it by
+///     hand, only with a file left behind that looks like a record of it.
+///
+/// THE COMPLETENESS CLAIM SURVIVES THIS, where the voiding pass above must
+/// withdraw it. `complete` says a run over the whole manifest established a row
+/// for every injection in it; retiring a row for an injection that is NO LONGER
+/// in the manifest cannot uncover one, so the claim is still true of the
+/// manifest as it stands — and the law re-checks that coverage on every run, so
+/// the claim is not being taken on trust here. Withdrawing it would do real
+/// damage in the other direction: a record demoted to partial demands nothing of
+/// the rows beside it, which is exactly the tooth this record was built to keep.
+pub fn forget(manifest: &Path, name: &str, because: &str) -> Result<Forgotten, String> {
+    if because.trim().is_empty() {
+        return Err(format!(
+            "forgetting `{name}` records a DECISION, and its reason is the whole \
+             of it — say what happened to that injection"
+        ));
+    }
+    let sweep: Manifest = read_manifest(manifest)?;
+    if sweep.injections.iter().any(|i| i.name == name) {
+        return Err(format!(
+            "{} still names the injection `{name}`, so its evidence is still \
+             owed. Re-prove it with `--only {name}`; forgetting a row an \
+             injection still needs would leave that claim unmeasured and the \
+             record looking whole",
+            manifest.display()
+        ));
+    }
+    let path = firings_path(manifest);
+    let Some(mut record) = read_firings(&path)? else {
+        return Err(format!(
+            "{} does not exist, so there is no evidence about `{name}` to forget",
+            path.display()
+        ));
+    };
+    if let Some(already) = record.forgotten.get(name) {
+        return Err(format!(
+            "{} already records `{name}` as forgotten, because: {}",
+            path.display(),
+            already.because
+        ));
+    }
+    let Some(was) = record.fired.remove(name) else {
+        let held: Vec<&String> = record.fired.keys().collect();
+        return Err(format!(
+            "{} records no firing for `{name}` — it holds {held:?}",
+            path.display()
+        ));
+    };
+    let retired = Forgotten {
+        because: because.trim().to_string(),
+        was,
+    };
+    record.forgotten.insert(name.to_string(), retired.clone());
+    write_firings(&path, &record)?;
+    Ok(retired)
+}
+
+/// What this tool answers to as its first word.
+///
+/// R1258 — THE VOCABULARY IS A LIBRARY FACT BECAUSE IT HAS TWO READERS. One is
+/// the dispatch in `main.rs`. The other is the law over what every tracked sweep
+/// manifest documents about running itself: thirty-one of them carry the command
+/// line in their own prose, and when this round gave the tool verbs all
+/// thirty-one went stale at once, silently, because nothing had ever read one.
+/// A vocabulary spelled in `main.rs` alone is one the law would have to spell
+/// again, and two spellings of what a tool answers to is how the documentation
+/// comes to describe a tool that is not there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verb {
+    /// Run a sweep: the control, then each injection, then the report.
+    Sweep,
+    /// Retire one row of a firing record, with the reason it answers to
+    /// nothing.
+    Forget,
+    /// NOT FOR A PERSON TO TYPE: this binary re-exec'd as the owner of one suite
+    /// run. `supervise::supervised_command` is the only thing that spells it,
+    /// and it is in this enum rather than beside it because the first word is
+    /// read in ONE place — a word handled somewhere else is the second reader
+    /// this type exists to prevent.
+    Supervise,
+}
+
+impl Verb {
+    /// How a person is told what this tool answers to.
+    pub const USAGE: &'static str = "sweep <manifest.json> [--control-only] \
+                                     [--only <name>]... | forget <manifest.json> \
+                                     --injection <name> --because <why>";
+
+    /// The verb this word names, if it names one.
+    #[must_use]
+    pub fn of(word: &str) -> Option<Verb> {
+        match word {
+            "sweep" => Some(Verb::Sweep),
+            "forget" => Some(Verb::Forget),
+            "supervise" => Some(Verb::Supervise),
+            _ => None,
+        }
+    }
+}
+
+/// A command a sweep manifest documents for running itself, in two halves.
+///
+/// THE TWO HALVES ARE DIFFERENT CLAIMS AND THE SEPARATOR IS WHAT DIVIDES THEM:
+/// what comes before `--` decides WHICH PROGRAM runs, and what comes after it is
+/// that program's own argv. A header can be wrong in either — pointed at another
+/// crate's manifest, or at another sweep's file — and the two mistakes read
+/// nothing alike to whoever pastes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentedCommand {
+    /// Up to the separator: the cargo invocation that chooses the program.
+    pub cargo: Vec<String>,
+    /// After it: the words this tool is handed.
+    pub argv: Vec<String>,
+}
+
+/// What is wrong with a documented command, if anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Misdirected {
+    /// It does not say which crate's binary to run, so it runs whatever the
+    /// working directory's workspace happens to build.
+    NoTool,
+    /// It runs a different crate's binary: the manifest path it names.
+    AnotherTool(String),
+    /// Its first word after the separator is not a verb this tool answers to.
+    NotAVerb(String),
+    /// It names a verb and no manifest for it.
+    NoManifest,
+    /// It names a different sweep: the path it points at.
+    AnotherManifest(String),
+    /// It carries words past the manifest. A header is `sweep <this file>` and
+    /// nothing else — every tracked one is — so what is here is a flag or an
+    /// argument nobody checked, and checking it any other way would mean this
+    /// crate parsing its own command line a second time.
+    Extra(Vec<String>),
+}
+
+/// Whether a documented command would run THIS manifest, with THIS tool.
+///
+/// PURE, AND BOTH READERS DRIVE IT — the shape [`stale_evidence`] and
+/// [`unsound_decisions`] are in, and the reason is the same: the law over the
+/// tracked manifests is a walk over files that are all correct today, so a
+/// fixture is the only thing that can ask this judgement a question it should
+/// answer NO to.
+#[must_use]
+pub fn misdirected(command: &DocumentedCommand, manifest: &str) -> Vec<Misdirected> {
+    let mut faults = Vec::new();
+    match command
+        .cargo
+        .iter()
+        .position(|word| word == "--manifest-path")
+        .and_then(|at| command.cargo.get(at + 1))
+    {
+        Some(named) if named.ends_with(HARNESS_MANIFEST) => {}
+        Some(named) => faults.push(Misdirected::AnotherTool(named.clone())),
+        None => faults.push(Misdirected::NoTool),
+    }
+    match command.argv.first() {
+        Some(word) if Verb::of(word).is_some() => {}
+        Some(word) => faults.push(Misdirected::NotAVerb(word.clone())),
+        None => faults.push(Misdirected::NoManifest),
+    }
+    match command.argv.get(1) {
+        Some(named) if named == manifest => {}
+        Some(named) => faults.push(Misdirected::AnotherManifest(named.clone())),
+        None => faults.push(Misdirected::NoManifest),
+    }
+    if command.argv.len() > 2 {
+        faults.push(Misdirected::Extra(command.argv[2..].to_vec()));
+    }
+    faults
+}
+
+/// Where this tool's own crate manifest sits, as a documented command has to
+/// name it. Spelled once, because the law that checks the headers and the
+/// headers themselves are the two things that must not drift apart.
+pub const HARNESS_MANIFEST: &str = "tools/injection-harness/Cargo.toml";
+
+/// The command a sweep manifest's own prose documents, if it documents one.
+///
+/// WHAT IS BEING PARSED IS A COMMAND SOMEBODY IS MEANT TO PASTE. Every tracked
+/// manifest opens with one, wrapped across two prose lines with a trailing
+/// backslash the way a shell wraps it, and until this round no program had ever
+/// looked at one. They are the same words as the tool's real interface and they
+/// decay against it in silence: the round that added verbs invalidated all
+/// thirty-one, and the only reason none survived is that a person went through
+/// them by hand.
+///
+/// THE SEPARATOR IS THE ANCHOR, not the position. Both wrappings in this
+/// repository put `--` in a different place — before the line break in most,
+/// after it in `tools/ci-plan/locked-resolution-sweep.json` — and what comes
+/// after it is the tool's own argv wherever the break happened to fall.
+///
+/// AND THE SEPARATOR IS ALSO WHAT MAKES THIS A COMMAND RATHER THAN A SENTENCE:
+/// prose talks about cargo, and `tools/stale-artifacts/injection-sweep.json`
+/// says "two cargo runs" a few lines under its own header. A line that names
+/// this tool and passes it nothing is somebody writing about it.
+#[must_use]
+pub fn documented_command(prose: &[String]) -> Option<DocumentedCommand> {
+    // FOLDED FIRST, because a shell continuation is one command and the break is
+    // a fact about the width of the file rather than about the invocation.
+    let folded = prose.join("\n").replace("\\\n", " ");
+    folded.lines().find_map(|line| {
+        if !line.contains("cargo run") || !line.contains("injection-harness") {
+            return None;
+        }
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let separator = words.iter().position(|word| *word == "--")?;
+        Some(DocumentedCommand {
+            cargo: words[..separator]
+                .iter()
+                .map(|w| (*w).to_string())
+                .collect(),
+            argv: words[separator + 1..]
+                .iter()
+                .map(|w| (*w).to_string())
+                .collect(),
+        })
+    })
+}
+
+/// Why a recorded decision does not stand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unsound {
+    /// The manifest names this injection AGAIN. The record is then in two
+    /// states at once — retired as answering to nothing, and owing evidence —
+    /// and yesterday's withdrawal must not stand in for today's proof.
+    CameBack,
+    /// The decision was recorded with nothing in it. The reason is the whole of
+    /// a decision; without one the row was deleted, and a file was left behind
+    /// that reads as though the question had been answered.
+    NoReason,
+}
+
+/// Every decision this record carries that does not stand, by name.
+///
+/// PURE, AND BOTH READERS DRIVE IT — the same shape as [`stale_evidence`] above,
+/// and here it is what keeps the law from being vacuous. [`forget`] refuses to
+/// CREATE either of these, so over a repository where every decision was made
+/// through the verb the law's walk finds nothing; a check that can only be
+/// exercised by a corpus that does not exist yet is a check nobody has ever seen
+/// answer. A fixture can ask this directly, and an injection into it reddens
+/// that fixture whatever the tracked records happen to hold.
+#[must_use]
+pub fn unsound_decisions(record: &Firings, about: &Manifest) -> Vec<(String, Unsound)> {
+    let mut faults = Vec::new();
+    for (name, decision) in &record.forgotten {
+        if about.injections.iter().any(|i| &i.name == name) {
+            faults.push((name.clone(), Unsound::CameBack));
+        }
+        if decision.because.trim().is_empty() {
+            faults.push((name.clone(), Unsound::NoReason));
+        }
+    }
+    faults
 }
 
 /// Which of a manifest's injections a sweep is to run.

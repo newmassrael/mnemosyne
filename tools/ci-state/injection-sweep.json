@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1136's REPORTER IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/ci-state/injection-sweep.json",
     "",
     "WHAT THIS PROGRAM REPLACED WAS MEASURED SILENT, twice, before a line of it",

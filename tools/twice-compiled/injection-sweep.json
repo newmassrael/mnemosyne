@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THE SECONDS ARE COUNTED AND NOT DECORATION — run it",
     "from the repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/twice-compiled/injection-sweep.json",
     "",
     "Round 1092 built this census over counts and its report ranked the repair by",

@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS ROUND 1090's GATE IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/cache-budget/injection-sweep.json",
     "",
     "The gate's own first run is the other half of the proof and it is already",

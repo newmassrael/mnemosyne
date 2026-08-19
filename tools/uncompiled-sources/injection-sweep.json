@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THIS GATE IS NOT VACUOUS — run it from the repository",
     "root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/uncompiled-sources/injection-sweep.json",
     "",
     "The other half of the proof is already recorded and is not repeatable from",

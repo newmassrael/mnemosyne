@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1137's MEASUREMENT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/cache-price/injection-sweep.json",
     "",
     "THIS PROGRAM PRODUCES A NUMBER A DECISION RESTS ON, which is a harder thing",

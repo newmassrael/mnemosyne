@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1237's CONTRACT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/sweeps/bounded-fetch-steps.sweep.json",
     "",
     "WHAT THE CONTRACT IS. A step that waits on somebody else's server declares a",

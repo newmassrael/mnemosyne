@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1206's CONTRACT IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/sweeps/formatting-population.sweep.json",
     "",
     "WHAT THE CONTRACT IS. `scripts/fmt.sh` must WRITE every package manifest",

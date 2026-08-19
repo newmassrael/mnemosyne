@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1241's VALUE HALF IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/unread-declaration/injection-sweep.json",
     "",
     "WHAT THE CONTRACT IS. The key half of this gate asks the program; the value",

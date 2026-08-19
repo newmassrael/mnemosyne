@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THE THIRD STATE IS ACTUALLY DISTINGUISHED — run it from",
     "the repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/restored/injection-sweep.json",
     "",
     "Round 1099 read a run whose cache keys had all moved as a run that built",

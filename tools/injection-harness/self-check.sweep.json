@@ -1,7 +1,8 @@
 {
   "_": [
-    "THE HARNESS AIMED AT ITSELF — run it from this crate's directory:",
-    "    cargo run -- self-check.sweep.json",
+    "THE HARNESS AIMED AT ITSELF — run it from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        tools/injection-harness/self-check.sweep.json",
     "Every property this tool holds is a property its own suite claims to hold,",
     "and a claim nobody has broken is a claim nobody has measured. So each",
     "injection here removes ONE of them and names the tests that must go red.",
@@ -355,6 +356,185 @@
         "the_walk_finds_a_test_wherever_it_is_written_and_says_what_it_could_not_see",
         "every_test_a_sweep_names_is_one_this_tree_still_has"
       ]
+    },
+    {
+      "name": "a-row-an-injection-still-needs-can-be-forgotten",
+      "why": "R1258 — the laundering path, whole. `forget` exists so that a row for a DELETED injection can be retired with the reason; pointed at one the manifest still names, it would drop a proof that is still owed and leave the sweep looking whole while one of its claims had quietly stopped being measured. `--only <name>` costs one injection, which is what lets this refusal be absolute",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if sweep.injections.iter().any(|i| i.name == name) {",
+          "to": "    if sweep.injections.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": ["forgetting_a_row_an_injection_still_needs_is_refused"]
+    },
+    {
+      "name": "a-retired-row-is-deleted-rather-than-recorded",
+      "why": "R1258 — the whole point of the verb. Deleting the row is the cheap way out the law was holding out against: the decision about what happened to that injection — renamed, re-aimed, withdrawn — is a fact only a person holds, and a deletion throws it away while leaving a file that reads as answered. Stop keeping the row and this becomes the hand-edit with a program's name on it",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    record.forgotten.insert(name.to_string(), retired.clone());",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "evidence_about_an_injection_the_manifest_no_longer_has_is_retired_by_a_decision"
+      ]
+    },
+    {
+      "name": "a-retirement-withdraws-the-completeness-claim",
+      "why": "R1258 — the direction that looks safe and is not. `complete` says a whole run established a row for every injection the manifest holds, and retiring a row for one it NO LONGER holds cannot uncover any; withdrawing the claim anyway demotes the record to partial, and a partial record demands nothing of the rows beside it. The tooth this file was built for would be filed off by the verb meant to keep it",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    let retired = Forgotten {\n        because: because.trim().to_string(),",
+          "to": "    record.complete = false;\n    let retired = Forgotten {\n        because: because.trim().to_string(),"
+        }
+      ],
+      "expect_red": [
+        "evidence_about_an_injection_the_manifest_no_longer_has_is_retired_by_a_decision"
+      ]
+    },
+    {
+      "name": "a-decision-with-no-reason-is-recorded-anyway",
+      "why": "R1258 — the reason IS the artefact. A row retired with a blank one has thrown the decision away exactly as deleting it would, and left behind a file that reads as though the question had been answered — which is worse than the deletion, because nothing looks unfinished",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if because.trim().is_empty() {",
+          "to": "    if because.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": ["a_decision_with_no_reason_written_down_is_refused"]
+    },
+    {
+      "name": "forgetting-a-name-nobody-holds-succeeds-quietly",
+      "why": "R1258 — the `0 means suspect the injection` rule, at the spelling of the thing being asked for. A name no row answers to is a caller already wrong about this file — a typo, or the wrong record of the two a directory may hold — and succeeding would let them believe a decision was recorded when nothing was",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    let Some(was) = record.fired.remove(name) else {\n        let held: Vec<&String> = record.fired.keys().collect();\n        return Err(format!(\n            \"{} records no firing for `{name}` — it holds {held:?}\",\n            path.display()\n        ));\n    };",
+          "to": "    let was = record.fired.remove(name).unwrap_or(Firing {\n        edits: Vec::new(),\n        expect_red: Vec::new(),\n        tests: Vec::new(),\n    });"
+        }
+      ],
+      "expect_red": ["forgetting_a_row_that_is_not_there_is_refused_rather_than_recorded"]
+    },
+    {
+      "name": "an-already-forgotten-row-takes-the-newer-reason",
+      "why": "R1258 — the older reason is the better-attested one: it was written by whoever still remembered what happened to that injection. Overwriting it makes this a verb for rewriting the record of a decision as well as for making one, and the refusal is what carries the standing reason back to whoever is about to replace it",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if let Some(already) = record.forgotten.get(name) {",
+          "to": "    if let Some(already) = None::<&Forgotten> {"
+        }
+      ],
+      "expect_red": ["a_row_already_forgotten_keeps_the_first_reason"]
+    },
+    {
+      "name": "a-name-in-both-halves-is-not-a-contradiction",
+      "why": "R1258 — `forget` is the way past the law that catches a row answering to nothing, so it is the obvious place for that finding to be laundered away instead of answered. A name recorded as retired AND named by the manifest is a record in two states at once, and an injection that came back owes a proof of its own rather than yesterday's note saying it was withdrawn",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        if about.injections.iter().any(|i| &i.name == name) {",
+          "to": "        if about.injections.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": [
+        "a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone"
+      ]
+    },
+    {
+      "name": "a-retired-row-with-no-reason-reads-as-a-decision",
+      "why": "R1258 — the same blankness the verb refuses, arriving by the other door. A record can be typed into, and a retired row with nothing in its `because` is the deletion this whole mechanism replaced; the walk over the tracked records is the only thing that ever looks at one again",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        if decision.because.trim().is_empty() {",
+          "to": "        if decision.because.len() == usize::MAX {"
+        }
+      ],
+      "expect_red": [
+        "a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone"
+      ]
+    },
+    {
+      "name": "the-first-word-is-a-manifest-again",
+      "why": "R1258 — the tool now has two actions, so its first word is a verb and nothing else. Reading an unknown word as a path is the shape that made a misspelled flag look like a manifest, and it fails in the direction that reads as an ordinary error: the reader is told their FILE is unreadable when what they typed was not a verb",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        Some((word, None)) => Err(format!(\n            \"unknown verb {word:?} — usage: injection-harness {}\",\n            Verb::USAGE\n        )),",
+          "to": "        Some((_, None)) => run(&argv),"
+        }
+      ],
+      "expect_red": ["a_word_this_tool_does_not_answer_to_is_refused_by_name"]
+    },
+    {
+      "name": "a-documented-invocation-is-read-from-the-line-break",
+      "why": "R1258 — thirty-four tracked manifests document the command that runs them, and this round proved what an unread command line is worth by invalidating all thirty-four at once. The two wrappings in this repository put `--` on different sides of the break, so a reader that took the words after the break — or after the first `--`-looking thing — answers for one and mis-reads the other, which is a law that passes while describing a tool that is not there",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        let separator = words.iter().position(|word| *word == \"--\")?;",
+          "to": "        let separator = 1;"
+        }
+      ],
+      "expect_red": [
+        "a_wrapped_invocation_is_read_as_the_one_command_it_is",
+        "every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run"
+      ]
+    },
+    {
+      "name": "a-header-may-name-any-crates-binary",
+      "why": "R1258 — the half of a documented command that decides WHICH PROGRAM RUNS. A header pointed at another crate's manifest runs another tool over this file, and it fails in the direction that reads like an ordinary error somewhere else; the reader has been told to run something that was never this sweep",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        Some(named) if named.ends_with(HARNESS_MANIFEST) => {}",
+          "to": "        Some(_) => {}"
+        }
+      ],
+      "expect_red": ["a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"]
+    },
+    {
+      "name": "a-header-may-name-any-word-as-its-verb",
+      "why": "R1258 — the word this repository's headers all carry is the one the tool answers to, and that agreement is exactly what went stale the moment the tool gained verbs. A judgement that accepts any first word is one that would have called all thirty-four correct on the commit that invalidated them",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        Some(word) if Verb::of(word).is_some() => {}",
+          "to": "        Some(_) => {}"
+        }
+      ],
+      "expect_red": ["a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"]
+    },
+    {
+      "name": "a-header-may-carry-words-nobody-reads",
+      "why": "R1258 — a header is `sweep <this file>` and nothing else, which is what lets this law check ALL of it without parsing the tool's command line a second time. Words past the manifest are a flag or an argument nobody reads back, and one of those can stop existing without a sound — which is exactly what happened to the whole line the day the tool gained verbs",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if command.argv.len() > 2 {",
+          "to": "    if command.argv.len() > usize::MAX {"
+        }
+      ],
+      "expect_red": ["a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"]
+    },
+    {
+      "name": "a-header-may-name-any-sweep",
+      "why": "R1258 — thirty-four near-identical headers sit one paste apart from each other, and a pasted one names the sweep it was copied FROM. That is the failure that looks like nothing: the command runs, the report prints, and it is a measurement of another manifest",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        Some(named) if named == manifest => {}",
+          "to": "        Some(_) => {}"
+        }
+      ],
+      "expect_red": ["a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"]
     }
   ]
 }

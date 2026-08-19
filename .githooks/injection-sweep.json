@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THE HOOKS' OWN GATE IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        .githooks/injection-sweep.json",
     "",
     "`crates/mnemosyne-cli/tests/git_hooks_smoke.rs` drives the REAL hook files",

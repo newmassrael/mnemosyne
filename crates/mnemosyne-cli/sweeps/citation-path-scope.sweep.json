@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS THE PATH-SCOPE LAWS ARE NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json",
     "",
     "WHAT IT IS ABOUT. `validate-code-refs --paths <file>...` is SCE lift-request",

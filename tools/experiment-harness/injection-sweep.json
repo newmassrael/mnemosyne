@@ -2,7 +2,7 @@
   "_": [
     "THE SWEEP THAT SAYS R1248's READER IS NOT VACUOUS — run it from the",
     "repository root:",
-    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        tools/experiment-harness/injection-sweep.json",
     "",
     "WHAT THE READER IS. A kit is a workspace validated by ONE revision, and",
