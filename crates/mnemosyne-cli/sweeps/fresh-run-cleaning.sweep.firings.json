@@ -5,49 +5,81 @@
   ],
   "complete": true,
   "fired": {
-    "the-clean-is-announced-and-not-run": {
+    "no-fresh-runs-the-pass-anyway": {
       "edits": [
         {
           "file": "scripts/verify.sh",
-          "from": "      run_into_log -- cargo clean -p \"$c\" --locked >/dev/null || true",
-          "to": "      true"
+          "from": "if [[ \"$fresh\" == 1 ]]; then\n  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/stale-artifacts/Cargo.toml\" \\",
+          "to": "if true; then\n  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/stale-artifacts/Cargo.toml\" \\"
         }
       ],
       "expect_red": [
-        "a_fresh_run_cleans_the_crates_git_says_changed"
+        "verify_wrapper_smoke::no_fresh_asks_no_pass_at_all"
       ],
       "tests": [
-        "verify_wrapper_smoke::a_fresh_run_cleans_the_crates_git_says_changed"
+        "verify_wrapper_smoke::no_fresh_asks_no_pass_at_all"
       ]
     },
-    "the-header-forgets-what-a-fresh-run-cleaned": {
+    "the-pass-is-announced-and-never-asked": {
       "edits": [
         {
           "file": "scripts/verify.sh",
-          "from": "  echo \"# fresh=$fresh cleaned=[${changed_crates}]\"",
-          "to": "  echo \"# fresh=$fresh\""
+          "from": "  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/stale-artifacts/Cargo.toml\" \\\n    --bin stale-artifacts -- --at . -- \"$@\"\n  fresh_verdict=$?",
+          "to": "  fresh_verdict=0"
         }
       ],
       "expect_red": [
-        "a_fresh_run_cleans_the_crates_git_says_changed"
+        "verify_wrapper_smoke::a_fresh_run_hands_the_freshness_pass_the_command_it_is_about_to_verify",
+        "verify_wrapper_smoke::a_freshness_pass_that_refuses_stops_the_verification_from_happening"
       ],
       "tests": [
-        "verify_wrapper_smoke::a_fresh_run_cleans_the_crates_git_says_changed"
+        "verify_wrapper_smoke::a_fresh_run_hands_the_freshness_pass_the_command_it_is_about_to_verify",
+        "verify_wrapper_smoke::a_freshness_pass_that_refuses_stops_the_verification_from_happening"
       ]
     },
-    "the-population-of-changed-crates-is-never-asked-for": {
+    "the-pass-is-asked-without-the-command-it-precedes": {
       "edits": [
         {
           "file": "scripts/verify.sh",
-          "from": "  changed_crates=\"$(git diff --name-only HEAD -- crates/ 2>/dev/null \\\n    | sed -n 's#^crates/\\([^/]*\\)/.*#\\1#p' | sort -u | tr '\\n' ' ')\"",
-          "to": "  changed_crates=\"\""
+          "from": "    --bin stale-artifacts -- --at . -- \"$@\"",
+          "to": "    --bin stale-artifacts -- --at ."
         }
       ],
       "expect_red": [
-        "a_fresh_run_cleans_the_crates_git_says_changed"
+        "verify_wrapper_smoke::a_fresh_run_hands_the_freshness_pass_the_command_it_is_about_to_verify"
       ],
       "tests": [
-        "verify_wrapper_smoke::a_fresh_run_cleans_the_crates_git_says_changed"
+        "verify_wrapper_smoke::a_fresh_run_hands_the_freshness_pass_the_command_it_is_about_to_verify"
+      ]
+    },
+    "the-pass-refusal-is-reported-and-not-honoured": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  if [[ \"$fresh_verdict\" -ne 0 ]]; then",
+          "to": "  if false; then"
+        }
+      ],
+      "expect_red": [
+        "verify_wrapper_smoke::a_freshness_pass_that_refuses_stops_the_verification_from_happening"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::a_freshness_pass_that_refuses_stops_the_verification_from_happening"
+      ]
+    },
+    "the-separate-workspaces-opt-out-of-freshening-again": {
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "    \"$verify\" --label \"side-${ws//\\//-}\" -- \\",
+          "to": "    \"$verify\" --no-fresh --label \"side-${ws//\\//-}\" -- \\"
+        }
+      ],
+      "expect_red": [
+        "judged_test_runs::every_separate_workspaces_suite_is_one_the_wrapper_freshens"
+      ],
+      "tests": [
+        "judged_test_runs::every_separate_workspaces_suite_is_one_the_wrapper_freshens"
       ]
     }
   }

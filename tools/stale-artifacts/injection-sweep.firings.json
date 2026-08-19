@@ -1,0 +1,174 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-workspace-cargo-cannot-read-becomes-a-pass-with-nothing-to-do": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let members = match members(at, &manifest, &root, locked) {\n        Ok(found) => found,\n        Err(message) => return Plan::Unreadable(message),\n    };",
+          "to": "    let members = match members(at, &manifest, &root, locked) {\n        Ok(found) => found,\n        Err(message) => return Plan::Nothing(message),\n    };"
+        }
+      ],
+      "expect_red": [
+        "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command"
+      ],
+      "tests": [
+        "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command"
+      ]
+    },
+    "an-untracked-file-is-not-a-difference-from-head": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    paths.extend(lines(&git(\n        at,\n        &[\"ls-files\", \"--others\", \"--exclude-standard\"],\n    )?));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "an_untracked_file_in_a_package_is_a_change_against_head"
+      ],
+      "tests": [
+        "an_untracked_file_in_a_package_is_a_change_against_head"
+      ]
+    },
+    "the-clean-is-decided-and-not-run": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "        let out = Command::new(cargo())\n            .args(&arguments)\n            .current_dir(at)",
+          "to": "        let out = Command::new(cargo())\n            .args([\"--version\"])\n            .current_dir(at)"
+        }
+      ],
+      "expect_red": [
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ],
+      "tests": [
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ]
+    },
+    "the-clean-pins-whatever-workspace-it-is-aimed-at": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let locked = read.has(\"--locked\");",
+          "to": "    let locked = true;"
+        }
+      ],
+      "expect_red": [
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"
+      ],
+      "tests": [
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"
+      ]
+    },
+    "the-pass-asks-for-members-rather-than-for-the-resolve": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "        \"metadata\".to_string(),\n        \"--format-version\".to_string(),",
+          "to": "        \"metadata\".to_string(),\n        \"--no-deps\".to_string(),\n        \"--format-version\".to_string(),"
+        }
+      ],
+      "expect_red": [
+        "a_changed_path_dependency_outside_this_workspace_is_still_code_the_run_compiles",
+        "a_package_outside_this_repository_is_not_one_this_pass_counts",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ],
+      "tests": [
+        "a_changed_path_dependency_outside_this_workspace_is_still_code_the_run_compiles",
+        "a_package_outside_this_repository_is_not_one_this_pass_counts",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ]
+    },
+    "the-population-is-the-root-workspaces-directory-again": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    for path in &paths {",
+          "to": "    for path in paths.iter().filter(|path| path.starts_with(\"crates/\")) {"
+        }
+      ],
+      "expect_red": [
+        "a_changed_package_of_a_separate_workspace_is_one_this_pass_cleans",
+        "a_root_member_outside_the_crates_directory_is_in_the_population",
+        "a_run_over_one_workspace_does_not_clean_a_package_it_never_compiles",
+        "the_joined_spelling_of_the_manifest_flag_is_the_same_flag",
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ],
+      "tests": [
+        "a_changed_package_of_a_separate_workspace_is_one_this_pass_cleans",
+        "a_root_member_outside_the_crates_directory_is_in_the_population",
+        "a_run_over_one_workspace_does_not_clean_a_package_it_never_compiles",
+        "the_joined_spelling_of_the_manifest_flag_is_the_same_flag",
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ]
+    },
+    "the-repository-boundary-is-dropped-from-the-resolve": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "        if !directory.starts_with(root) {\n            continue;\n        }",
+          "to": "        if false && !directory.starts_with(root) {\n            continue;\n        }"
+        }
+      ],
+      "expect_red": [
+        "a_package_outside_this_repository_is_not_one_this_pass_counts"
+      ],
+      "tests": [
+        "a_package_outside_this_repository_is_not_one_this_pass_counts"
+      ]
+    },
+    "the-shallowest-package-owns-a-changed-file": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "            .max_by_key(|member| member.directory.as_os_str().len());",
+          "to": "            .min_by_key(|member| member.directory.as_os_str().len());"
+        }
+      ],
+      "expect_red": [
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it"
+      ],
+      "tests": [
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it"
+      ]
+    },
+    "the-workspace-freshened-is-always-the-root-one": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let manifest = read\n        .value(&[\"--manifest-path\"])\n        .map_or_else(|| at.join(\"Cargo.toml\"), |written| at.join(written));",
+          "to": "    let manifest = at.join(\"Cargo.toml\");"
+        }
+      ],
+      "expect_red": [
+        "a_changed_package_of_a_separate_workspace_is_one_this_pass_cleans",
+        "a_package_outside_this_repository_is_not_one_this_pass_counts",
+        "a_run_over_one_workspace_does_not_clean_a_package_it_never_compiles",
+        "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command",
+        "the_joined_spelling_of_the_manifest_flag_is_the_same_flag",
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ],
+      "tests": [
+        "a_changed_package_of_a_separate_workspace_is_one_this_pass_cleans",
+        "a_package_outside_this_repository_is_not_one_this_pass_counts",
+        "a_run_over_one_workspace_does_not_clean_a_package_it_never_compiles",
+        "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command",
+        "the_joined_spelling_of_the_manifest_flag_is_the_same_flag",
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ]
+    }
+  }
+}

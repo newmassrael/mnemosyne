@@ -1,0 +1,31 @@
+[workspace]
+
+[package]
+name = "stale-artifacts"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — no artifact of code this tree has changed survives into the run that judges it"
+
+# ITS OWN WORKSPACE, like every other program under `tools/`: these are separate
+# programs with their own dependency trees, and compiling them into the tree
+# they act on is how a gate starts depending on what it is checking.
+#
+# `ci-plan` is a path dependency reaching INTO the root workspace, which is the
+# one direction that works: cargo makes a path dependency living inside a
+# workspace a member of it, so the shared crate belongs to the root and is
+# borrowed from here. It is here for ONE answer — what cargo command a list of
+# words runs — and that answer has to be the same one every other gate reads,
+# or this program would freshen a workspace no law thinks the command builds.
+
+[dependencies]
+ci-plan = { path = "../ci-plan" }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

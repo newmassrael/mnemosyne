@@ -581,15 +581,26 @@ run_executable() {
 # so a suite whose verdict covered less than it looks like says so HERE rather
 # than in CI a round later.
 #
-# `--no-fresh` is measured rather than lazy: the wrapper's freshness pass
-# cleans the crates under `crates/` that differ from HEAD, which belong to the
-# ROOT workspace and never to this one, so asking for it here would rebuild
-# somebody else's tree and freshen nothing of this one.
+# AND FRESHENED, WHICH UNTIL R1257 IT WAS NOT. This call passed `--no-fresh`,
+# with a comment saying the wrapper's freshness pass cleaned the crates under
+# `crates/` — the ROOT workspace's member directory — and so could freshen
+# nothing of this one. That reading was correct and the conclusion was the wrong
+# half of it: what it described is a defect in the pass, not a reason for
+# twenty-three workspaces to go without one. R743 has two halves, an flock
+# against two cargo runs overlapping and a forced clean to RECOVER from one that
+# already did, and only the first reached these. The pass now asks which
+# workspace the command it precedes builds (`tools/stale-artifacts`), so the
+# flag is gone and the default applies here as it does everywhere else.
+#
+# `--locked` IS NOW LOAD-BEARING TWICE OVER. The freshness pass copies it from
+# this command rather than deciding again whose lockfile this repository may
+# pin: the ownership question is answered ONCE, in the pass above this loop, and
+# the answer rides on the command.
 run_suite() {
   local ws=$1 locked=()
   if [[ ${locked_of[$ws]} == yes ]]; then locked=(--locked); fi
   declare_and_run suite \
-    "$verify" --no-fresh --label "side-${ws//\//-}" -- \
+    "$verify" --label "side-${ws//\//-}" -- \
     cargo test --manifest-path "$ws/Cargo.toml" "${locked[@]}" --no-fail-fast
 }
 

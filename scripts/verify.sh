@@ -14,12 +14,20 @@
 #   scripts/verify.sh [--fresh] [--no-fresh] [--label <name>] -- <command...>
 #   scripts/verify.sh cargo test --workspace
 #
-# --fresh (DEFAULT): `cargo clean -p <crate>` for every crate with uncommitted
-#   changes vs HEAD before running — targeted, so only the changed crates and
-#   their dependents rebuild (not a full clean). Guarantees no stale artifact of
-#   the code under test survives, even if a past concurrent run corrupted it.
-# --no-fresh: skip the clean (rely on the flock + cargo's own fingerprinting;
-#   use when nothing changed and you want speed).
+# --fresh (DEFAULT): `cargo clean -p <package>` for every package the working
+#   tree has changed against HEAD, in the workspace the wrapped command builds —
+#   targeted, so only the changed packages and their dependents rebuild (not a
+#   full clean). Guarantees no stale artifact of the code under test survives,
+#   even if a past concurrent run corrupted it. `tools/stale-artifacts` is what
+#   decides it, for the reason in that program's header: this repository has
+#   twenty-four workspaces, so WHICH one a run has to freshen is decided at
+#   runtime, and a `cargo clean --manifest-path "$variable"` written here is a
+#   command no gate can place. Until R1257 the branch was eight lines of shell
+#   asking git about `crates/` — the ROOT workspace's member directory — and
+#   `check-side-workspaces.sh` therefore passed --no-fresh for all twenty-three
+#   others: R743's RECOVERY half reached none of them.
+# --no-fresh: skip the pass (rely on the flock + cargo's own fingerprinting;
+#   use when the tree is a fresh clone, which is what the workflows are).
 #
 # Always: an flock on target/.verify.lock serialises verify.sh runs; the full
 # combined stdout+stderr is written to target/verify-logs/<utc-ts>-<label>.log
@@ -114,6 +122,14 @@ mkdir -p "$logdir"
 # ABSOLUTE, because it is also the identity compared against `VERIFY_LOCKS_HELD`
 # — two trees have a `target/.verify.lock` each and they are two locks.
 lock="$(pwd)/target/.verify.lock"
+
+# THE PROGRAMS THIS SCRIPT RUNS COME FROM THIS SCRIPT'S CHECKOUT and the tree
+# they act on is the WORKING DIRECTORY — two different trees whenever this
+# repository's wrapper is used over another one. Resolved ONCE, here, because
+# three of them need it now: the freshness pass runs BEFORE the command and the
+# two gates run after it, and a second `cd`-and-`pwd` is a second chance to
+# answer differently.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ -z "$label" ]]; then
   label="$(printf '%s' "$*" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-60)"
@@ -219,37 +235,47 @@ run_into_log() {
   wait "$child"
 }
 
-# WHICH CRATES A FRESH RUN WOULD CLEAN IS ASKED BEFORE THE LOG IS OPENED, and
-# the cleaning happens after it. The header records the answer, so the question
-# has to come first; the cleaning is a cargo command like every other one this
-# script runs, so it goes into the log rather than to /dev/null — what a fresh
-# run threw away is part of the record of why the run that followed rebuilt what
-# it did. The caller sees exactly what it saw before: `>/dev/null` here applies
-# to the follower and not to what is written.
-changed_crates=""
-if [[ "$fresh" == 1 ]]; then
-  changed_crates="$(git diff --name-only HEAD -- crates/ 2>/dev/null \
-    | sed -n 's#^crates/\([^/]*\)/.*#\1#p' | sort -u | tr '\n' ' ')"
-fi
-
 echo "[verify] cmd: $*"
 echo "[verify] log: $log"
 {
   echo "# verify.sh $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "# cmd: $*"
-  echo "# fresh=$fresh cleaned=[${changed_crates}]"
+  echo "# fresh=$fresh"
   echo "# cwd: $(pwd)"
   echo
 } >>"$log"
 
+# NO ARTIFACT OF CODE THIS TREE HAS CHANGED SURVIVES INTO THE RUN THAT JUDGES IT
+# (R743's recovery half, reaching every workspace since R1257).
+#
+# WHAT IT CLEANED IS IN THE LOG BECAUSE THE PASS SAYS SO, which is why the
+# header above no longer carries a `cleaned=[…]` of its own. That field existed
+# because the shell had to ask the question before opening the log in order to
+# record the answer anywhere; the program prints its own numbers — how many
+# paths the tree changed, how many packages the workspace has, and each package
+# it cleaned — and `run_into_log` puts them in the same log as everything else.
+# One record rather than two spellings of one, and the one that is left is the
+# one that cannot say something the pass did not do.
+#
+# A REFUSAL FAILS THE VERIFICATION, exactly as the two gates below do. A
+# freshness pass that could not run leaves precisely the artifact it exists to
+# remove, and a run that continued past it would then be judged by a binary
+# built from source this tree no longer holds — R743, silently, with a green
+# line where the warning should be.
+#
+# THE MANIFEST IS WRITTEN OUT IN THE COMMAND for the reason spelled at the
+# coverage gate below: `ci-plan` can place a cargo command only when the literal
+# tail of its `--manifest-path` names a directory.
 if [[ "$fresh" == 1 ]]; then
-  if [[ -n "${changed_crates// }" ]]; then
-    for c in $changed_crates; do
-      echo "[verify] fresh: cargo clean -p $c"
-      run_into_log -- cargo clean -p "$c" --locked >/dev/null || true
-    done
-  else
-    echo "[verify] fresh: no uncommitted crate changes; nothing to clean."
+  run_into_log -- cargo run -q --locked --manifest-path "$here/tools/stale-artifacts/Cargo.toml" \
+    --bin stale-artifacts -- --at . -- "$@"
+  fresh_verdict=$?
+  if [[ "$fresh_verdict" -ne 0 ]]; then
+    echo "[verify] the freshness pass did not run (exit $fresh_verdict); its own" \
+      "message is above. The command below would be judged with whatever artifacts" \
+      "this tree already had" >&2
+    echo "[verify] exit=2 log=$log"
+    exit 2
   fi
 fi
 
@@ -270,7 +296,7 @@ status=$?
 #
 # THE PROGRAM COMES FROM THIS SCRIPT'S CHECKOUT and the run it judges happened
 # in the WORKING DIRECTORY — two different trees whenever this repository's
-# wrapper is used over another one.
+# wrapper is used over another one. `here` is resolved once, near the top.
 #
 # THE MANIFEST IS WRITTEN OUT IN THE COMMAND, not bound to a variable first, and
 # that is a requirement rather than a style: `ci-plan` reads this file's source
@@ -283,7 +309,6 @@ status=$?
 # written the other way. Spelling it once, here, is also why there is no
 # separate existence check — a missing manifest makes `cargo run` fail, which is
 # the `*)` branch below, and it says so.
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 run_into_log -- cargo run -q --locked --manifest-path "$here/tools/unreported-targets/Cargo.toml" \
   --bin unreported-targets -- --log "$log" --at . -- "$@"
 coverage_verdict=$?

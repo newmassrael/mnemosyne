@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# A `cargo` that records every call and REFUSES exactly one of them: the run of
+# `tools/stale-artifacts`, which is the freshness pass `scripts/verify.sh` puts
+# in front of every command it verifies.
+#
+# WHAT THE CASE USING THIS IS ABOUT. A freshness pass that could not run leaves
+# precisely the artifact it exists to remove, so the wrapper must not go on to
+# run the verification — a run judged with whatever artifacts the tree already
+# had is R743 again, with a green line where the warning should be. The refusal
+# is keyed on the ARGUMENTS rather than on an environment variable so that the
+# other cases using the recording stand-in read exactly the environment they
+# already named (R1182).
+#
+# Reads: SIDE_GATE_CARGO_LOG — the file every call is appended to, one per line.
+echo "$*" >> "$SIDE_GATE_CARGO_LOG"
+case "$*" in
+    *stale-artifacts*) exit 2 ;;
+esac
+exit 0

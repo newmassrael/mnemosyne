@@ -61,6 +61,13 @@ impl Tree {
         Self::with_cargo("cargo-records-the-order")
     }
 
+    /// The same, with the freshness pass refusing. It is the one call in this
+    /// script whose failure must stop the verification rather than be reported
+    /// beside it.
+    fn refusing_the_freshness_pass() -> Self {
+        Self::with_cargo("cargo-refuses-the-freshness-pass")
+    }
+
     fn with_cargo(stub: &str) -> Self {
         let dir = TempDir::new().expect("tempdir");
         let shim = dir.path().join("shim");
@@ -76,22 +83,6 @@ impl Tree {
     /// Where the recording stand-in appends the calls it was given, one per line.
     fn cargo_log(&self) -> PathBuf {
         self.dir.path().join("cargo-calls.log")
-    }
-
-    /// `git`, in this tree, refusing to continue when it fails — a fixture built
-    /// on a repository that was not created is one whose assertions are about
-    /// nothing.
-    fn git(&self, args: &[&str]) {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(self.dir.path())
-            .output()
-            .expect("git, which the wrapper itself asks what changed");
-        assert!(
-            out.status.success(),
-            "git {args:?} failed in the fixture: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
     }
 
     fn lock(&self) -> String {
@@ -520,73 +511,109 @@ fn everything_the_wrapped_command_wrote_reaches_both_the_log_and_the_caller() {
     }
 }
 
-#[test]
-fn a_fresh_run_cleans_the_crates_git_says_changed() {
-    // THE DEFAULT PATH, AND THE ONE THAT HAD NO READER. `--fresh` is what this
-    // script does when nobody says otherwise, and every case in this file passes
-    // `--no-fresh` — so the branch that runs `cargo clean` for each crate with
-    // uncommitted changes was reached by no test at all. R1239 rewrote it twice
-    // over: moved BEHIND the header, so the header can record what was cleaned,
-    // and put through the same plumbing as everything else this script runs.
-    // Nothing but a person's reading said it still worked. It is not a dead
-    // branch — a past run's kept log holds `[verify] fresh: cargo clean -p
-    // mnemosyne-cli`, which is what a round with uncommitted crate changes does.
-    //
-    // THREE THINGS, AND THE MIDDLE ONE IS WHY THE CARGO HERE RECORDS. A branch
-    // that ANNOUNCES a clean and runs none prints the same line as one that
-    // cleans, so the announcement cannot be the evidence; the recording stand-in
-    // is asked what it was actually called with. And the header's record is the
-    // third, because it is what makes the reordering visible: the question "which
-    // crates changed" now has to be answered BEFORE the log is opened, and a
-    // version that asked it after would write `cleaned=[]` and still clean.
-    let tree = Tree::recording();
-    tree.git(&["init", "-q", "."]);
-    tree.git(&["config", "user.email", "wrapper@test"]);
-    tree.git(&["config", "user.name", "wrapper test"]);
-    tree.git(&["config", "commit.gpgsign", "false"]);
-    let changed = tree.dir.path().join("crates/a-crate/src/lib.rs");
-    std::fs::create_dir_all(changed.parent().expect("the fixture crate has a src/"))
-        .expect("the fixture crate");
-    std::fs::write(&changed, "// what HEAD holds\n").expect("the committed state");
-    tree.git(&["add", "-A"]);
-    tree.git(&["commit", "-qm", "the state a fresh run compares against"]);
-    std::fs::write(&changed, "// and what the working tree holds\n")
-        .expect("the uncommitted change a fresh run is about");
+/// The pass this script runs before it verifies anything, as a manifest.
+const FRESHNESS_PASS: &str = "tools/stale-artifacts/Cargo.toml";
 
-    let out = tree.run_at_the_default(&["bash", "-c", "exit 0"]);
+#[test]
+fn a_fresh_run_hands_the_freshness_pass_the_command_it_is_about_to_verify() {
+    // THE DEFAULT PATH, AND THE ONE THAT HAD NO READER until R1240. `--fresh` is
+    // what this script does when nobody says otherwise, and every other case in
+    // this file passes `--no-fresh`.
+    //
+    // WHAT R1257 CHANGED, AND WHY THE COMMAND IS THE ASSERTION. The pass used to
+    // be shell asking git for changes under `crates/` and running
+    // `cargo clean -p <directory>` — both statements about the ROOT workspace,
+    // in a repository with twenty-four. Which one a run has to freshen is a
+    // property of THE COMMAND ABOUT TO RUN, so the command is what the wrapper
+    // has to hand over: a pass invoked without it would answer about the root
+    // workspace for every one of the twenty-three separate suites and be green.
+    //
+    // AND THE ORDER IS PART OF IT, which is what the recording stand-in is for.
+    // Artifacts removed AFTER the run are removed from a verdict that has
+    // already been reached. A wrapper that ran the pass last would print every
+    // line this case reads and mean nothing by them.
+    let tree = Tree::recording();
+    let out = tree.run_at_the_default(&["cargo", "test", "--manifest-path", "side/Cargo.toml"]);
     let words = said(&out);
     assert!(
         out.status.success(),
         "the default path has to RUN before anything else here is about it:\n{words}"
     );
-    assert!(
-        words.contains("[verify] fresh: cargo clean -p a-crate"),
-        "a fresh run did not say it was cleaning the crate git reports changed, so \
-         either the question was not asked or its answer was not read:\n{words}"
-    );
 
     let calls = std::fs::read_to_string(tree.cargo_log())
         .expect("the recording cargo wrote down what the wrapper asked it");
-    assert!(
-        calls
-            .lines()
-            .any(|line| line.starts_with("clean -p a-crate")),
-        "the wrapper SAID it was cleaning and no cargo was ever asked to. The \
-         announcement is one line and the clean is another, so this is what a \
-         stale artifact surviving a fresh run looks like from outside — the R743 \
-         corruption this script exists to prevent, silently. Calls: {calls:?}"
-    );
-
-    let named = words
+    let asked = calls
         .lines()
-        .find_map(|line| line.strip_prefix("[verify] log: "))
-        .expect("the wrapper names the log it is writing");
-    let recorded = std::fs::read_to_string(tree.dir.path().join(named))
-        .expect("the log the wrapper named exists");
+        .position(|line| line.contains(FRESHNESS_PASS))
+        .unwrap_or_else(|| {
+            panic!(
+                "a fresh run never asked `{FRESHNESS_PASS}` anything, so nothing \
+                 removed the artifacts of the code this run is about to judge. \
+                 Calls: {calls:?}"
+            )
+        });
     assert!(
-        recorded.contains("cleaned=[a-crate"),
-        "the log's own header does not record what this run cleaned, which is the \
-         whole reason the question is asked before the log is opened:\n{recorded}"
+        calls.lines().nth(asked).is_some_and(
+            |line| line.ends_with("-- --at . -- cargo test --manifest-path side/Cargo.toml")
+        ),
+        "the pass was asked without the command it precedes, so which workspace \
+         it freshens is a guess — and the guess is the root one, for every \
+         separate workspace's suite. Calls: {calls:?}"
+    );
+    let verified = calls
+        .lines()
+        .position(|line| line.starts_with("test --manifest-path side/Cargo.toml"))
+        .expect("the wrapper ran the command it was given");
+    assert!(
+        asked < verified,
+        "the freshness pass ran AFTER the command it was supposed to freshen \
+         for, which removes artifacts from a verdict already reached. \
+         Calls: {calls:?}"
+    );
+}
+
+#[test]
+fn a_freshness_pass_that_refuses_stops_the_verification_from_happening() {
+    // THE REFUSAL, WHICH IS THE ONE ANSWER THAT MUST NOT BE REPORTED BESIDE THE
+    // RUN. The two gates this script runs AFTER a command judge that command, so
+    // their refusals turn a green into a 2 and the run still happened. This one
+    // runs BEFORE, and what it guarantees is a property OF the run: if it did
+    // not happen, the command is about to be judged with whatever artifacts the
+    // tree already had — which is exactly the R743 corruption, with the warning
+    // replaced by a green line.
+    let tree = Tree::refusing_the_freshness_pass();
+    let out = tree.run_at_the_default(&["cargo", "test", "--workspace"]);
+    let words = said(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "a wrapper whose freshness pass refused has no verdict to give:\n{words}"
+    );
+    let calls = std::fs::read_to_string(tree.cargo_log())
+        .expect("the recording cargo wrote down what the wrapper asked it");
+    assert!(
+        !calls
+            .lines()
+            .any(|line| line.starts_with("test --workspace")),
+        "the pass refused and the verification ran anyway, so its result is \
+         about a tree nothing freshened. Calls: {calls:?}"
+    );
+}
+
+#[test]
+fn no_fresh_asks_no_pass_at_all() {
+    // THE FLAG STILL MEANS SOMETHING, and the workflows depend on it: a hosted
+    // runner's tree is a fresh clone, where nothing differs from HEAD and the
+    // pass could only cost a build. A wrapper that ran it regardless would make
+    // the flag a comment.
+    let tree = Tree::recording();
+    let out = tree.run(None, &["bash", "-c", "exit 0"]);
+    assert!(out.status.success(), "{}", said(&out));
+    let calls = std::fs::read_to_string(tree.cargo_log())
+        .expect("the recording cargo wrote down what the wrapper asked it");
+    assert!(
+        !calls.contains(FRESHNESS_PASS),
+        "`--no-fresh` asked for the pass anyway. Calls: {calls:?}"
     );
 }
 

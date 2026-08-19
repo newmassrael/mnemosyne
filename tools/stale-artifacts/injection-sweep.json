@@ -1,0 +1,170 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1257's FRESHNESS PASS IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/stale-artifacts/injection-sweep.json",
+    "",
+    "WHAT THE PASS IS. `scripts/verify.sh --fresh` removes the build artifacts of",
+    "every package the working tree has changed against HEAD, in the workspace the",
+    "command it precedes is about to build. That is R743's RECOVERY half — the",
+    "flock stops two cargo runs from corrupting one build directory, and this is",
+    "what gets a tree back after one already did. Until this round it was shell",
+    "asking git about `crates/` and running `cargo clean -p <directory name>`,",
+    "which are two statements about the ROOT workspace in a repository with",
+    "twenty-four, and `check-side-workspaces.sh` therefore passed `--no-fresh` for",
+    "all twenty-three others.",
+    "",
+    "EACH INJECTION IS A WAY THE PASS STOPS BEING ONE WHILE STILL LOOKING LIKE",
+    "ONE. None of them prints an error, none is red anywhere else, and every one",
+    "of them leaves a run whose green verdict is about artifacts nobody removed.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it acts on,",
+    "so running the repository's whole suite would be minutes of proving nothing."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--manifest-path",
+    "tools/stale-artifacts/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-population-is-the-root-workspaces-directory-again",
+      "why": "N139 itself, put back. `crates/` is where the ROOT workspace's members live, so a population shaped like that directory is silent about `bench/`, `studio/` and every `tools/*` — twenty-three workspaces whose suites run through this wrapper. Nothing goes red anywhere else and no message changes: the pass reports a smaller number of changed packages, which reads exactly like a tree that changed fewer",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    for path in &paths {",
+          "to": "    for path in paths.iter().filter(|path| path.starts_with(\"crates/\")) {"
+        }
+      ],
+      "expect_red": [
+        "a_changed_package_of_a_separate_workspace_is_one_this_pass_cleans",
+        "a_root_member_outside_the_crates_directory_is_in_the_population",
+        "a_run_over_one_workspace_does_not_clean_a_package_it_never_compiles",
+        "the_joined_spelling_of_the_manifest_flag_is_the_same_flag",
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ]
+    },
+    {
+      "name": "the-workspace-freshened-is-always-the-root-one",
+      "why": "the other half of the same defect and the quieter one. `cargo clean -p` acts on the workspace it is pointed at, so a pass that ignores the command's own `--manifest-path` asks the ROOT workspace about a package it has never heard of. The clean then fails, and a pass that discarded that status — as the shell's `|| true` did — is a no-op with a green exit",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let manifest = read\n        .value(&[\"--manifest-path\"])\n        .map_or_else(|| at.join(\"Cargo.toml\"), |written| at.join(written));",
+          "to": "    let manifest = at.join(\"Cargo.toml\");"
+        }
+      ],
+      "expect_red": [
+        "a_changed_package_of_a_separate_workspace_is_one_this_pass_cleans",
+        "a_package_outside_this_repository_is_not_one_this_pass_counts",
+        "a_run_over_one_workspace_does_not_clean_a_package_it_never_compiles",
+        "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command",
+        "the_joined_spelling_of_the_manifest_flag_is_the_same_flag",
+        "the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ]
+    },
+    {
+      "name": "the-pass-asks-for-members-rather-than-for-the-resolve",
+      "why": "a workspace's MEMBERS are not the code its suite compiles. Six workspaces under `tools/` path-depend on `tools/ci-plan`, which is a member of the ROOT workspace and of none of theirs, so `--no-deps` reports `0 packages changed` for every one of them on a round that edited `ci-plan` — while the suite about to run is the one that compiles it. The direction is the quiet one: a smaller number, no message, a faster pass",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "        \"metadata\".to_string(),\n        \"--format-version\".to_string(),",
+          "to": "        \"metadata\".to_string(),\n        \"--no-deps\".to_string(),\n        \"--format-version\".to_string(),"
+        }
+      ],
+      "expect_red": [
+        "a_changed_path_dependency_outside_this_workspace_is_still_code_the_run_compiles",
+        "a_package_outside_this_repository_is_not_one_this_pass_counts",
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+      ]
+    },
+    {
+      "name": "the-repository-boundary-is-dropped-from-the-resolve",
+      "why": "reading a resolve with dependencies also reaches every registry crate and, for `studio`, a sibling checkout this repository does not own. None of them can ever be SELECTED — a changed path comes from git here and cannot be inside them — so what the boundary moves is the number printed beside the selection. `0 of 400` says nothing about whether this pass read anything, which is the one thing that number is for",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "        if !directory.starts_with(root) {\n            continue;\n        }",
+          "to": "        if false && !directory.starts_with(root) {\n            continue;\n        }"
+        }
+      ],
+      "expect_red": ["a_package_outside_this_repository_is_not_one_this_pass_counts"]
+    },
+    {
+      "name": "the-clean-pins-whatever-workspace-it-is-aimed-at",
+      "why": "a free resolve REWRITES a lockfile it disagrees with, which is what `locked_resolution_smoke` exists for, and pinning a workspace this repository does not own is a gate that goes red for somebody else's commit. `check-side-workspaces.sh` decides that once and puts the answer on the command; a pass that decided again would be a second answer to it, and this is what the wrong one looks like",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let locked = read.has(\"--locked\");",
+          "to": "    let locked = true;"
+        }
+      ],
+      "expect_red": ["the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"]
+    },
+    {
+      "name": "an-untracked-file-is-not-a-difference-from-head",
+      "why": "`git diff HEAD` answers about tracked files, so a module added to a crate and not committed leaves that crate's artifacts in place — and what they are artifacts OF is a version of the crate that no longer exists. It is the direction that reads as a working pass: fewer packages to clean, no message, a faster run",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    paths.extend(lines(&git(\n        at,\n        &[\"ls-files\", \"--others\", \"--exclude-standard\"],\n    )?));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["an_untracked_file_in_a_package_is_a_change_against_head"]
+    },
+    {
+      "name": "a-workspace-cargo-cannot-read-becomes-a-pass-with-nothing-to-do",
+      "why": "the one answer that must not be quiet. A pass that could not find out which packages a workspace has has NOT RUN, and a caller that reads that as `nothing to clean` goes on to verify with whatever artifacts the tree already had. The old shell had exactly this shape twice over — `2>/dev/null` on the question and `|| true` on the act",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let members = match members(at, &manifest, &root, locked) {\n        Ok(found) => found,\n        Err(message) => return Plan::Unreadable(message),\n    };",
+          "to": "    let members = match members(at, &manifest, &root, locked) {\n        Ok(found) => found,\n        Err(message) => return Plan::Nothing(message),\n    };"
+        }
+      ],
+      "expect_red": [
+        "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command"
+      ]
+    },
+    {
+      "name": "the-clean-is-decided-and-not-run",
+      "why": "the decision and the act are two things, and only one of them is what a reader sees. A pass that prints `cleaning side-crate`, records `ran cargo clean -p side-crate`, exits 0 and removes nothing is indistinguishable from a working one everywhere except in cargo's build directory — which is the one place the run that follows reads",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "        let out = Command::new(cargo())\n            .args(&arguments)\n            .current_dir(at)",
+          "to": "        let out = Command::new(cargo())\n            .args([\"--version\"])\n            .current_dir(at)"
+        }
+      ],
+      "expect_red": ["the_pass_removes_the_artifact_and_not_merely_the_line_about_it"]
+    },
+    {
+      "name": "the-shallowest-package-owns-a-changed-file",
+      "why": "a workspace root can itself be a package with members below it — `tools/injection-harness` and `tools/experiment-harness` are that shape here — so a changed file is inside TWO member directories and exactly one of them compiles it. Picking the shallower one cleans a package that did not change and leaves the artifacts of the one that did: a wasted rebuild AND a stale binary, from one comparison",
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "            .max_by_key(|member| member.directory.as_os_str().len());",
+          "to": "            .min_by_key(|member| member.directory.as_os_str().len());"
+        }
+      ],
+      "expect_red": ["the_package_that_owns_a_changed_file_is_the_deepest_one_holding_it"]
+    }
+  ]
+}

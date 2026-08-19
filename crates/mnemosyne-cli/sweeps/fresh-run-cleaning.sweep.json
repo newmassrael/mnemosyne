@@ -1,24 +1,26 @@
 {
   "_": [
-    "THE SWEEP THAT SAYS R1240's CONTRACT IS NOT VACUOUS — run it from the",
-    "repository root:",
+    "THE SWEEP THAT SAYS THE WRAPPER'S SIDE OF THE FRESHNESS PASS IS NOT VACUOUS",
+    "— run it from the repository root:",
     "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
     "        crates/mnemosyne-cli/sweeps/fresh-run-cleaning.sweep.json",
     "",
     "WHAT THE CONTRACT IS. `--fresh` is what `scripts/verify.sh` does when nobody",
-    "says otherwise: for every crate git reports changed against HEAD it runs",
-    "`cargo clean -p <crate>`, so no artifact of the code under test can survive",
-    "into the run that judges it. That is the second half of the R743 repair — the",
-    "lock stops two cargos racing, this stops a stale binary from a race that",
-    "already happened — and until R1240 no test reached the branch at all,",
-    "because every case in the file passes `--no-fresh`.",
+    "says otherwise: before running the command it was given, it asks",
+    "`tools/stale-artifacts` to remove the build artifacts of every package this",
+    "tree has changed, in the workspace THAT COMMAND builds. That is the second",
+    "half of the R743 repair — the lock stops two cargos racing, this recovers from",
+    "a race that already happened.",
     "",
-    "SO THE THREE INJECTIONS ARE THE THREE WAYS A FRESH RUN STOPS BEING ONE, and",
-    "each is silent in the direction that reads as a working run. The clean is",
-    "announced and not run; the population it works from is empty, so the run says",
-    "there was nothing to clean; the header stops recording what was cleaned, which",
-    "is the only place the answer is kept after the run. None of them is red",
-    "anywhere else, and none of them prints an error.",
+    "THE DECISION LIVES IN THE PROGRAM AND ITS OWN SWEEP IS BESIDE IT",
+    "(`tools/stale-artifacts/injection-sweep.json`). What is left here is the",
+    "WRAPPER'S four obligations, which is what this file is about: ask the pass,",
+    "hand it the command, run it BEFORE the verification, and fail the whole run",
+    "when it refuses. R1240 wrote this sweep against the eight lines of shell the",
+    "pass used to be; R1257 re-aimed it, because those lines are gone.",
+    "",
+    "AND THE FIFTH IS IN ANOTHER FILE'S LAW: `check-side-workspaces.sh` must not",
+    "opt its twenty-three suites out again, which is the state R1257 found.",
     "",
     "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
     "beside this file, so a run sent to a build machine leaves its evidence on a",
@@ -34,47 +36,76 @@
     "all",
     "--locked",
     "--no-fail-fast",
-    "verify_wrapper_smoke::"
+    "--",
+    "verify_wrapper_smoke::",
+    "judged_test_runs::"
   ],
   "red_set": "exhaustive",
   "logs": "../../../target/injection-logs",
   "min_free_mb": 8000,
   "injections": [
     {
-      "name": "the-clean-is-announced-and-not-run",
-      "why": "the announcement and the clean are two lines, and only one of them is what a reader sees. A run that prints `fresh: cargo clean -p x` and cleans nothing is indistinguishable from a working one — and what it leaves behind is exactly the stale artifact this script was written after: a deterministic regression that reads as a flake",
+      "name": "the-pass-is-announced-and-never-asked",
+      "why": "the announcement and the act are two lines, and only one of them is what a reader sees. A wrapper that prints its own freshness heading and asks nothing is indistinguishable from a working one, and what it leaves behind is exactly the stale artifact this script was written after: a deterministic regression that reads as a flake. THE SECOND RED IS THE HARNESS CORRECTING THIS MANIFEST: a wrapper that never asks the pass never hears it refuse, so removing the call takes BOTH guarantees at once. The prediction written here first named only one, and `red_set: exhaustive` is what turned that into a failure rather than a smaller number nobody read",
       "edits": [
         {
           "file": "scripts/verify.sh",
-          "from": "      run_into_log -- cargo clean -p \"$c\" --locked >/dev/null || true",
-          "to": "      true"
+          "from": "  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/stale-artifacts/Cargo.toml\" \\\n    --bin stale-artifacts -- --at . -- \"$@\"\n  fresh_verdict=$?",
+          "to": "  fresh_verdict=0"
         }
       ],
-      "expect_red": ["a_fresh_run_cleans_the_crates_git_says_changed"]
+      "expect_red": [
+        "verify_wrapper_smoke::a_fresh_run_hands_the_freshness_pass_the_command_it_is_about_to_verify",
+        "verify_wrapper_smoke::a_freshness_pass_that_refuses_stops_the_verification_from_happening"
+      ]
     },
     {
-      "name": "the-population-of-changed-crates-is-never-asked-for",
-      "why": "the quiet direction of the whole branch. With nothing to iterate the run reports `no uncommitted crate changes; nothing to clean` and carries on — a true-sounding sentence about a tree that has them — so a fresh run becomes a `--no-fresh` run everywhere at once, and the only sign is that a rebuild did not happen",
+      "name": "the-pass-is-asked-without-the-command-it-precedes",
+      "why": "WHICH workspace a run has to freshen is a property of the command about to run, and this repository has twenty-four of them. A pass asked without it answers about the root workspace for every one of the twenty-three separate suites — the exact state N139 named, reconstructed one word at a time",
       "edits": [
         {
           "file": "scripts/verify.sh",
-          "from": "  changed_crates=\"$(git diff --name-only HEAD -- crates/ 2>/dev/null \\\n    | sed -n 's#^crates/\\([^/]*\\)/.*#\\1#p' | sort -u | tr '\\n' ' ')\"",
-          "to": "  changed_crates=\"\""
+          "from": "    --bin stale-artifacts -- --at . -- \"$@\"",
+          "to": "    --bin stale-artifacts -- --at ."
         }
       ],
-      "expect_red": ["a_fresh_run_cleans_the_crates_git_says_changed"]
+      "expect_red": ["verify_wrapper_smoke::a_fresh_run_hands_the_freshness_pass_the_command_it_is_about_to_verify"]
     },
     {
-      "name": "the-header-forgets-what-a-fresh-run-cleaned",
-      "why": "the record rather than the act, and it is the reason the question is asked before the log is opened. The header is the only place a run's answer to `which crates were cleaned` survives, and a log that has stopped carrying it looks complete: the run is green, the cleaning happened, and a later reader diagnosing a rebuild has nothing to read",
+      "name": "the-pass-refusal-is-reported-and-not-honoured",
+      "why": "the two gates this script runs AFTER a command judge that command, so their refusals leave a run that still happened. This one runs BEFORE and guarantees a property OF the run, so a wrapper that prints the refusal and verifies anyway has a green line where the R743 warning should be — and the diff is one condition",
       "edits": [
         {
           "file": "scripts/verify.sh",
-          "from": "  echo \"# fresh=$fresh cleaned=[${changed_crates}]\"",
-          "to": "  echo \"# fresh=$fresh\""
+          "from": "  if [[ \"$fresh_verdict\" -ne 0 ]]; then",
+          "to": "  if false; then"
         }
       ],
-      "expect_red": ["a_fresh_run_cleans_the_crates_git_says_changed"]
+      "expect_red": ["verify_wrapper_smoke::a_freshness_pass_that_refuses_stops_the_verification_from_happening"]
+    },
+    {
+      "name": "no-fresh-runs-the-pass-anyway",
+      "why": "the flag is what the workflows use, because a hosted runner's tree is a fresh clone where nothing differs from HEAD and the pass could only cost a build. A wrapper that ran it regardless makes the flag a comment, and the direction is quiet: everything still passes, every CI job just got longer",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "if [[ \"$fresh\" == 1 ]]; then\n  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/stale-artifacts/Cargo.toml\" \\",
+          "to": "if true; then\n  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/stale-artifacts/Cargo.toml\" \\"
+        }
+      ],
+      "expect_red": ["verify_wrapper_smoke::no_fresh_asks_no_pass_at_all"]
+    },
+    {
+      "name": "the-separate-workspaces-opt-out-of-freshening-again",
+      "why": "the state this round found, and it had a comment defending it: the pass could only clean crates under `crates/`, so asking for it here freshened nothing. That reading was right and the conclusion was the wrong half of it. With the pass repaired, the flag going back is twenty-three suites silently losing R743's recovery half — and nothing else in this repository would notice",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "    \"$verify\" --label \"side-${ws//\\//-}\" -- \\",
+          "to": "    \"$verify\" --no-fresh --label \"side-${ws//\\//-}\" -- \\"
+        }
+      ],
+      "expect_red": ["judged_test_runs::every_separate_workspaces_suite_is_one_the_wrapper_freshens"]
     }
   ]
 }

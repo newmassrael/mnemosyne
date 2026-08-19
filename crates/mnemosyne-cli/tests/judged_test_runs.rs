@@ -347,6 +347,96 @@ fn a_census_verdict_written_to_a_file_is_one_a_step_exits_with() {
     );
 }
 
+/// The flag that turns the freshness pass off.
+const OPTS_OUT_OF_FRESHENING: &str = "--no-fresh";
+
+/// Does this command's carrier turn the freshness pass off?
+fn opts_out_of_freshening(command: &CargoCommand) -> bool {
+    command
+        .carrier
+        .iter()
+        .any(|word| word == OPTS_OUT_OF_FRESHENING)
+}
+
+#[test]
+fn every_separate_workspaces_suite_is_one_the_wrapper_freshens() {
+    // R1257, AND IT IS THE OTHER HALF OF THE LAW ABOVE. The wrapper does two
+    // things for a run: it judges what the run COVERED, which the law above is
+    // about, and it removes the artifacts of code the tree has CHANGED before
+    // the run starts, which is R743's recovery half. This file had a reader for
+    // the first and none for the second, and the second was off for every
+    // separate workspace in the repository: `check-side-workspaces.sh` passed
+    // `--no-fresh` on all twenty-three, with a comment explaining that the pass
+    // could only clean crates under `crates/` anyway.
+    //
+    // WHY THE LISTER'S SUITES AND NOT EVERY SUITE. `--no-fresh` is a real
+    // answer where the tree cannot differ from HEAD, which is what a hosted
+    // runner's fresh clone is — the workflows say it deliberately and their own
+    // words are the record of that judgement. The lister is the gate a person
+    // runs over a WORKING tree, where the difference is the whole point, and it
+    // is also the gate whose population is twenty-three workspaces nothing else
+    // compiles.
+    let root = repository_root();
+    let listed = ci_plan::workspaces(&root);
+    for skipped in &listed.skipped {
+        println!("[judged-test-runs] {}", skipped.was_not("freshened"));
+    }
+    let suites = ci_plan::lister_suite_commands(&listed);
+    let unfreshened: Vec<String> = suites
+        .iter()
+        .filter(|command| opts_out_of_freshening(command))
+        .map(|command| format!("{} — {}", command.origin(), command.rendered()))
+        .collect();
+    assert!(
+        unfreshened.is_empty(),
+        "an flock stops two cargo runs from corrupting one build directory and \
+         the freshness pass RECOVERS from one that already did — only the second \
+         works after the fact, and a suite that opts out of it can be handed a \
+         binary built from source this tree no longer holds:\n  {}",
+        unfreshened.join("\n  ")
+    );
+    assert!(
+        suites.len() >= 20,
+        "this repository has a separate workspace's suite per gate crate, and \
+         {} of them is a walk that stopped — in the direction that reads as \
+         compliance",
+        suites.len()
+    );
+}
+
+/// AND THE PREDICATE CAN SAY NO — the mirror the law above needs, because a
+/// reader of the carrier that had stopped finding the flag would report every
+/// suite as freshened whatever the lister wrote.
+#[test]
+fn a_suite_that_opts_out_of_freshening_is_seen_to() {
+    let freshened = CargoCommand {
+        source: "a case".to_string(),
+        owner: "a case".to_string(),
+        carrier: vec![
+            "./scripts/verify.sh".to_string(),
+            "--label".to_string(),
+            "side-bench".to_string(),
+        ],
+        cargo_args: ["cargo", "test", "--manifest-path", "bench/Cargo.toml"]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect(),
+        harness_args: Vec::new(),
+        env: Default::default(),
+    };
+    assert!(!opts_out_of_freshening(&freshened));
+
+    let mut opted_out = freshened.clone();
+    opted_out
+        .carrier
+        .insert(1, OPTS_OUT_OF_FRESHENING.to_string());
+    assert!(
+        opts_out_of_freshening(&opted_out),
+        "a law that answered `freshened` here would accept the state R1257 \
+         repaired, which is twenty-three suites with the recovery half off"
+    );
+}
+
 #[test]
 fn the_wrapper_that_law_names_is_the_one_that_runs_the_coverage_gate() {
     // THE HALF THAT TIES THE NAME TO THE MECHANISM. Above is a check on a path
