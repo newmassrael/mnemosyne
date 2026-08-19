@@ -9,8 +9,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "        timeout-minutes: 90\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "        timeout-minutes: 90\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace"
         }
       ],
       "expect_red": [
@@ -24,8 +24,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace"
         }
       ],
       "expect_red": [
@@ -39,8 +39,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y strace"
         }
       ],
       "expect_red": [
@@ -84,8 +84,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne"
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y strace\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne"
         }
       ],
       "expect_red": [

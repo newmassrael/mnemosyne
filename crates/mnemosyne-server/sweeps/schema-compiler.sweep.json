@@ -1,0 +1,101 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1252's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-server/sweeps/schema-compiler.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. The descriptor set this crate embeds and serves is one",
+    "a CRATE compiled, in the build script's own process, and not one a program",
+    "did. Six jobs of this repository's workflow used to install `protobuf-compiler`",
+    "from the Ubuntu archive because `tonic-build` shells out to `protoc`; on",
+    "2026-08-19 four consecutive runs of `main` died at that step, the last of",
+    "them after R1251 had already given apt retries and a shorter timeout.",
+    "",
+    "THE LAW IS ASSERTED AGAINST THE REAL BUILD, so every injection here edits",
+    "the build script rather than a fixture. The three are the three ways the",
+    "claim can stop being true: the compiler is a program again, the compiler is",
+    "asked for something else, and the file is compiled under another name.",
+    "",
+    "ONE OF THEM NEEDS `protoc` ON THE MACHINE RUNNING THE SWEEP, and that is",
+    "the point rather than an oversight: proving that the protoc route is caught",
+    "means taking it. On a machine without the binary that injection does not go",
+    "red, it fails to BUILD — which the harness reports as a discrepancy rather",
+    "than as a pass, so the sweep refuses instead of lying. Nothing else in this",
+    "repository needs the binary any more, this file included."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-server",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "schema_compiler_smoke::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-schema-compiler-goes-back-to-being-a-program",
+      "why": "the state this crate was in until R1252, and the one that put a network fetch in front of six jobs. `compile_protos` spawns a `protoc` binary; its descriptor agrees with `protox`'s byte for byte once `source_code_info` is set aside and carries the same 264 locations as a set, but in a different ORDER — which is what makes the embedded bytes say which compiler produced them",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-server/build.rs",
+          "from": "use prost::Message;\n",
+          "to": ""
+        },
+        {
+          "file": "crates/mnemosyne-server/build.rs",
+          "from": "    let mut compiler = protox::Compiler::new([include])?;\n    compiler.include_source_info(true);\n    compiler.include_imports(true);\n    compiler.open_file(file)?;\n    let descriptor_set = compiler.file_descriptor_set();",
+          "to": "    let proto_path = format!(\"{include}/{file}\");"
+        },
+        {
+          "file": "crates/mnemosyne-server/build.rs",
+          "from": "    std::fs::write(&descriptor_path, descriptor_set.encode_to_vec())?;\n\n    tonic_build::configure()\n        .build_server(true)\n        .build_client(true)\n        .compile_fds(descriptor_set)?;",
+          "to": "    tonic_build::configure()\n        .build_server(true)\n        .build_client(true)\n        .file_descriptor_set_path(&descriptor_path)\n        .compile_protos(&[proto_path], &[include])?;"
+        }
+      ],
+      "expect_red": [
+        "schema_compiler_smoke::the_embedded_descriptor_is_the_one_an_in_process_compile_produces"
+      ]
+    },
+    {
+      "name": "the-compiler-is-asked-for-something-else",
+      "why": "the drift that costs the generated Rust its doc comments and leaves everything else looking right. `include_source_info` is what carries the schema's comments through; a build script that stops asking for it produces a smaller descriptor that still serves every reflection client correctly, so nothing but a comparison notices",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-server/build.rs",
+          "from": "    compiler.include_source_info(true);",
+          "to": "    compiler.include_source_info(false);"
+        }
+      ],
+      "expect_red": [
+        "schema_compiler_smoke::the_embedded_descriptor_is_the_one_an_in_process_compile_produces"
+      ]
+    },
+    {
+      "name": "the-file-is-compiled-under-another-name",
+      "why": "the one that changes what every reflection client asks for the file BY. A descriptor records the include-relative path, so opening the schema by its path from the crate root renames it to `proto/mnemosyne.proto` — a rename of the crate's published schema, made by moving an argument",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-server/build.rs",
+          "from": "    let mut compiler = protox::Compiler::new([include])?;",
+          "to": "    let mut compiler = protox::Compiler::new([\".\"])?;"
+        },
+        {
+          "file": "crates/mnemosyne-server/build.rs",
+          "from": "    compiler.open_file(file)?;",
+          "to": "    compiler.open_file(format!(\"{include}/{file}\"))?;"
+        }
+      ],
+      "expect_red": [
+        "schema_compiler_smoke::the_embedded_descriptor_is_the_one_an_in_process_compile_produces",
+        "schema_compiler_smoke::the_schema_the_test_compiles_is_the_one_the_crate_serves"
+      ]
+    }
+  ]
+}

@@ -112,3 +112,6 @@ mod grpc_tracestate_smoke;
 
 #[path = "proposal_pipeline.rs"]
 mod proposal_pipeline;
+
+#[path = "schema_compiler_smoke.rs"]
+mod schema_compiler_smoke;

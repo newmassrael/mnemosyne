@@ -118,9 +118,18 @@ tracing-subscriber = { version = "0.3", features = ["registry"], optional = true
 
 [build-dependencies]
 tonic-build.workspace = true
+# Round 1252 — the schema compiler, in this process. See build.rs for what it
+# replaces and what was measured before the switch.
+protox.workspace = true
+prost.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# Round 1252 — `tests/schema_compiler_smoke.rs` compiles the schema the way the
+# build script does and compares the bytes, which is how a return to the protoc
+# route fails a test rather than a build on a machine without the binary.
+protox.workspace = true
+prost-types.workspace = true
 # Round 97 — self-signed cert generation source for tests/grpc_tls_smoke.rs.
 rcgen.workspace = true
 # Round 104 — tracing-subscriber as a dev-dep for span hierarchy capture in

@@ -121,7 +121,18 @@ salsa = "0.27"
 
 tonic = "0.12"
 prost = "0.13"
+prost-types = "0.13"
 tonic-build = "0.12"
+# Round 1252 — the protobuf compiler, AS A CRATE. `tonic-build` shells out to a
+# `protoc` binary, and this repository spent six CI jobs a run installing one
+# from the Ubuntu archive: on 2026-08-19 four consecutive runs of `main` died
+# there, the last one after R1251 had already taught apt to retry. `protox`
+# compiles `.proto` in this process, so the schema compiler is pinned by
+# `Cargo.lock` like every other dependency and no job fetches it.
+#
+# 0.8 and not 0.9: 0.9 moved to `prost-types` 0.14, and `tonic-build` 0.12 —
+# which is what consumes the descriptor set — takes the 0.13 type.
+protox = "0.8"
 tonic-health = "0.12"
 tonic-reflection = "0.12"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }

@@ -18,7 +18,15 @@
     "its own, and each of those halves can stop covering what it covers today.",
     "",
     "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
-    "beside this file (R1205's carry, and the `writes` line in the declaration)."
+    "beside this file (R1205's carry, and the `writes` line in the declaration).",
+    "",
+    "R1252 RE-AIMED FOUR OF THESE and did not change what any of them claims.",
+    "The step they anchor on installed `protobuf-compiler strace` and now",
+    "installs `strace` alone: the schema compiler became a crate, so the other",
+    "five apt steps are gone and this is the only one left. That is the sweep's",
+    "own law working — `every_tracked_sweep_still_applies_to_the_tree_it_names`",
+    "refused all four as `occurs 0 times` rather than letting a proof nobody",
+    "runs sit here looking like one that holds."
   ],
   "repo": "../../..",
   "test_command": [
@@ -41,8 +49,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace"
         }
       ],
       "expect_red": [
@@ -55,8 +63,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "        timeout-minutes: 90\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+          "from": "        timeout-minutes: 5\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "        timeout-minutes: 90\n        run: |\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace"
         }
       ],
       "expect_red": [
@@ -93,12 +101,12 @@
     },
     {
       "name": "an-apt-step-is-asked-to-try-once",
-      "why": "R1251's subject, and the state every one of the six was in on 2026-08-19 when the bound fired twice: apt's `Acquire::Retries` defaults to 0, so a mirror that stalls once ends the step, and the jobs behind it die looking for a protoc nothing installed. The step still LOOKS installed and bounded",
+      "why": "R1251's subject, and the state all six apt steps were in on 2026-08-19 when the bound fired twice: apt's `Acquire::Retries` defaults to 0, so a mirror that stalls once ends the step, and the jobs behind it die looking for a protoc nothing installed. The step still LOOKS installed and bounded. One apt step is left (R1252) and it is the one this edits",
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace"
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y strace"
         }
       ],
       "expect_red": ["every_apt_install_runs_under_this_repositorys_apt_policy_first"]
@@ -109,8 +117,8 @@
       "edits": [
         {
           "file": ".github/workflows/mnemosyne-validate.yml",
-          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace",
-          "to": "          sudo apt-get update\n          sudo apt-get install -y protobuf-compiler strace\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne"
+          "from": "          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne\n          sudo apt-get update\n          sudo apt-get install -y strace",
+          "to": "          sudo apt-get update\n          sudo apt-get install -y strace\n          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne"
         }
       ],
       "expect_red": ["every_apt_install_runs_under_this_repositorys_apt_policy_first"]

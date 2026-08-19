@@ -480,9 +480,22 @@ fn this_repository_is_judged_and_clean() {
         .to_path_buf();
     let out = gate(&root);
     assert_eq!(code(&out), 0, "{}", said(&out));
+    // AND THE POPULATION IT JUDGED IS NOT EMPTY, which is the other half of a
+    // live seam: exit 0 is what a clean repository and an unread one both look
+    // like, and the case above shows a reading of none is a legitimate verdict
+    // with a phrase of its own. So this asks for the verdict that is NOT that.
+    //
+    // IT USED TO NAME `protobuf-compiler`, and R1252 is why it no longer does.
+    // The package the law was built for is the one six jobs installed for a
+    // `protoc` the schema compiler no longer needs, and when those steps went
+    // this assertion failed — correctly, and in the safe direction. Replacing
+    // it with the next package's name would rebuild the same trap one round
+    // later; what the seam is actually for is that the witness looked at
+    // something, and this repository's own two-zeroes vocabulary already says
+    // which of the two zeroes a report is.
     assert!(
-        said(&out).contains("protobuf-compiler"),
-        "the package the whole law was built for is in the population it judged: {}",
+        !said(&out).contains("nothing a stock machine lacks"),
+        "the live seam must judge a population rather than an absence: {}",
         said(&out)
     );
 }
