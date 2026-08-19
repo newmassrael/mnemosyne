@@ -68,6 +68,78 @@ fn directory_of(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(head, _)| head)
 }
 
+/// Every tracked firing record belongs to a sweep this repository still tracks.
+///
+/// MEASURED, NOT REASONED. R1241 renamed `self-check.json` to
+/// `self-check.sweep.json` and left its record at the old name for the length of
+/// one round, and THIS SUITE STAYED GREEN. The law one screen up recognises a
+/// record BY READING IT — correctly, because a record with a JSON typo is exactly
+/// what that rule was built to catch — and asks nothing about whether any manifest
+/// derives that name. So an orphan reads as a legitimate neighbour: a proof, kept
+/// beside nothing, about a definition that no longer exists.
+///
+/// THE DERIVATION IS THE LIBRARY'S, so this cannot disagree with the writer.
+/// `firings_path` is what names a record when one is written; asking it here is
+/// what makes "belongs to" the same relation in both directions rather than two
+/// spellings that agree until the naming rule moves.
+///
+/// A MANIFEST WITHOUT A RECORD IS NOT A FINDING. A sweep nobody has run yet has
+/// nothing to keep, and this repository tracks several — the claim is about
+/// EVIDENCE with no definition, not about definitions with no evidence.
+#[test]
+fn every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks() {
+    let root = repository_root();
+    let derived: BTreeSet<String> = injection_harness::tracked_sweeps(&root)
+        .expect("git ls-files runs")
+        .iter()
+        .map(|(path, _)| {
+            injection_harness::firings_path(Path::new(path))
+                .to_str()
+                .expect("a tracked path is utf-8")
+                .to_string()
+        })
+        .collect();
+    let records: Vec<String> = tracked_json(&root)
+        .into_iter()
+        .filter(|path| path.ends_with(injection_harness::FIRINGS_SUFFIX))
+        .filter(|path| !a_test_input(path))
+        .collect();
+
+    // NON-VACUITY FIRST, because a walk that found no records reports no orphans —
+    // which is exactly what it would do the day `git ls-files` stopped answering.
+    assert!(
+        records.len() > 5,
+        "this repository tracks {} firing record(s), which is a listing that \
+         stopped working rather than a repository that stopped proving anything",
+        records.len()
+    );
+
+    let orphans: Vec<&String> = records
+        .iter()
+        .filter(|path| !derived.contains(*path))
+        .collect();
+    assert!(
+        orphans.is_empty(),
+        "{} tracked firing record(s) belong to no sweep this repository tracks. A \
+         record is evidence that an injection WAS RUN and DID redden what it names, \
+         and one whose manifest is gone or renamed is evidence about a definition \
+         nothing can be held to — it reads as a legitimate neighbour and answers to \
+         nobody:\n  {}\nthe {} record(s) a tracked sweep derives are:\n  {}",
+        orphans.len(),
+        orphans
+            .iter()
+            .map(|path| path.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  "),
+        derived.len(),
+        derived
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n  ")
+    );
+}
+
 /// Whether a manifest is an INPUT TO A TEST rather than a sweep somebody runs.
 ///
 /// Declared once for every law with a population — in the library since R1199,

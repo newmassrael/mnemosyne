@@ -59,7 +59,10 @@
           "to": "        .join(format!(\"injection{FIRINGS_SUFFIX}\"))"
         }
       ],
-      "expect_red": ["a_record_belongs_to_one_sweep_and_not_to_a_directory"]
+      "expect_red": [
+        "a_record_belongs_to_one_sweep_and_not_to_a_directory",
+        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks"
+      ]
     },
     {
       "name": "the-supervisor-stops-dying-with-the-harness",
@@ -260,7 +263,8 @@
         "every_sweep_names_a_suite_this_tree_can_still_run",
         "every_test_a_sweep_names_is_one_this_tree_still_has",
         "every_injection_a_record_covers_is_one_that_has_fired",
-        "a_sweep_that_runs_the_whole_workspace_runs_its_features_too"
+        "a_sweep_that_runs_the_whole_workspace_runs_its_features_too",
+        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks"
       ]
     },
     {
