@@ -1,0 +1,69 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-negative-control-may-apply": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "            (Expect::Reject, true) => {\n                return Err(format!(\n                    \"{name} step {n} (`{} {rel}`) was APPLIED, and the record says \\\n                     it must be rolled back — the negative control has stopped \\\n                     controlling\",\n                    s.verb\n                ));\n            }",
+          "to": "            (Expect::Reject, true) => rejected += 1,"
+        }
+      ],
+      "expect_red": [
+        "replay::tests::a_reject_step_that_applies_ends_the_replay"
+      ],
+      "tests": [
+        "replay::tests::a_reject_step_that_applies_ends_the_replay"
+      ]
+    },
+    "a-replay-may-read-a-later-edit-of-its-own-input": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "    if then != now {\n        return Err(format!(\n            \"{what}: {rel} differs between {revision} and today — this replay \\\n             would not be reading the original\"\n        ));\n    }",
+          "to": "    let _ = &now;"
+        }
+      ],
+      "expect_red": [
+        "replay::tests::an_input_that_moved_since_the_record_ends_the_replay"
+      ],
+      "tests": [
+        "replay::tests::an_input_that_moved_since_the_record_ends_the_replay"
+      ]
+    },
+    "a-verb-with-no-known-flag-is-guessed": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "        other => Err(format!(\n            \"no input flag is known for the verb `{other}` — a replay cannot be \\\n             run against a verb this tool cannot address\"\n        )),",
+          "to": "        _ => Ok(\"--manifest\"),"
+        }
+      ],
+      "expect_red": [
+        "replay::tests::a_verb_with_no_known_flag_is_named_rather_than_guessed"
+      ],
+      "tests": [
+        "replay::tests::a_verb_with_no_known_flag_is_named_rather_than_guessed"
+      ]
+    },
+    "an-unreadable-expectation-becomes-the-permissive-one": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "            other => Err(format!(\n                \"a step expects `{other}`, and a record can only say `apply` or \\\n                 `reject` — a word nothing reads is a negative control nothing runs\"\n            )),",
+          "to": "            _ => Ok(Expect::Apply),"
+        }
+      ],
+      "expect_red": [
+        "replay::tests::an_unknown_expectation_is_refused_rather_than_read_as_apply"
+      ],
+      "tests": [
+        "replay::tests::an_unknown_expectation_is_refused_rather_than_read_as_apply"
+      ]
+    }
+  }
+}

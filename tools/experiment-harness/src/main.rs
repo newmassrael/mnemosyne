@@ -15,6 +15,7 @@ mod carry;
 mod declare;
 mod open;
 mod playthrough;
+mod replay;
 mod seal;
 mod shuffle;
 mod splice;
@@ -22,7 +23,7 @@ mod story;
 mod sustain;
 mod util;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use util::{write_file, HResult};
@@ -43,6 +44,8 @@ USAGE:
   experiment-harness set-replay-config --record <replay.json> --replay <name> --config <unit-relative toml>
   experiment-harness open-kit (--unit <kit> [--replay <name>] | --revision <rev>) --into <dir> [--cargo <path>] [--json]
   experiment-harness open-kit --list
+  experiment-harness replay-kit --unit <kit> --replay <name> --into <dir> [--tree <t> --cli <c> | --cargo <path>] [--json]
+  experiment-harness seed-workspace --into <dir>
 
 assemble
   Render a world's scenes, in playthrough order, into a blind reading copy.
@@ -165,6 +168,34 @@ open-kit
   have the verdict reported about a toolchain nobody named (R1190). It reads no
   `$CARGO` — a program that changes behaviour with a variable its callers never
   mention runs differently on two machines for no stated reason.
+
+replay-kit
+  Rebuild the store one of a kit's replays records, in --into, and print its
+  sha256 beside the digest the record declares. A kit's workspace is NOT
+  tracked, so running its steps again is the only way to stand in the store it
+  produced; before this it could be done exclusively by this repository's own
+  ignored test suite, which is to say not by a reader and not on another
+  machine.
+  Two refusals have no flag, because a reconstruction is worth something only
+  if it is a reconstruction OF the original: every file a step feeds is read
+  from the pinned tree AND from the tree today and must be identical, and a
+  step the record marks `reject` must actually be rolled back. Either one is
+  the end of the replay.
+  --tree/--cli hand over a build `open-kit` already produced, which is what a
+  caller replaying many kits pinned to one revision wants; without them the
+  revision is opened here into <dir>/build and the workspace is <dir>/workspace.
+  Whether the digest MATCHES, whether a blocked replay is still blocked, and
+  whether two runs agree are judgements about the RECORD and live with the
+  record's laws. This prints what the steps built, so it can also be used to
+  find the digest of a replay that has never declared one.
+
+seed-workspace
+  Write the empty workspace this repository's CLI accepts — the config it looks
+  for in CWD or an ancestor, and a store to load — into --into. It is the seed
+  R880 used and every declared digest is a measurement of a run that began from
+  it, so it is exposed rather than copied: three transcriptions of it existed
+  before R1253, in two tests and in the replay runner, and a datum whose whole
+  value is being one thing cannot be written down three times.
 ";
 
 fn main() -> ExitCode {
@@ -196,6 +227,8 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "set-input-role" => cmd_set_input_role(&args[1..]),
         "set-replay-config" => cmd_set_replay_config(&args[1..]),
         "open-kit" => cmd_open_kit(&args[1..]),
+        "replay-kit" => cmd_replay_kit(&args[1..]),
+        "seed-workspace" => cmd_seed_workspace(&args[1..]),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -487,6 +520,97 @@ fn cmd_open_kit(args: &[String]) -> HResult<ExitCode> {
         println!("cli: {}", m.cli.display());
         println!("cargo: {}", m.cargo);
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Round 1253 — rebuild the store one of a kit's replays records.
+///
+/// THE BUILD IS EITHER HANDED IN OR MADE HERE, and both are real callers rather
+/// than a convenience and its fallback. A reader holding a kit wants one
+/// command, so `--unit --replay --into` opens the revision itself. The suite
+/// that walks the whole corpus opens ONE build per revision and runs every
+/// replay pinned to it against that build, so `--tree --cli` takes the build it
+/// already has. There is deliberately no caching in between: a directory reused
+/// because it looked right is how a replay comes to be run by a binary nobody
+/// named.
+fn cmd_replay_kit(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let unit = p.require("--unit")?;
+    let replay = p.require("--replay")?;
+    let into = p.require("--into")?;
+    let tree = p.optional("--tree")?;
+    let cli = p.optional("--cli")?;
+    let cargo = p.optional("--cargo")?;
+    let as_json = p.flag("--json");
+    p.finish()?;
+
+    if tree.is_some() != cli.is_some() {
+        return Err("--tree and --cli name the two halves of one opened build, \
+                    so either both are given or neither is"
+            .to_string());
+    }
+    if tree.is_some() && cargo.is_some() {
+        return Err("--cargo builds a revision, and --tree/--cli hand one over \
+                    already built — naming both leaves it unsaid which ran"
+            .to_string());
+    }
+
+    let root = open::repo_root()?;
+    let r = replay::replay_named(&root, &unit, &replay)?;
+    let into = PathBuf::from(&into);
+
+    // The workspace and the build are SEPARATE directories under `--into` when
+    // this opens the build, because the replay's workspace is what a caller
+    // goes on to run transcripts in and an extracted tree beside it would be
+    // read as part of that workspace.
+    let (tree, cli, ws) = match (tree, cli) {
+        (Some(tree), Some(cli)) => (PathBuf::from(tree), PathBuf::from(cli), into.clone()),
+        _ => {
+            let cargo = cargo.unwrap_or_else(|| "cargo".to_string());
+            let m = open::materialise(&root, &r.revision, &into.join("build"), &cargo)?;
+            (m.tree, m.cli, into.join("workspace"))
+        }
+    };
+
+    let built = replay::rebuild(&root, &tree, &cli, &r, &ws)?;
+    if as_json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "unit": r.unit,
+                "replay": r.name,
+                "revision": r.revision,
+                "workspace": built.workspace.to_string_lossy(),
+                "digest": built.digest,
+                "declared": r.digest,
+                "steps": built.steps,
+                "rejected": built.rejected,
+                "blocked": r.blocked,
+            })
+        );
+    } else {
+        for line in replay::report(&r, &built) {
+            println!("{line}");
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Round 1253 — the empty workspace every declared digest was measured from.
+///
+/// Three copies of it existed, in two tests and here, and they were meant to be
+/// identical: a different starting store gives a different digest, so "the same
+/// seed R880 used" is what makes any two kits' measurements comparable at all. A
+/// datum whose whole value is that it is one thing cannot be written down three
+/// times.
+fn cmd_seed_workspace(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let into = p.require("--into")?;
+    p.finish()?;
+
+    let into = PathBuf::from(&into);
+    replay::seed_workspace(&into)?;
+    println!("workspace: {}", into.display());
     Ok(ExitCode::SUCCESS)
 }
 

@@ -88,14 +88,36 @@ fn authoring_revision(manifest: &str) -> String {
     rev
 }
 
+/// The empty workspace this repository's CLI accepts, asked of the tool that
+/// owns it (Round 1253).
+///
+/// It was transcribed here, and byte-identically in the replay runner, and a
+/// third time inside `experiment-harness`. That is not a style point: the seed
+/// store is what every declared digest was measured FROM, so "the same seed
+/// R880 used" is the only reason two kits' measurements are comparable — and a
+/// datum whose value is being one thing had three spellings free to drift.
 fn seed_workspace(ws: &Path) {
-    fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
-    fs::write(ws.join("mnemosyne.toml"), "[workspace]\n").expect("config");
-    fs::write(
-        ws.join("docs/.atomic/workspace.atomic.json"),
-        "{\"schema_version\": 1, \"sections\": {}, \"changelog_entries\": {}}\n",
-    )
-    .expect("seed store");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let out = Command::new(&cargo)
+        .args([
+            "run",
+            "-q",
+            "--manifest-path",
+            "tools/experiment-harness/Cargo.toml",
+            "--",
+            "seed-workspace",
+            "--into",
+            ws.to_str().expect("utf-8 path"),
+        ])
+        .current_dir(repo_root())
+        .output()
+        .expect("experiment-harness exec");
+    assert!(
+        out.status.success(),
+        "seed-workspace could not write {}:\n{}",
+        ws.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 fn import(binary: &Path, ws: &Path, verb: &str, manifest: &Path) -> std::process::Output {

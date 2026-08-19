@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
-use crate::util::{read_file, write_file, HResult};
+use crate::util::{normalize, read_file, write_file, HResult};
 
 /// The role this tool writes. The vocabulary lives in the gate that enforces
 /// it; this is the one member a mechanical walk is entitled to claim.
@@ -205,22 +205,6 @@ pub(crate) fn git(root: &Path, args: &[&str]) -> HResult<String> {
         ));
     }
     String::from_utf8(out.stdout).map_err(|e| format!("git {args:?} output is not utf-8: {e}"))
-}
-
-/// Resolve `a/b/../c` textually — declared paths are relative to their unit
-/// directory and some point back up out of it.
-fn normalize(path: &str) -> String {
-    let mut parts: Vec<&str> = Vec::new();
-    for seg in path.split('/') {
-        match seg {
-            "." | "" => {}
-            ".." => {
-                parts.pop();
-            }
-            s => parts.push(s),
-        }
-    }
-    parts.join("/")
 }
 
 /// The record that owns a path: the nearest ancestor directory holding a
@@ -596,13 +580,6 @@ mod tests {
         )
         .expect_err("the batch must fail whole");
         assert!(err.contains("declare-run-tree"), "unhelpful error: {err}");
-    }
-
-    #[test]
-    fn normalize_resolves_parent_segments() {
-        assert_eq!(normalize("a/b/../c"), "a/c");
-        assert_eq!(normalize("a/./b"), "a/b");
-        assert_eq!(normalize("kit/v1/../shared/x.json"), "kit/shared/x.json");
     }
 
     /// A path the record does not declare is refused rather than created. This

@@ -1,0 +1,90 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1253's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/experiment-harness/replay-kit.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. Rebuilding the store a kit's record says it built is",
+    "a VERB, and it holds two refusals that have no flag: every file a step",
+    "feeds must be identical in the pinned tree and the tree today, and a step",
+    "the record marks `reject` must actually be rolled back. Take either away",
+    "and `replay-kit` still prints a digest — a digest that means something",
+    "else, which is the whole failure being guarded against.",
+    "",
+    "THE OTHER TWO BREAK THE VOCABULARY. `expect` is the ONE field separating a",
+    "negative control from an import, and the verb-to-flag map is what turns a",
+    "step into a command; a fallback in either is a record read as something it",
+    "does not say.",
+    "",
+    "WHAT THIS SWEEP DOES NOT COVER, said rather than left implied: that the",
+    "whole tracked corpus still rebuilds through the verb. That is",
+    "`every_replay_rebuilds_the_store_its_record_says_it_does`, which extracts",
+    "and compiles one workspace per declared revision — 205 seconds warm, and",
+    "an injection sweep over it would be four of those. It was run whole for",
+    "R1253 instead: 49 replays reproduced their declared digest, 2 blocked as",
+    "declared, 65 transcripts regenerated."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/experiment-harness/Cargo.toml",
+    "--no-fail-fast",
+    "replay::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-replay-may-read-a-later-edit-of-its-own-input",
+      "why": "the failure R883 found in its own corpus: the record's inputs are read from the tree TODAY, so a replay whose input has been edited since reports the edit's result under the original's name. With the comparison gone the replay still succeeds and still prints a digest — of a different run",
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "    if then != now {\n        return Err(format!(\n            \"{what}: {rel} differs between {revision} and today — this replay \\\n             would not be reading the original\"\n        ));\n    }",
+          "to": "    let _ = &now;"
+        }
+      ],
+      "expect_red": ["replay::tests::an_input_that_moved_since_the_record_ends_the_replay"]
+    },
+    {
+      "name": "a-negative-control-may-apply",
+      "why": "the record's `reject` steps are its probes. A replay in which they land has built a different store from the same inputs and has stopped controlling for anything — and it looks exactly like a replay that worked, because every other step did",
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "            (Expect::Reject, true) => {\n                return Err(format!(\n                    \"{name} step {n} (`{} {rel}`) was APPLIED, and the record says \\\n                     it must be rolled back — the negative control has stopped \\\n                     controlling\",\n                    s.verb\n                ));\n            }",
+          "to": "            (Expect::Reject, true) => rejected += 1,"
+        }
+      ],
+      "expect_red": ["replay::tests::a_reject_step_that_applies_ends_the_replay"]
+    },
+    {
+      "name": "an-unreadable-expectation-becomes-the-permissive-one",
+      "why": "`expect` is the only field distinguishing a negative control from an import, so a fallback arm turns a typo into a step that is allowed to succeed. The record still reads as though it declares a probe",
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "            other => Err(format!(\n                \"a step expects `{other}`, and a record can only say `apply` or \\\n                 `reject` — a word nothing reads is a negative control nothing runs\"\n            )),",
+          "to": "            _ => Ok(Expect::Apply),"
+        }
+      ],
+      "expect_red": ["replay::tests::an_unknown_expectation_is_refused_rather_than_read_as_apply"]
+    },
+    {
+      "name": "a-verb-with-no-known-flag-is-guessed",
+      "why": "the map is what turns a declared step into a command. Guessing a flag hands the binary an argument it does not take, and what a reader then sees is the VERB complaining — a finding about the record, produced by this tool's own gap",
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/replay.rs",
+          "from": "        other => Err(format!(\n            \"no input flag is known for the verb `{other}` — a replay cannot be \\\n             run against a verb this tool cannot address\"\n        )),",
+          "to": "        _ => Ok(\"--manifest\"),"
+        }
+      ],
+      "expect_red": ["replay::tests::a_verb_with_no_known_flag_is_named_rather_than_guessed"]
+    }
+  ]
+}

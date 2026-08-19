@@ -67,3 +67,44 @@ pub fn write_bytes(path: &str, contents: &[u8]) -> HResult<()> {
 pub fn write_file(path: &str, contents: &str) -> HResult<()> {
     fs::write(path, contents).map_err(|e| format!("cannot write {path}: {e}"))
 }
+
+/// Collapse `.` and `..` in a record-relative path.
+///
+/// The kit records write paths as they were convenient to write — `v1/../run/x`
+/// is how a nested kit reaches a sibling — and two subcommands now resolve
+/// them. `declare` needs it to decide which record owns a path, and `replay`
+/// needs it to look one file up in TWO trees and compare them; a comparison
+/// only compares if both sides resolve the same string. It lives here, once,
+/// for the reason this repository keeps saying: a mechanism with two
+/// implementations is one that can answer differently.
+///
+/// Purely textual, deliberately: nothing here touches the filesystem, so a
+/// symlink cannot make the answer depend on which machine is asking.
+pub fn normalize(path: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for seg in path.split('/') {
+        match seg {
+            "." | "" => {}
+            ".." => {
+                parts.pop();
+            }
+            s => parts.push(s),
+        }
+    }
+    parts.join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_resolves_parent_and_current_segments() {
+        assert_eq!(normalize("a/b/../c"), "a/c");
+        assert_eq!(normalize("a/./b"), "a/b");
+        assert_eq!(normalize("kit/v1/../shared/x.json"), "kit/shared/x.json");
+        // A doubled separator is the same path, and a record that carries one
+        // must resolve to what its neighbours resolve to.
+        assert_eq!(normalize("kit//run/facts.json"), "kit/run/facts.json");
+    }
+}

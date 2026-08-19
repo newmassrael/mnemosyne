@@ -2216,31 +2216,12 @@ fn every_step_cites_only_what_an_earlier_step_created() {
 
 use tempfile::TempDir;
 
-/// Which flag each verb takes its input under. A small closed map, and the
-/// verbs in it are the same set `every_step_verb_is_one_the_cli_has` checks
-/// against the binary's own usage — so a verb that vanishes is caught by the
-/// cheap test, and a verb whose FLAG changed is caught here, loudly, by the
-/// step failing.
-fn input_flag(verb: &str) -> &'static str {
-    match verb {
-        "import-sections" | "import-facts" | "propose-verdict" => "--manifest",
-        "import-typing-proposals" | "import-edge-proposals" => "--proposals",
-        other => panic!("no input flag known for verb `{other}`"),
-    }
-}
-
-/// An empty workspace the CLI will accept: the config it looks for in CWD or an
-/// ancestor, and a store to load. Same seed R880 used, which is why the two
-/// tests' results are comparable.
-fn seed_workspace(ws: &Path) {
-    std::fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
-    std::fs::write(ws.join("mnemosyne.toml"), "[workspace]\n").expect("config");
-    std::fs::write(
-        ws.join("docs/.atomic/workspace.atomic.json"),
-        "{\"schema_version\": 1, \"sections\": {}, \"changelog_entries\": {}}\n",
-    )
-    .expect("seed store");
-}
+// THE VERB-TO-FLAG MAP AND THE SEED WORKSPACE ARE NOT HERE ANY MORE (R1253).
+// Both were half of running a replay, and running a replay is
+// `experiment-harness replay-kit` — where the flag map is a refusal rather than
+// a panic, and where the seed store is the ONE definition of the state every
+// declared digest was measured from. A copy of either here would be a second
+// definition of what a kit's digest means.
 
 /// The tree and CLI of one revision, materialised by the tool that owns that
 /// job (Round 1248) — `experiment-harness open-kit`.
@@ -2303,10 +2284,20 @@ fn build_revision(root: &Path, rev: &str) -> (TempDir, PathBuf, PathBuf) {
 /// Run one replay to completion against `cli`, returning the sha256 of the
 /// store it built, or the first step that did not do what the record says it
 /// should.
+///
 /// The workspace is returned alongside the digest (Round 974) because the
 /// transcripts a kit records are output of verbs run against exactly this
 /// store. Rebuilding a second workspace to run them in would be a second
 /// reconstruction free to differ from the one the digest pins.
+///
+/// ROUND 1253 — THE REBUILDING ITSELF IS NO LONGER HERE. It is
+/// `experiment-harness replay-kit`, for the reason R1248 moved the build half:
+/// a kit's workspace is not tracked, so re-running its steps is the ONLY way to
+/// stand in the store it produced, and a capability that exists only inside an
+/// `#[ignore]`d test of this repository is one no reader and no other machine
+/// can use. What stays here is the JUDGEMENT — whether the digest matches,
+/// whether a blocked replay is still blocked, whether two runs agree — because
+/// those are claims about the record and this is where the record's laws live.
 fn run_replay(
     cli: &Path,
     root: &Path,
@@ -2314,87 +2305,44 @@ fn run_replay(
     r: &Replay,
 ) -> Result<(String, TempDir), String> {
     let ws = TempDir::new().expect("ws tempdir");
-    seed_workspace(ws.path());
-    // A declared config is copied in WITH the rest of its directory, because the
-    // paths inside it are relative to where it sits — which is where the run's
-    // CWD was. Reading the toml to chase those paths would be a second parser
-    // free to disagree with the config crate's.
-    if let Some(cfg) = &r.config {
-        let dir = normalize(&format!("{}/{}", r.unit, cfg))
-            .rsplit_once('/')
-            .map(|(d, _)| d.to_string())
-            .expect("a config path has a directory");
-        for f in tracked_evidence_files()
-            .into_iter()
-            .filter(|f| f.rsplit_once('/').map(|(d, _)| d) == Some(dir.as_str()))
-        {
-            let name = f.rsplit_once('/').expect("has a name").1;
-            let then = std::fs::read(tree.join(&f))
-                .map_err(|e| format!("config dir file {f} is not in the pinned tree: {e}"))?;
-            if then != std::fs::read(root.join(&f)).expect("config dir file today") {
-                return Err(format!(
-                    "{f} differs between {} and today — the replay would run \
-                     under a configuration the record does not show",
-                    r.revision
-                ));
-            }
-            std::fs::write(ws.path().join(name), &then).expect("copy config dir file");
-        }
-        assert!(
-            ws.path().join("mnemosyne.toml").is_file(),
-            "{}/{}: the declared config did not land in the workspace",
-            r.unit,
-            r.name
-        );
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let out = Command::new(&cargo)
+        .args([
+            "run",
+            "-q",
+            "--manifest-path",
+            "tools/experiment-harness/Cargo.toml",
+            "--",
+            "replay-kit",
+            "--unit",
+            &r.unit,
+            "--replay",
+            &r.name,
+            "--tree",
+            tree.to_str().expect("utf-8 path"),
+            "--cli",
+            cli.to_str().expect("utf-8 path"),
+            "--into",
+            ws.path().to_str().expect("utf-8 path"),
+            "--json",
+        ])
+        .current_dir(root)
+        .output()
+        .expect("experiment-harness exec");
+    if !out.status.success() {
+        // The tool's own words, which are what a reader gets when they run it
+        // by hand. A blocked replay is CONFIRMED by this string, so paraphrasing
+        // it here would put a second account of the obstacle in the ledger.
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
-    for (n, s) in r.steps.iter().enumerate() {
-        let rel = normalize(&format!("{}/{}", r.unit, s.input));
-
-        // The record has not moved since it was authored. Without this the run
-        // below could be reading a later edit and would report it as the
-        // original's result — the exact failure R883 found in its own corpus.
-        let then = std::fs::read(tree.join(&rel))
-            .map_err(|e| format!("step {n}: {rel} is not in the pinned tree: {e}"))?;
-        let now = std::fs::read(root.join(&rel)).expect("input today");
-        if then != now {
-            return Err(format!(
-                "step {n}: {rel} differs between {} and today — this replay \
-                 would not be reading the original",
-                r.revision
-            ));
-        }
-
-        let out = Command::new(cli)
-            .args([
-                &s.verb,
-                input_flag(&s.verb),
-                root.join(&rel).to_str().expect("utf-8 path"),
-            ])
-            .current_dir(ws.path())
-            .output()
-            .expect("cli exec");
-        let ok = out.status.success();
-        match (s.expect.as_str(), ok) {
-            ("apply", false) => {
-                return Err(format!(
-                    "step {n} ({} {rel}) was rejected:\n{}",
-                    s.verb,
-                    String::from_utf8_lossy(&out.stderr).trim()
-                ));
-            }
-            ("reject", true) => {
-                return Err(format!(
-                    "step {n} ({} {rel}) was APPLIED, and the record says it must \
-                     be rolled back — the negative control has stopped controlling",
-                    s.verb
-                ));
-            }
-            _ => {}
-        }
-    }
-    let store = std::fs::read(ws.path().join("docs/.atomic/workspace.atomic.json"))
-        .expect("the store the replay built");
-    Ok((mnemosyne_core::sha256_hex(&store), ws))
+    let said: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("replay-kit --json did not print json: {e}"));
+    let digest = said
+        .get("digest")
+        .and_then(|d| d.as_str())
+        .unwrap_or_else(|| panic!("replay-kit --json has no `digest`"))
+        .to_string();
+    Ok((digest, ws))
 }
 
 /// Run one declared transcript's command and compare its stdout to the bytes the
