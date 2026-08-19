@@ -85,7 +85,19 @@ impl Stub {
 
     /// Run the reporter over a named job's recorded steps.
     fn run_with_job(&self, arguments: &[&str], checks: &Path, job: &str, body: &Path) -> Output {
-        self.invoke(arguments, checks, job, body)
+        self.invoke(arguments, checks, &fixture("annotations.json"), job, body)
+    }
+
+    /// Run the reporter with a named annotations recording — one case is about
+    /// what an annotation SAYS rather than about the checks that carry it.
+    fn run_with_annotations(&self, arguments: &[&str], checks: &Path, said: &Path) -> Output {
+        self.invoke(
+            arguments,
+            checks,
+            said,
+            "93478488570",
+            &fixture("job.failure.json"),
+        )
     }
 
     /// Run the reporter with this stub as the whole of `PATH`.
@@ -93,12 +105,20 @@ impl Stub {
         self.invoke(
             arguments,
             checks,
+            &fixture("annotations.json"),
             "93478488570",
             &fixture("job.failure.json"),
         )
     }
 
-    fn invoke(&self, arguments: &[&str], checks: &Path, job: &str, body: &Path) -> Output {
+    fn invoke(
+        &self,
+        arguments: &[&str],
+        checks: &Path,
+        annotations: &Path,
+        job: &str,
+        body: &Path,
+    ) -> Output {
         let out = Command::new(env!("CARGO_BIN_EXE_ci-state"))
             .args(arguments)
             .current_dir(self.dir.path())
@@ -109,7 +129,7 @@ impl Stub {
             .env("GH_STUB_SHA", SHA)
             .env("GH_STUB_CHECK", "93478488570")
             .env("GH_STUB_CHECKS", checks)
-            .env("GH_STUB_ANNOTATIONS", fixture("annotations.json"))
+            .env("GH_STUB_ANNOTATIONS", annotations)
             // R1236 — the steps of the one job that failed on this commit. The
             // stub REFUSES a request for any other job, so every case is also
             // asserting that this reporter asks about the job the failing check
@@ -170,6 +190,70 @@ fn the_recorded_red_commit_is_reported_as_red_with_its_annotation() {
         "and the CHECK that said the annotation is named (R1238) — the loop that \
          fetches them knows which one it asked, and used to throw the name away \
          one line later: {said}"
+    );
+}
+
+/// A run a later push retired reads, through this binary, as NO VERDICT.
+///
+/// THE HALF THE LIBRARY LAWS CANNOT REACH. `report` is told which checks were
+/// superseded; whether the BINARY works that out — fetching the annotations before
+/// it phrases the census, and asking `superseded_checks` — is a decision that lives
+/// in `main.rs`, and this crate's own rule (R1096) is that such a decision has no
+/// reader until something runs the process. Without this case every library law
+/// here passes while the binary goes on printing `is RED`.
+///
+/// THE CHECKS ARE THE RECORDED ONES WITH ONE WORD CHANGED, and the count is
+/// asserted so the change cannot silently apply to nothing: `cancelled` is what
+/// GitHub writes for a job it retired, and the recording's one failing check
+/// becomes that. The annotation beside it is GitHub's own sentence, copied from the
+/// run this round was written after (`74035d7`, 2026-08-19).
+#[test]
+fn a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary() {
+    let recorded =
+        fs::read_to_string(fixture("check-runs.one-page.json")).expect("the recorded checks");
+    let failure = "\"conclusion\":\"failure\"";
+    assert_eq!(
+        recorded.matches(failure).count(),
+        1,
+        "this case rewrites the ONE failing conclusion in the recording; a count \
+         that is not one means the edit applied to something else, or to nothing"
+    );
+    let stub = Stub::recording();
+    let checks = stub.dir.path().join("check-runs.superseded.json");
+    fs::write(
+        &checks,
+        recorded.replace(failure, "\"conclusion\":\"cancelled\""),
+    )
+    .expect("the rewritten recording, which is DATA and not a program (R1192)");
+
+    let out = stub.run_with_annotations(&[SHA], &checks, &fixture("annotations.superseded.json"));
+    let said = said(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "reporting is not failing: {said}"
+    );
+    assert!(
+        said.contains("NO VERDICT") && said.contains("LATER PUSH"),
+        "the binary has to work out for itself that the run was retired — the \
+         library is told, and nothing else here would notice if main stopped \
+         asking:\n{said}"
+    );
+    assert!(
+        !said.contains("is RED"),
+        "and it must not say both: a reader acts on one sentence:\n{said}"
+    );
+    assert!(
+        said.contains("(a later push superseded this run)"),
+        "and the row itself carries the reason, beside the conclusion that cannot \
+         say it:\n{said}"
+    );
+    assert!(
+        !said.contains("stopped at step") && said.contains("not asking where 1 retired check(s)"),
+        "and where a RETIRED job got to is not printed — it is true and it is not \
+         about this commit, and a reader who sees `stopped at step 6` under a \
+         cancelled row reads a diagnosis. What is NOT asked is counted rather than \
+         dropped:\n{said}"
     );
 }
 

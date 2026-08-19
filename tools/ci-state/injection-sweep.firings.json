@@ -97,6 +97,21 @@
         "a_long_message_is_cut_by_characters_and_survives_a_non_ascii_one"
       ]
     },
+    "a-red-commit-does-not-say-how-much-of-it-was-somebody-elses": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            let also = if retired == 0 {\n                String::new()\n            } else {\n                format!(\n                    \" ({retired} of the {} that did not pass were merely superseded by a later \\\n                     push)\",\n                    failing.len()\n                )\n            };",
+          "to": "            let also = String::new();"
+        }
+      ],
+      "expect_red": [
+        "a_failure_in_another_run_is_still_red_beside_a_retired_one"
+      ],
+      "tests": [
+        "a_failure_in_another_run_is_still_red_beside_a_retired_one"
+      ]
+    },
     "a-reporter-asked-about-no-commit-answers-that-everything-is-fine": {
       "edits": [
         {
@@ -110,6 +125,38 @@
       ],
       "tests": [
         "a_reporter_given_no_commit_exits_two_rather_than_reporting_on_nothing"
+      ]
+    },
+    "a-retired-run-is-still-asked-where-it-stopped": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "        if retired.contains(&check.name) {\n            unasked += 1;\n            continue;\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ],
+      "tests": [
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    "a-run-a-later-push-retired-is-still-called-red": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if retired == failing.len() {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ],
+      "tests": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     },
     "a-skipped-job-is-called-a-failure": {
@@ -126,11 +173,13 @@
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
         "the_paginated_recording_reports_the_same_commit",
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
-        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ],
       "tests": [
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
         "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "the_paginated_recording_reports_the_same_commit",
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
@@ -212,9 +261,11 @@
         }
       ],
       "expect_red": [
-        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ],
       "tests": [
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
       ]
     },
@@ -237,6 +288,36 @@
         "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran"
       ]
     },
+    "supersession-is-read-per-check-instead-of-per-run": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    checks\n        .iter()\n        .filter(|check| is_failing(check))\n        .filter(|check| run_of(&check.details_url).is_some_and(|run| runs.contains(&run)))\n        .map(|check| check.name.clone())\n        .collect()",
+          "to": "    read.iter()\n        .filter(|said| said.annotation.message.contains(SUPERSEDED_BY_A_LATER_PUSH))\n        .map(|said| said.check.clone())\n        .collect()"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red"
+      ],
+      "tests": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red"
+      ]
+    },
+    "the-binary-never-asks-whether-the-run-was-retired": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    let retired = ci_state::superseded_checks(&checks, &read);",
+          "to": "    let retired = std::collections::BTreeSet::new();"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ],
+      "tests": [
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
     "the-check-that-said-it-is-thrown-away-again": {
       "edits": [
         {
@@ -246,9 +327,11 @@
         }
       ],
       "expect_red": [
-        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ],
       "tests": [
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
       ]
     },
@@ -318,6 +401,23 @@
         "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran"
       ]
     },
+    "the-run-is-taken-from-the-jobs-number": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let (_, tail) = details_url.split_once(\"/runs/\")?;\n    let number = tail.split('/').next()?;\n    number.parse().ok()",
+          "to": "    let (_, tail) = details_url.rsplit_once(\"/job/\")?;\n    tail.parse().ok()"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "the_run_is_the_run_segment_and_not_the_job"
+      ],
+      "tests": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "the_run_is_the_run_segment_and_not_the_job"
+      ]
+    },
     "the-same-annotation-from-nine-jobs-is-printed-nine-times": {
       "edits": [
         {
@@ -335,6 +435,25 @@
         "annotations_are_deduplicated_and_both_numbers_are_printed",
         "every_distinct_annotation_names_the_checks_that_said_it",
         "more_checks_than_are_named_under_one_annotation_are_counted"
+      ]
+    },
+    "the-sentence-github-actually-writes-is-misspelled": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "pub const SUPERSEDED_BY_A_LATER_PUSH: &str = \"Canceling since a higher priority waiting request\";",
+          "to": "pub const SUPERSEDED_BY_A_LATER_PUSH: &str = \"Cancelling since a higher priority waiting request\";"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "a_failure_in_another_run_is_still_red_beside_a_retired_one",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ],
+      "tests": [
+        "a_failure_in_another_run_is_still_red_beside_a_retired_one",
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     }
   }

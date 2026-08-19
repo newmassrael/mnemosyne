@@ -90,7 +90,8 @@
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
         "the_paginated_recording_reports_the_same_commit",
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
-        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     },
     {
@@ -189,7 +190,8 @@
         }
       ],
       "expect_red": [
-        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     },
     {
@@ -278,7 +280,8 @@
         }
       ],
       "expect_red": [
-        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     },
     {
@@ -324,6 +327,100 @@
       "expect_red": [
         "a_long_message_is_cut_by_characters_and_survives_a_non_ascii_one"
       ]
+    },
+    {
+      "name": "a-run-a-later-push-retired-is-still-called-red",
+      "why": "the defect exactly as it stood, and it cost a session's own attention: `74035d7` reported three cancelled checks, one of them twenty-seven minutes into `cargo test --workspace`, and the reason was the NEXT push on the same ref. Every fact printed beside it pointed at the commit — the conclusion, the step it stopped at, how many steps never ran — and the commit had done nothing at all",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if retired == failing.len() {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    {
+      "name": "supersession-is-read-per-check-instead-of-per-run",
+      "why": "the half-answer that looks like the whole one. GitHub cancels a RUN, and only the jobs that had STARTED get the sentence: two of the three cancelled checks on `74035d7` carried no annotation at all. A reader asking each check for its own reason calls one of them superseded and leaves the other two looking like this commit's failures — which is a partial attribution wearing the shape of a complete one",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    checks\n        .iter()\n        .filter(|check| is_failing(check))\n        .filter(|check| run_of(&check.details_url).is_some_and(|run| runs.contains(&run)))\n        .map(|check| check.name.clone())\n        .collect()",
+          "to": "    read.iter()\n        .filter(|said| said.annotation.message.contains(SUPERSEDED_BY_A_LATER_PUSH))\n        .map(|said| said.check.clone())\n        .collect()"
+        }
+      ],
+      "expect_red": ["a_run_a_later_push_retired_is_no_verdict_rather_than_red"]
+    },
+    {
+      "name": "the-run-is-taken-from-the-jobs-number",
+      "why": "the neighbouring confusion R1236 already paid for, one number over. A check's id, its job's id and its run's id are three numbers in one answer, and the URL carries two of them in one line — so the spelling that reads the LAST is the easy one and it answers about the job. Grouped by job, every check is its own run and supersession stops crossing between them",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let (_, tail) = details_url.split_once(\"/runs/\")?;\n    let number = tail.split('/').next()?;\n    number.parse().ok()",
+          "to": "    let (_, tail) = details_url.rsplit_once(\"/job/\")?;\n    tail.parse().ok()"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "the_run_is_the_run_segment_and_not_the_job"
+      ]
+    },
+    {
+      "name": "the-sentence-github-actually-writes-is-misspelled",
+      "why": "the whole of this reading is a substring of somebody else's sentence, and one letter is all it takes: GitHub writes the American `Canceling`. This is the same class as R1136's `.conclusion` renamed to `.verdict` — a matcher that stops matching prints nothing different, and here the loud direction was CHOSEN (a superseded run goes back to reading as red) rather than accepted, so the injection shows what that costs",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "pub const SUPERSEDED_BY_A_LATER_PUSH: &str = \"Canceling since a higher priority waiting request\";",
+          "to": "pub const SUPERSEDED_BY_A_LATER_PUSH: &str = \"Cancelling since a higher priority waiting request\";"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
+        "a_failure_in_another_run_is_still_red_beside_a_retired_one",
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    {
+      "name": "a-red-commit-does-not-say-how-much-of-it-was-somebody-elses",
+      "why": "the other half of the same repair. A commit carrying two runs can have one retired and one that really failed, and a reporter that says only `RED` sends the reader to look at all of it — which is how R1236's own round nearly attributed an `apt-get` stall to the change under test. Counting the retired ones is what points at the check worth opening",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            let also = if retired == 0 {\n                String::new()\n            } else {\n                format!(\n                    \" ({retired} of the {} that did not pass were merely superseded by a later \\\n                     push)\",\n                    failing.len()\n                )\n            };",
+          "to": "            let also = String::new();"
+        }
+      ],
+      "expect_red": ["a_failure_in_another_run_is_still_red_beside_a_retired_one"]
+    },
+    {
+      "name": "the-binary-never-asks-whether-the-run-was-retired",
+      "why": "the R1096 shape this crate states in its own `main.rs`: the library can be told which checks were superseded and every law about it passes, while the BINARY hands over an empty set and goes on printing `is RED`. Nothing but a case that runs the process notices, which is what the entrance suite is for",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    let retired = ci_state::superseded_checks(&checks, &read);",
+          "to": "    let retired = std::collections::BTreeSet::new();"
+        }
+      ],
+      "expect_red": ["a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"]
+    },
+    {
+      "name": "a-retired-run-is-still-asked-where-it-stopped",
+      "why": "the line that reads as a diagnosis of a commit that did nothing. `stopped at step 9 cargo test --workspace, 5 of the 9 after it never ran` is TRUE of a run a later push retired, and it is the sentence this session nearly attributed to its own change — printing it under a retired row puts the misleading half back, at the cost of one API call per check",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "        if retired.contains(&check.name) {\n            unasked += 1;\n            continue;\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"]
     }
   ]
 }

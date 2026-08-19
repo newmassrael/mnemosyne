@@ -186,6 +186,68 @@ pub fn job_of(details_url: &str) -> Option<u64> {
     tail.parse().ok()
 }
 
+/// The Actions RUN a check run belongs to, out of the same URL.
+///
+/// A DIFFERENT NUMBER FROM THE JOB'S AND THE ANSWER TO A DIFFERENT QUESTION.
+/// Cancellation by a newer push is a property of a RUN — GitHub stops the whole
+/// workflow run and every job in it — so attributing it needs the run and not the
+/// job. The URL carries both, in that order: `…/actions/runs/<run>/job/<job>`.
+///
+/// READ FROM THE FRONT, deliberately. `job_of` splits from the RIGHT because the
+/// job is the last segment; taking the run means the segment after `/runs/` and
+/// before whatever follows, and a reader that split from the right here would find
+/// the job's number under the run's name whenever the two happen to be adjacent.
+pub fn run_of(details_url: &str) -> Option<u64> {
+    let (_, tail) = details_url.split_once("/runs/")?;
+    let number = tail.split('/').next()?;
+    number.parse().ok()
+}
+
+/// GitHub's own words when it cancels a run because a newer push took its place.
+///
+/// THE ONLY THING THAT SAYS WHY A RUN WAS CANCELLED. A cancelled check carries the
+/// word `cancelled` and nothing else: a job somebody stopped, a job a timeout ate
+/// and a job GitHub retired in favour of a later push are one word, and the first
+/// two are about THIS commit while the third is not about it at all.
+///
+/// A SUBSTRING OF SOMEBODY ELSE'S SENTENCE, and the failure mode of that is chosen
+/// rather than accepted: if GitHub rewords it, nothing here matches, and a
+/// superseded run goes back to being reported as RED. That is the LOUD direction —
+/// a reader is told to look at something that turns out to be fine, rather than
+/// told nothing about something that is not.
+pub const SUPERSEDED_BY_A_LATER_PUSH: &str = "Canceling since a higher priority waiting request";
+
+/// The checks whose run a LATER PUSH cancelled, by name.
+///
+/// PER RUN AND NOT PER CHECK, which is the whole reason this takes both arguments.
+/// Measured on `74035d7` (2026-08-19): three checks cancelled, and only ONE of them
+/// carried the sentence — the other two never started, so GitHub had nothing to
+/// annotate them with. A reader that asked each check for its own reason would
+/// call one of the three superseded and leave the other two looking like this
+/// commit's failures, which is the same half-answer as a conclusion without the
+/// step that ended it.
+pub fn superseded_checks(checks: &[Check], read: &[Said]) -> std::collections::BTreeSet<String> {
+    let mut runs = std::collections::BTreeSet::new();
+    for said in read {
+        if !said.annotation.message.contains(SUPERSEDED_BY_A_LATER_PUSH) {
+            continue;
+        }
+        if let Some(run) = checks
+            .iter()
+            .find(|check| check.name == said.check)
+            .and_then(|check| run_of(&check.details_url))
+        {
+            runs.insert(run);
+        }
+    }
+    checks
+        .iter()
+        .filter(|check| is_failing(check))
+        .filter(|check| run_of(&check.details_url).is_some_and(|run| runs.contains(&run)))
+        .map(|check| check.name.clone())
+        .collect()
+}
+
 /// What this program asks GitHub about one job's steps.
 ///
 /// ASKED ONLY ABOUT A CHECK THAT DID NOT PASS, which is what keeps this free on
@@ -536,7 +598,11 @@ fn short(sha: &str) -> String {
 /// failures says nothing about how much was looked at — so the counts name every
 /// row and the lines name every row that is not routine. Nothing is dropped
 /// silently, which is the rule the hook's annotation cap already followed.
-pub fn report(sha: &str, checks: &[Check]) -> Vec<String> {
+pub fn report(
+    sha: &str,
+    checks: &[Check],
+    superseded: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
     let short = short(sha);
     if checks.is_empty() {
         return vec![format!(
@@ -558,15 +624,50 @@ pub fn report(sha: &str, checks: &[Check]) -> Vec<String> {
     )];
     for check in checks {
         if check.conclusion.as_deref() != Some("success") {
-            lines.push(format!("  {} — {}", outcome(check), check.name));
+            let why = if superseded.contains(&check.name) {
+                " (a later push superseded this run)"
+            } else {
+                ""
+            };
+            lines.push(format!("  {} — {}{}", outcome(check), check.name, why));
         }
     }
+    // A RUN A LATER PUSH RETIRED IS NOT A RED COMMIT (R1242), and the difference is
+    // the whole of what a reader does next. GitHub's concurrency group stops the
+    // run in flight the moment a newer one queues on the same ref, so a session
+    // that pushes three rounds in ninety minutes cancels its own two earlier runs
+    // — and every one of them reported `cancelled` and read as this commit's
+    // failure. Measured on `74035d7`: three cancelled checks, one of them
+    // twenty-seven minutes into `cargo test --workspace`, and the reason was the
+    // NEXT push. What that commit needed was no verdict at all, and the later
+    // commit's run — nine checks, all success — is where the answer was.
+    let failing: Vec<&Check> = checks.iter().filter(|check| is_failing(check)).collect();
+    let retired = failing
+        .iter()
+        .filter(|check| superseded.contains(&check.name))
+        .count();
     if verdict(checks) == Verdict::Red {
-        lines.push(
-            "^^ the commit you are building on is RED. Not blocking (fixing it is \
-             itself a push), but do not push past it blind."
-                .to_string(),
-        );
+        if retired == failing.len() {
+            lines.push(format!(
+                "^^ NO VERDICT on {short} — every check that did not pass was cancelled by a \
+                 LATER PUSH on this ref, not by anything on this commit. Read the later \
+                 commit's run; this one was never finished."
+            ));
+        } else {
+            let also = if retired == 0 {
+                String::new()
+            } else {
+                format!(
+                    " ({retired} of the {} that did not pass were merely superseded by a later \
+                     push)",
+                    failing.len()
+                )
+            };
+            lines.push(format!(
+                "^^ the commit you are building on is RED. Not blocking (fixing it is \
+                 itself a push), but do not push past it blind.{also}"
+            ));
+        }
     }
     lines
 }

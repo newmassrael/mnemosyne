@@ -89,23 +89,14 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
         Ok(checks) => checks,
         Err(why) => return vec![format!("NOTE {why}")],
     };
-    let mut lines = report(sha, &checks);
-
-    // WHICH STEP ENDED IT, FOR EVERY CHECK THAT DID NOT PASS (R1236). The
-    // per-commit endpoint answers with a conclusion and no steps, and those two
-    // words are not enough to attribute anything: `cancelled` after 45 minutes
-    // reads as "the change this push is about hung the job", and the run that made
-    // this round was `apt-get` stalling three steps in, with every later step —
-    // this repository's clippy, its suite, its wrapper — never run at all. That
-    // was a second tool's answer for one afternoon; it is this one's now.
-    for check in checks.iter().filter(|check| is_failing(check)) {
-        lines.extend(steps_of(root, check));
-    }
-
-    // THE OTHER HALF OF WHAT CI SAID (R893). A conclusion is one word, and a green
-    // run can still be reporting something: the Node 20 runtime deprecation rode
-    // in the annotations of every run this repository could see while every
-    // conclusion beside them said `success`.
+    // THE ANNOTATIONS ARE FETCHED BEFORE THE CENSUS IS PHRASED (R1242), which is a
+    // requirement rather than a tidier order. Whether a cancelled run was retired
+    // by a LATER PUSH is a fact only an annotation carries, and the sentence that
+    // says `RED` or `NO VERDICT` cannot be written without it. The lines still come
+    // out in the same order; what moved is when the answer is in hand.
+    //
+    // A GREEN PUSH STILL MAKES NO EXTRA CALL: the loop asks only about checks whose
+    // own row declares annotations, which is the rule it has followed since R893.
     let declared: u64 = checks
         .iter()
         .map(|check| check.output.annotations_count)
@@ -115,6 +106,7 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
     // and getting it back cost three `gh api` calls by hand the day a red commit
     // carried two failing jobs and five flat lines.
     let mut read: Vec<Said> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     for check in checks.iter().filter(|c| c.output.annotations_count > 0) {
         match gh(root, &annotations_query(check.id))
             .and_then(|body| annotations_in(check.id, &body))
@@ -127,9 +119,48 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
             // be fetched must not take the other checks' annotations down with
             // it, and the shortfall shows up in the "N distinct of D reported"
             // line either way.
-            Err(why) => lines.push(format!("NOTE {why}")),
+            Err(why) => notes.push(format!("NOTE {why}")),
         }
     }
+
+    let retired = ci_state::superseded_checks(&checks, &read);
+    let mut lines = report(sha, &checks, &retired);
+
+    // WHICH STEP ENDED IT, FOR EVERY CHECK THAT DID NOT PASS (R1236). The
+    // per-commit endpoint answers with a conclusion and no steps, and those two
+    // words are not enough to attribute anything: `cancelled` after 45 minutes
+    // reads as "the change this push is about hung the job", and the run that made
+    // this round was `apt-get` stalling three steps in, with every later step —
+    // this repository's clippy, its suite, its wrapper — never run at all. That
+    // was a second tool's answer for one afternoon; it is this one's now.
+    //
+    // AND NOT FOR A CHECK A LATER PUSH RETIRED (R1242). Where a retired job got to
+    // is true and it is not about this commit: `stopped at step 9 cargo test
+    // --workspace, 5 of the 9 after it never ran` reads as a diagnosis until the
+    // sentence above it says otherwise, and it costs a call per check to say. The
+    // count of what was not asked is PRINTED, because a block that shrinks in
+    // silence is how a reader comes to believe there was nothing to see.
+    let mut unasked = 0;
+    for check in checks.iter().filter(|check| is_failing(check)) {
+        if retired.contains(&check.name) {
+            unasked += 1;
+            continue;
+        }
+        lines.extend(steps_of(root, check));
+    }
+    if unasked > 0 {
+        lines.push(format!(
+            "      not asking where {unasked} retired check(s) stopped — a run a later push \
+             ended says nothing about this commit"
+        ));
+    }
+
+    // THE OTHER HALF OF WHAT CI SAID (R893). A conclusion is one word, and a green
+    // run can still be reporting something: the Node 20 runtime deprecation rode
+    // in the annotations of every run this repository could see while every
+    // conclusion beside them said `success`. Fetched above, because the census
+    // needs it; printed here, because this is where a reader looks for it.
+    lines.extend(notes);
     lines.extend(ci_state::annotation_report(sha, declared, &read));
     lines
 }

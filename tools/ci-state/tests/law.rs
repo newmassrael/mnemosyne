@@ -13,14 +13,32 @@ use ci_state::{
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 
+/// The census when nothing was superseded — the ordinary case, which is every
+/// case here that is not about supersession.
+fn census(sha: &str, checks: &[Check]) -> Vec<String> {
+    report(sha, checks, &std::collections::BTreeSet::new())
+}
+
 /// A check with a conclusion, spelled the way GitHub spells one.
 fn check(id: u64, name: &str, conclusion: Option<&str>, annotations: u64) -> Check {
+    check_in_run(1, id, name, conclusion, annotations)
+}
+
+/// The same, in a NAMED RUN — because whether a later push retired a check is a
+/// property of the run it belongs to and not of the check.
+fn check_in_run(
+    run: u64,
+    id: u64,
+    name: &str,
+    conclusion: Option<&str>,
+    annotations: u64,
+) -> Check {
     Check {
         id,
         name: name.to_string(),
         // The shape GitHub writes for an Actions job, with this row's own id in
         // it — the same equality `github.rs` asserts against the recording.
-        details_url: format!("https://github.com/o/r/actions/runs/1/job/{id}"),
+        details_url: format!("https://github.com/o/r/actions/runs/{run}/job/{id}"),
         head_sha: SHA.to_string(),
         status: if conclusion.is_some() {
             "completed".to_string()
@@ -68,7 +86,7 @@ fn the_census_names_every_row_and_the_lines_name_every_row_that_is_not_success()
         check(3, "every compilation is one job's", Some("skipped"), 0),
         check(4, "MSRV", Some("success"), 0),
     ];
-    let lines = report(SHA, &checks);
+    let lines = census(SHA, &checks);
     assert!(
         lines[0].contains("4 check(s)")
             && lines[0].contains("2 success")
@@ -96,7 +114,7 @@ fn the_census_names_every_row_and_the_lines_name_every_row_that_is_not_success()
 #[test]
 fn a_red_commit_is_told_it_is_red_and_told_that_nothing_is_blocking() {
     let checks = [check(1, "validate", Some("failure"), 0)];
-    let said = report(SHA, &checks).join("\n");
+    let said = census(SHA, &checks).join("\n");
     assert!(said.contains("is RED"), "{said}");
     assert!(
         said.contains("Not blocking"),
@@ -115,7 +133,7 @@ fn a_clear_commit_is_not_warned_about_anything() {
         check(2, "MSRV", Some("neutral"), 0),
     ];
     assert_eq!(verdict(&checks), Verdict::Clear);
-    let said = report(SHA, &checks).join("\n");
+    let said = census(SHA, &checks).join("\n");
     assert!(!said.contains("RED"), "{said}");
     assert!(
         said.contains("2 check(s)"),
@@ -135,7 +153,7 @@ fn a_commit_still_running_is_neither_red_nor_clear() {
         check(2, "MSRV", None, 0),
     ];
     assert_eq!(verdict(&checks), Verdict::Pending);
-    let said = report(SHA, &checks).join("\n");
+    let said = census(SHA, &checks).join("\n");
     assert!(!said.contains("RED"), "nothing has failed yet: {said}");
     assert!(
         said.contains("still running"),
@@ -160,7 +178,7 @@ fn a_failure_beside_an_unfinished_check_is_red_now() {
 /// A commit nothing ran on says exactly that.
 #[test]
 fn a_commit_with_no_checks_says_nothing_has_run_on_it() {
-    let said = report(SHA, &[]).join("\n");
+    let said = census(SHA, &[]).join("\n");
     assert!(
         said.contains("no CI checks") && said.contains("2d630331"),
         "and it names the commit: {said}"
@@ -174,11 +192,101 @@ fn a_commit_with_no_checks_says_nothing_has_run_on_it() {
 /// Every line names the commit by its first eight characters, and no more.
 #[test]
 fn the_commit_is_printed_short_and_it_is_the_commit_asked_about() {
-    let said = report(SHA, &[check(1, "validate", Some("success"), 0)]).join("\n");
+    let said = census(SHA, &[check(1, "validate", Some("success"), 0)]).join("\n");
     assert!(said.contains("2d630331"), "{said}");
     assert!(
         !said.contains(SHA),
         "the whole sha is forty characters of noise in a hook's output: {said}"
+    );
+}
+
+/// GitHub's own sentence when a later push retires a run in flight.
+const RETIRED: &str =
+    "Canceling since a higher priority waiting request for mnemosyne-validate-refs/heads/main \
+     exists";
+
+/// A run a LATER PUSH cancelled is not this commit's failure.
+///
+/// MEASURED ON `74035d7` (2026-08-19). Three checks cancelled, one of them
+/// twenty-seven minutes into `cargo test --workspace`, and the reason was the NEXT
+/// push on the same ref. Every fact the reporter printed pointed at this commit —
+/// `cancelled`, the step it stopped at, how many steps never ran — and the commit
+/// had done nothing. What it needed was NO VERDICT.
+#[test]
+fn a_run_a_later_push_retired_is_no_verdict_rather_than_red() {
+    let checks = [
+        check_in_run(7, 1, "validate", Some("cancelled"), 1),
+        check_in_run(7, 2, "every compilation is one job's", Some("cancelled"), 0),
+    ];
+    let read = vec![said("validate", "failure", RETIRED)];
+    let retired = ci_state::superseded_checks(&checks, &read);
+    let said = report(SHA, &checks, &retired).join("\n");
+    assert!(
+        said.contains("NO VERDICT") && said.contains("LATER PUSH"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("is RED"),
+        "a commit whose run was retired by the next push is not a red commit, and \
+         calling it one sends a reader to look for a defect that is not there:\n{said}"
+    );
+
+    // THE CHECK THAT NEVER STARTED IS COVERED TOO, and that is why supersession is
+    // read per RUN. Two of the three cancelled checks on `74035d7` carried no
+    // annotation at all — GitHub had nothing to annotate a job that never began —
+    // so a reader asking each check for its own reason would have called one
+    // superseded and left the others looking like this commit's failures.
+    assert_eq!(
+        retired.len(),
+        2,
+        "both checks of the retired run are retired, including the one with no \
+         annotation of its own: {retired:?}"
+    );
+}
+
+/// And a genuine failure beside a retired one is still red.
+///
+/// ⚠ THE OTHER HALF, without which the case above is satisfied by a reporter that
+/// has simply stopped saying `RED`. Supersession belongs to a RUN, so a commit
+/// carrying two runs can have one retired and one that really failed, and the
+/// reader has to be told which is which rather than told the softer of the two.
+#[test]
+fn a_failure_in_another_run_is_still_red_beside_a_retired_one() {
+    let checks = [
+        check_in_run(7, 1, "validate", Some("cancelled"), 1),
+        check_in_run(9, 2, "evidence replay", Some("failure"), 0),
+    ];
+    let read = vec![said("validate", "failure", RETIRED)];
+    let retired = ci_state::superseded_checks(&checks, &read);
+    let said = report(SHA, &checks, &retired).join("\n");
+    assert!(said.contains("is RED"), "{said}");
+    assert!(
+        said.contains("1 of the 2 that did not pass were merely superseded"),
+        "and it says how much of the red was somebody else's, or a reader cannot \
+         tell which check to look at:\n{said}"
+    );
+    assert_eq!(
+        retired.into_iter().collect::<Vec<_>>(),
+        vec!["validate".to_string()],
+        "the failure in the OTHER run must not be swept up by the retired one"
+    );
+}
+
+/// The run is read out of the run segment, which is not the job's number.
+///
+/// R1236 PAID FOR THE NEIGHBOURING CONFUSION: a check's id and its job's id are
+/// both numbers in the same answer, and the easy spelling could not tell them
+/// apart. The run's number is a third one, and it is the FIRST of the two in the
+/// URL rather than the last.
+#[test]
+fn the_run_is_the_run_segment_and_not_the_job() {
+    let url = "https://github.com/o/r/actions/runs/32124678644/job/89012";
+    assert_eq!(ci_state::run_of(url), Some(32_124_678_644));
+    assert_eq!(ci_state::job_of(url), Some(89_012));
+    assert_eq!(
+        ci_state::run_of("https://example.test/some/other/app"),
+        None,
+        "a check no Actions run is behind has no run, which is an answer"
     );
 }
 
