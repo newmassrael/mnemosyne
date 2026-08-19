@@ -88,6 +88,32 @@ fn judged_for_coverage(command: &CargoCommand) -> bool {
         .carrier
         .iter()
         .any(|program| program == WRAPPER || program.ends_with(&format!("/{WRAPPER}")))
+        || issued_by_a_sweep(command)
+}
+
+/// A sweep's suite is carried by the INJECTION HARNESS, and that is a second
+/// judge rather than an exemption (Round 1256).
+///
+/// The fifth source arrived in this population with no carrier at all — a
+/// sweep's `test_command` is words the harness runs, not a shell line with a
+/// wrapper in front — and read literally that is twenty-six unjudged suites.
+/// It is not, and the difference is what the wrapper is FOR: `verify.sh` holds
+/// a run's log against what cargo says the command compiles, so a verdict that
+/// covered less than it looks like says so. The harness does that and more, on
+/// every run it makes: it records the target set the CONTROL reached and
+/// compares each injection's against it (`target_drift`, `missing`, `extra`),
+/// refuses a run whose exit code disagrees with its own failure list, and keeps
+/// the full log unfiltered. A run it made that built a different set of targets
+/// is a refusal there, where here it would be a smaller number reading as a
+/// cleaner one.
+///
+/// SO THE JUDGE IS NAMED BY WHERE THE COMMAND IS WRITTEN, which is the only
+/// thing that distinguishes it: a `test_command` in a tracked sweep manifest is
+/// run by the harness and by nothing else. If some other program ever runs one,
+/// this is the sentence that stops being true, and it is written here rather
+/// than left as an absence in the population.
+fn issued_by_a_sweep(command: &CargoCommand) -> bool {
+    command.source.ends_with("sweep.json")
 }
 
 #[test]

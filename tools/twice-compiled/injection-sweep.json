@@ -31,6 +31,7 @@
   "test_command": [
     "cargo",
     "test",
+    "--locked",
     "--manifest-path",
     "tools/twice-compiled/Cargo.toml",
     "--no-fail-fast"

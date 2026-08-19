@@ -24,7 +24,7 @@
 //! eight times narrower than it could be looks exactly like a slow build.
 //!
 //! The population is every cargo command this repository issues, from the same
-//! four sources `locked_resolution_smoke` reads, assembled once in `ci-plan`.
+//! five sources `locked_resolution_smoke` reads, assembled once in `ci-plan`.
 
 use std::path::{Path, PathBuf};
 

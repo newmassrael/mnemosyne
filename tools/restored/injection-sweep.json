@@ -25,6 +25,7 @@
   "test_command": [
     "cargo",
     "test",
+    "--locked",
     "--manifest-path",
     "tools/restored/Cargo.toml",
     "--no-fail-fast"

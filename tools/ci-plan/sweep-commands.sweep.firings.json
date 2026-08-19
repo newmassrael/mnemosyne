@@ -1,0 +1,54 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-sweep-resolves-freely-again": {
+      "edits": [
+        {
+          "file": ".githooks/injection-sweep.json",
+          "from": "    \"cargo\",\n    \"test\",\n    \"--locked\",\n",
+          "to": "    \"cargo\",\n    \"test\",\n"
+        }
+      ],
+      "expect_red": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    "a-sweeps-suite-is-read-as-one-nothing-judges": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/judged_test_runs.rs",
+          "from": "        || issued_by_a_sweep(command)",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "judged_test_runs::every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it"
+      ],
+      "tests": [
+        "judged_test_runs::every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it"
+      ]
+    },
+    "the-fifth-source-is-dropped-from-the-population": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    issued.extend(sweep_cargo_commands(root));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    }
+  }
+}

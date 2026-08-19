@@ -20,6 +20,7 @@
   "test_command": [
     "cargo",
     "test",
+    "--locked",
     "--manifest-path",
     "tools/rustc-log/Cargo.toml",
     "--no-fail-fast"

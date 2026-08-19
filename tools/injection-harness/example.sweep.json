@@ -17,7 +17,7 @@
     "found it."
   ],
   "repo": "../..",
-  "test_command": ["cargo", "test", "--workspace", "--all-features", "--no-fail-fast"],
+  "test_command": ["cargo", "test", "--locked", "--workspace", "--all-features", "--no-fail-fast"],
   "logs": "target/injection-logs",
   "min_free_mb": 8000,
   "injections": [

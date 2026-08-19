@@ -40,8 +40,14 @@ fn repository_root() -> PathBuf {
 }
 
 /// Everything this repository issues: the workflows GitHub runs, the shell the
-/// hooks and scripts run, the commands the workspace lister declares, and the
-/// build machine's.
+/// hooks and scripts run, the commands the workspace lister declares, the build
+/// machine's, and — since Round 1256 — every injection sweep's.
+///
+/// THE FIFTH SOURCE WAS THE WHOLE POPULATION MISSING. Twenty-six of the
+/// thirty-three tracked sweep manifests issued a suite without `--locked`, and
+/// nothing had ever asked: a sweep restores exactly the files it edited, so a
+/// lockfile its suite rewrote is one it leaves behind, in the same run that
+/// reports the tree returned to what it was.
 ///
 /// THE THIRD SOURCE IS NOT A DUPLICATE OF THE SECOND. The lister's commands are
 /// assembled at runtime — `cargo clippy --manifest-path "$ws/Cargo.toml"
@@ -126,6 +132,8 @@ fn every_command_this_repository_issues_pins_the_lockfiles_it_can() {
             "the workspace lister"
         } else if command.source == BUILD_DECLARATION {
             "the build-machine declaration"
+        } else if command.source.ends_with("sweep.json") {
+            "an injection sweep"
         } else {
             "a tracked script"
         };
@@ -143,7 +151,17 @@ fn every_command_this_repository_issues_pins_the_lockfiles_it_can() {
         "the build-machine declaration issues this repository's own suite, and a \
          run that found under three of its commands stopped reading: {per_source:?}"
     );
-    for kind in ["a workflow", "the workspace lister", "a tracked script"] {
+    // ROUND 1256 — AND THE FIFTH SOURCE HAS A FLOOR OF ITS OWN. Every tracked
+    // sweep manifest carries exactly one, so this floor is a count of
+    // manifests: a walk that stopped reading them would take it toward zero,
+    // and every one it stopped reading is a suite that could rewrite a lockfile
+    // the sweep will not restore.
+    for kind in [
+        "a workflow",
+        "the workspace lister",
+        "a tracked script",
+        "an injection sweep",
+    ] {
         assert!(
             per_source.get(kind).copied().unwrap_or(0) >= 5,
             "{kind} issues cargo commands in this repository, so a walk that \

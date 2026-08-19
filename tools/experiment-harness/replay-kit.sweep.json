@@ -29,6 +29,7 @@
   "test_command": [
     "cargo",
     "test",
+    "--locked",
     "--manifest-path",
     "tools/experiment-harness/Cargo.toml",
     "--no-fail-fast",

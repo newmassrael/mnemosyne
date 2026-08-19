@@ -28,6 +28,7 @@
   "test_command": [
     "cargo",
     "test",
+    "--locked",
     "-p",
     "mnemosyne-atomic",
     "--no-fail-fast"

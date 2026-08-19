@@ -19,6 +19,10 @@ categories = ["development-tools"]
 [dependencies]
 toml = { workspace = true }
 yaml-rust2 = { workspace = true }
+# Round 1256 — the fifth place a cargo command is written is a JSON array: the
+# `test_command` of every tracked injection-sweep manifest. See
+# `sweep_cargo_commands`.
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

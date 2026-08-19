@@ -15,7 +15,7 @@
     "outside it, and the root suite is five minutes of proving nothing."
   ],
   "repo": "../..",
-  "test_command": ["cargo", "test", "-p", "ci-plan", "--no-fail-fast"],
+  "test_command": ["cargo", "test", "--locked", "-p", "ci-plan", "--no-fail-fast"],
   "logs": "../../target/injection-logs",
   "min_free_mb": 8000,
   "injections": [

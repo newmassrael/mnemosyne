@@ -26,6 +26,7 @@
   "test_command": [
     "cargo",
     "test",
+    "--locked",
     "-p",
     "mnemosyne-cli",
     "--test",

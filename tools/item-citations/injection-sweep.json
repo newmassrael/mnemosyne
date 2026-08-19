@@ -11,7 +11,7 @@
     "one of them makes this sweep refuse out loud rather than pass quietly."
   ],
   "repo": ".",
-  "test_command": ["cargo", "test", "--no-fail-fast"],
+  "test_command": ["cargo", "test", "--locked", "--no-fail-fast"],
   "logs": "target/item-citations-sweep-logs",
   "min_free_mb": 4000,
   "injections": [

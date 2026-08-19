@@ -21,7 +21,7 @@
     "sweep it is an artefact of."
   ],
   "repo": ".",
-  "test_command": ["cargo", "test", "--no-fail-fast"],
+  "test_command": ["cargo", "test", "--locked", "--no-fail-fast"],
   "logs": "target/self-check-logs",
   "min_free_mb": 4000,
   "injections": [

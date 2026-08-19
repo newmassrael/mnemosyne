@@ -1656,6 +1656,71 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
     out
 }
 
+/// Every tracked injection-sweep manifest.
+///
+/// The convention is the substring `sweep.json`, and it is the same one the
+/// build-machine declaration uses to decide that running a sweep WRITES this
+/// tree (R1241). One convention, now three laws.
+pub fn sweep_manifests(root: &Path) -> Vec<String> {
+    let mut found = tracked_files(root, &["ls-files"]);
+    found.retain(|path| path.ends_with("sweep.json") && !path.ends_with(".firings.json"));
+    found.sort();
+    found
+}
+
+/// Every cargo invocation this repository's injection sweeps issue.
+///
+/// THE FIFTH PLACE A CARGO COMMAND IS WRITTEN, and until Round 1256 it was in no
+/// law's population — the same shape the build declaration was in until R1197,
+/// and the fourth time this repository has found one. Each tracked
+/// `*sweep.json` carries a `test_command` as an ARRAY OF WORDS: the suite the
+/// injection harness runs against an edited tree, once for the control and once
+/// per injection.
+///
+/// WHY IT MATTERS MORE HERE THAN ANYWHERE ELSE, and the reason is the harness's
+/// own contract rather than tidiness. A sweep EDITS the tree, runs, and puts it
+/// back — restoring exactly the files it edited. A cargo command without
+/// `--locked` that finds a lockfile disagreeing with its manifests REWRITES it,
+/// and that file is not one the harness edited, so it is not one the harness
+/// restores. The sweep would then leave behind a change nobody made and nobody
+/// reverts, in the same run that claims the tree was returned to what it was.
+///
+/// NO SHELL PARSING: the array is already the words `cargo_invocation` takes,
+/// which is why this reader is a dozen lines and not a second parser.
+pub fn sweep_cargo_commands(root: &Path) -> Vec<CargoCommand> {
+    let mut out = Vec::new();
+    for path in sweep_manifests(root) {
+        let raw = std::fs::read_to_string(root.join(&path)).expect("read sweep manifest");
+        let doc: serde_json::Value = serde_json::from_str(&raw)
+            .unwrap_or_else(|why| panic!("{path} does not parse as JSON: {why}"));
+        let Some(written) = doc.get("test_command") else {
+            panic!("{path} reads as a sweep manifest and declares no `test_command`");
+        };
+        let words: Vec<String> = written
+            .as_array()
+            .unwrap_or_else(|| panic!("{path}: `test_command` is {written} and not an array"))
+            .iter()
+            .map(|word| {
+                word.as_str()
+                    .unwrap_or_else(|| panic!("{path}: `test_command` holds a non-string {word}"))
+                    .to_string()
+            })
+            .collect();
+        let Some(found) = cargo_invocation(&words) else {
+            panic!("{path}: `test_command` is not a cargo command — {words:?}");
+        };
+        out.push(CargoCommand {
+            source: path.clone(),
+            owner: path.clone(),
+            carrier: found.carrier,
+            cargo_args: found.cargo_args,
+            harness_args: found.harness_args,
+            env: BTreeMap::new(),
+        });
+    }
+    out
+}
+
 /// Every cargo command this repository issues ON THE MACHINE ASKING, and the
 /// workspaces that machine could not reach.
 ///
@@ -1676,7 +1741,7 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
 /// decision somebody made rather than a fact nobody was handed.
 #[derive(Debug, Clone, Default)]
 pub struct IssuedCommands {
-    /// The commands, from all four sources.
+    /// The commands, from all five sources.
     pub commands: Vec<CargoCommand>,
     /// The workspaces the lister declined on this machine, with its reasons.
     /// Empty is a real answer — it says every separate workspace was reachable
@@ -1704,7 +1769,7 @@ impl IssuedCommands {
     }
 }
 
-/// EVERY cargo command this repository issues, from all four sources.
+/// EVERY cargo command this repository issues, from all five sources.
 ///
 /// ONE ASSEMBLY, because more than one law asks about the same population and a
 /// second assembly is a second answer: `locked_resolution_smoke` asks whether
@@ -1728,6 +1793,7 @@ pub fn commands_this_repository_issues(root: &Path) -> IssuedCommands {
             .filter(|command| command.source != "scripts/check-side-workspaces.sh"),
     );
     issued.extend(declared_build_commands(root));
+    issued.extend(sweep_cargo_commands(root));
     issued
 }
 
