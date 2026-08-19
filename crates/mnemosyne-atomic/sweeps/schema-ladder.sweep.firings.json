@@ -1,0 +1,89 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-store-crosses-the-generation-it-is-already-at": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "        .position(|g| g.to > on_disk)",
+          "to": "        .position(|g| g.to >= on_disk)"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::a_store_at_the_current_generation_crosses_nothing",
+        "generations::tests::the_generations_a_store_crosses_are_the_ones_after_it",
+        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest"
+      ],
+      "tests": [
+        "generations::tests::a_store_at_the_current_generation_crosses_nothing",
+        "generations::tests::the_generations_a_store_crosses_are_the_ones_after_it",
+        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest"
+      ]
+    },
+    "load-stops-dispatching-the-ladders-rewrites": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        for generation in generations::crossed_by(on_disk_version) {\n            if let Some(rewrite) = generation.migrate {\n                rewrite(&mut raw);\n            }\n        }",
+          "to": "        for generation in generations::crossed_by(on_disk_version) {\n            let _ = generation;\n        }"
+        }
+      ],
+      "expect_red": [
+        "tests::v37_parent_migrates_to_parents_on_load",
+        "tests::v38_first_at_migrates_to_reveal_on_load",
+        "tests::migrate_flat_normative_excerpt_anchor_url_only",
+        "tests::migrate_flat_normative_excerpt_prefers_epub_locator",
+        "tests::migrate_flat_normative_excerpt_edge_url",
+        "tests::evidence_migration_writes_an_empty_affirmation_never_the_live_hash",
+        "tests::load_rejects_removed_value_shape_with_named_worklist",
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ],
+      "tests": [
+        "tests::every_load_refusal_carries_the_generation_it_read",
+        "tests::evidence_migration_writes_an_empty_affirmation_never_the_live_hash",
+        "tests::load_rejects_removed_value_shape_with_named_worklist",
+        "tests::migrate_flat_normative_excerpt_anchor_url_only",
+        "tests::migrate_flat_normative_excerpt_edge_url",
+        "tests::migrate_flat_normative_excerpt_prefers_epub_locator",
+        "tests::v37_parent_migrates_to_parents_on_load",
+        "tests::v38_first_at_migrates_to_reveal_on_load"
+      ]
+    },
+    "the-breaking-generation-is-recorded-as-additive": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "        to: 29,\n        cost: Cost::Breaking,",
+          "to": "        to: 29,\n        cost: Cost::Additive,"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest",
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ],
+      "tests": [
+        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest",
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ]
+    },
+    "the-refusal-goes-back-to-a-distance-with-no-contents": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    #[error(\n        \"{cause} (this store reads as schema generation {on_disk}; this build is {current}{})\",\n        generations::crossing_note(*on_disk)\n    )]",
+          "to": "    #[error(\"{cause} (this store reads as schema generation {on_disk}; this build is {current})\")]"
+        }
+      ],
+      "expect_red": [
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ],
+      "tests": [
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ]
+    }
+  }
+}

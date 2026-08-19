@@ -24,7 +24,7 @@
       "edits": [
         {
           "file": "crates/mnemosyne-atomic/src/lib.rs",
-          "from": "    #[error(\"{cause} (this store reads as schema generation {on_disk}; this build is {current})\")]",
+          "from": "    #[error(\n        \"{cause} (this store reads as schema generation {on_disk}; this build is {current}{})\",\n        generations::crossing_note(*on_disk)\n    )]",
           "to": "    #[error(\"{cause}\")]"
         }
       ],

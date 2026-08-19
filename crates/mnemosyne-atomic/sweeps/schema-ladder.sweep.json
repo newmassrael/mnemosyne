@@ -1,0 +1,99 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1254's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-atomic/sweeps/schema-ladder.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. The schema ladder is DATA, and three things read it:",
+    "`CURRENT_SCHEMA_VERSION` is its last rung, `load` dispatches its migrations,",
+    "and a stale-generation refusal names what stands between the store and this",
+    "build. Before R1254 the same fact was prose in a comment, and that prose had",
+    "silently stopped covering three generations.",
+    "",
+    "WHAT IS NOT HERE, AND WHY. Two of the ladder's properties are enforced at",
+    "COMPILE time — contiguity from 2, and `Cost::Migrated` holding a rewrite —",
+    "by a `const assert!`. An injection against those does not go red, it fails",
+    "to build, which this harness reports as a discrepancy rather than a firing.",
+    "They were proven by hand instead, once, and the compiler's own words are in",
+    "the round entry. A property that cannot be expressed as a red test is not",
+    "the same as one nobody checked."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-atomic",
+    "--no-fail-fast"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-store-crosses-the-generation-it-is-already-at",
+      "why": "the boundary the whole reading rests on. A store AT generation N has crossed N; the rungs it must still cross are the ones above it. Off by one and a current store is told it is behind, and every count in the note is one too many",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "        .position(|g| g.to > on_disk)",
+          "to": "        .position(|g| g.to >= on_disk)"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::a_store_at_the_current_generation_crosses_nothing",
+        "generations::tests::the_generations_a_store_crosses_are_the_ones_after_it",
+        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest"
+      ]
+    },
+    {
+      "name": "the-breaking-generation-is-recorded-as-additive",
+      "why": "the table is what turns a distance into a diagnosis, so a row's `cost` is load-bearing rather than descriptive. Call the one generation that REMOVED a shape additive and the refusal tells its holder there is nothing to do — while still printing the shape name that says otherwise",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "        to: 29,\n        cost: Cost::Breaking,",
+          "to": "        to: 29,\n        cost: Cost::Additive,"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest",
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ]
+    },
+    {
+      "name": "load-stops-dispatching-the-ladders-rewrites",
+      "why": "the four hand-written `if on_disk_version < N` arms this loop replaced were the spelling that could stop covering a generation without anything saying so. If the row carries the rewrite and nothing runs it, an old store's shape reaches the typed parse and the data the migration exists to save is dropped. THE LAST TWO REDS WERE THE HARNESS CORRECTING THE AUTHOR: this manifest named the six migration tests and the run came back with two more, refused as red it does not name. They are not noise — with no rewrite run, a store the migration exists to repair fails at the typed parse instead, so the refusal laws see it failing for a reason the ladder was supposed to have removed. The blast radius is wider than the six, and writing that down is the point of an exhaustive red set",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        for generation in generations::crossed_by(on_disk_version) {\n            if let Some(rewrite) = generation.migrate {\n                rewrite(&mut raw);\n            }\n        }",
+          "to": "        for generation in generations::crossed_by(on_disk_version) {\n            let _ = generation;\n        }"
+        }
+      ],
+      "expect_red": [
+        "tests::v37_parent_migrates_to_parents_on_load",
+        "tests::v38_first_at_migrates_to_reveal_on_load",
+        "tests::migrate_flat_normative_excerpt_anchor_url_only",
+        "tests::migrate_flat_normative_excerpt_prefers_epub_locator",
+        "tests::migrate_flat_normative_excerpt_edge_url",
+        "tests::evidence_migration_writes_an_empty_affirmation_never_the_live_hash",
+        "tests::load_rejects_removed_value_shape_with_named_worklist",
+        "tests::every_load_refusal_carries_the_generation_it_read"
+      ]
+    },
+    {
+      "name": "the-refusal-goes-back-to-a-distance-with-no-contents",
+      "why": "R1247's state, and the reason this round exists: a number alone is an upper bound. Most generations are additive, so a holder told only how far behind they are has to read source to find out whether it means any work — which is exactly what a refusal is supposed to save them",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    #[error(\n        \"{cause} (this store reads as schema generation {on_disk}; this build is {current}{})\",\n        generations::crossing_note(*on_disk)\n    )]",
+          "to": "    #[error(\"{cause} (this store reads as schema generation {on_disk}; this build is {current})\")]"
+        }
+      ],
+      "expect_red": ["tests::every_load_refusal_carries_the_generation_it_read"]
+    }
+  ]
+}

@@ -50,11 +50,11 @@
     },
     {
       "name": "the-clause-loses-its-numbers",
-      "why": "the wrapper still wraps, so every match arm and every caller behaves, and the only thing missing is the sentence a person reads. A refusal that carries the distance in a field nothing prints is the same as one that never carried it",
+      "why": "the wrapper still wraps, so every match arm and every caller behaves, and the only thing missing is the sentence a person reads. A refusal that carries the distance in a field nothing prints is the same as one that never carried it. R1254 RE-AIMED THIS ANCHOR without changing what it claims: the attribute now also prints what stands between the two generations, and the harness refused the old text as `occurs 0 times` rather than letting a proof nobody runs sit here looking like one that holds",
       "edits": [
         {
           "file": "crates/mnemosyne-atomic/src/lib.rs",
-          "from": "    #[error(\"{cause} (this store reads as schema generation {on_disk}; this build is {current})\")]",
+          "from": "    #[error(\n        \"{cause} (this store reads as schema generation {on_disk}; this build is {current}{})\",\n        generations::crossing_note(*on_disk)\n    )]",
           "to": "    #[error(\"{cause}\")]"
         }
       ],
