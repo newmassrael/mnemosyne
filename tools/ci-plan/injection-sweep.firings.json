@@ -77,30 +77,83 @@
         "a_command_built_over_several_statements_is_one_command",
         "two_functions_holding_a_command_each_do_not_share_one",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
       ],
       "tests": [
         "a_command_built_over_several_statements_is_one_command",
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "two_functions_holding_a_command_each_do_not_share_one"
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "two_functions_holding_a_command_each_do_not_share_one",
+        "words_one_branch_adds_together_are_never_separated"
       ]
     },
     "a-conditional-argument-is-read-as-a-certain-one": {
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "        let certain = self.depth <= self.opened_at[site];",
+          "from": "        let certain = self.depth <= opened_at;",
           "to": "        let certain = true;"
         }
       ],
       "expect_red": [
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
       ],
       "tests": [
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
-        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent"
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
+      ]
+    },
+    "a-conditional-word-forgets-which-arm-added-it": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().collect();",
+          "to": "        let path: Vec<Branch> = Vec::new();"
+        }
+      ],
+      "expect_red": [
+        "words_one_branch_adds_together_are_never_separated",
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+      ],
+      "tests": [
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
       ]
     },
     "a-declared-command-does-not-say-which-one-it-is": {
@@ -163,6 +216,21 @@
         "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
       ]
     },
+    "a-hole-is-enumerated-as-though-it-were-a-choice": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    Word::Unknown(_) => return None,",
+          "to": "                    Word::Unknown(text) => words.push(text.clone()),"
+        }
+      ],
+      "expect_red": [
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+      ],
+      "tests": [
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+      ]
+    },
     "a-jobs-budget-is-read-from-nowhere": {
       "edits": [
         {
@@ -191,6 +259,21 @@
       ],
       "tests": [
         "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ]
+    },
+    "a-match-is-read-as-something-it-can-decline": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    self.in_a_branch(choice, at, arms, false, |walk| {\n                        sites.extend(walk.root(&arm.body));",
+          "to": "                    self.in_a_branch(choice, at, arms, true, |walk| {\n                        sites.extend(walk.root(&arm.body));"
+        }
+      ],
+      "expect_red": [
+        "two_arms_of_one_match_never_appear_in_the_same_command"
+      ],
+      "tests": [
+        "two_arms_of_one_match_never_appear_in_the_same_command"
       ]
     },
     "a-name-that-means-two-functions-is-followed-back-anyway": {
@@ -302,7 +385,7 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "        .find(|word| matches!(word, Word::Sometimes(_)))",
+          "from": "        .find(|word| matches!(word, Word::Sometimes(..)))",
           "to": "        .find(|_word| false)"
         }
       ],
@@ -389,6 +472,27 @@
         "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name"
       ]
     },
+    "an-if-with-no-else-is-read-as-one-it-must-take": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                self.in_a_branch(choice, 0, arms, !has_else, |walk| {",
+          "to": "                self.in_a_branch(choice, 0, arms, false, |walk| {"
+        }
+      ],
+      "expect_red": [
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "words_one_branch_adds_together_are_never_separated",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+      ],
+      "tests": [
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "words_one_branch_adds_together_are_never_separated"
+      ]
+    },
     "an-unknown-ownership-verdict-is-read-as-owned": {
       "edits": [
         {
@@ -470,6 +574,21 @@
         "cargos_own_marker_does_not_start_a_second_command",
         "every_cargo_spawn_in_tracked_rust_is_placed",
         "the_declaration_is_read_for_the_commands_it_issues"
+      ]
+    },
+    "each-match-arm-becomes-its-own-choice": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    self.in_a_branch(choice, at, arms, false, |walk| {",
+          "to": "                    self.in_a_branch(choice + at, at, arms, false, |walk| {"
+        }
+      ],
+      "expect_red": [
+        "two_arms_of_one_match_never_appear_in_the_same_command"
+      ],
+      "tests": [
+        "two_arms_of_one_match_never_appear_in_the_same_command"
       ]
     },
     "every-declared-command-is-a-suite": {
@@ -570,6 +689,21 @@
         "a_restore_only_step_is_still_a_declaration"
       ]
     },
+    "only-the-innermost-branch-is-remembered": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().collect();",
+          "to": "        let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().rev().take(1).collect();"
+        }
+      ],
+      "expect_red": [
+        "a_word_inside_two_branches_needs_both_of_them"
+      ],
+      "tests": [
+        "a_word_inside_two_branches_needs_both_of_them"
+      ]
+    },
     "restore-keys-goes-back-to-being-unread": {
       "edits": [
         {
@@ -666,7 +800,14 @@
         "an_associated_function_is_not_a_call_of_a_free_function_of_that_name",
         "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name",
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
-        "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters"
+        "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters",
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
       ],
       "tests": [
         "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
@@ -680,19 +821,26 @@
         "a_name_that_means_two_functions_is_not_followed_back",
         "a_parameter_a_closure_has_taken_over_is_not_followed_back",
         "a_parameter_a_local_has_taken_over_is_not_followed_back",
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
         "a_wrapper_nothing_calls_says_that_rather_than_reading_as_clean",
         "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
         "an_array_of_words_keeps_the_flags_a_runtime_value_sits_between",
         "an_associated_function_is_not_a_call_of_a_free_function_of_that_name",
         "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name",
+        "an_if_with_an_else_never_takes_neither_arm",
         "the_declaration_is_read_beside_the_words_and_a_variant_nobody_knows_is_refused",
         "the_door_is_the_door_however_its_module_is_spelled",
         "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
         "two_functions_holding_a_command_each_do_not_share_one",
-        "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters"
+        "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters",
+        "words_one_branch_adds_together_are_never_separated"
       ]
     },
     "the-flag-is-demanded-of-a-workspace-nobody-here-owns": {
@@ -708,6 +856,21 @@
       ],
       "tests": [
         "the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"
+      ]
+    },
+    "the-list-of-paths-is-cut-short-instead-of-refused": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "const VARIANT_CAP: usize = 64;",
+          "to": "const VARIANT_CAP: usize = 1024;"
+        }
+      ],
+      "expect_red": [
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+      ],
+      "tests": [
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
       ]
     },
     "the-manifest-directory-becomes-a-runtime-value": {

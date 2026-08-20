@@ -84,33 +84,54 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
 
     // NON-VACUITY OF THE OTHER HALF: the door has to be in use. A law that only
     // says "no second door" passes on the day the first one is deleted too.
+    let through = found.commands.len() + found.conditional.len() + found.carried.len();
     assert!(
-        found.commands.len() + found.carried.len() >= 15,
+        through >= 15,
         "this repository issues cargo from Rust in at least fifteen places and \
-         this walk found {} through the door, which is the shape of a reader \
-         that stopped recognising it",
-        found.commands.len() + found.carried.len()
+         this walk found {through} through the door, which is the shape of a \
+         reader that stopped recognising it"
     );
 
     // EVERY DECLARATION IS ONE THIS READER UNDERSTOOD. A `Tree` arm nobody
     // taught it becomes `Unreadable`, which lands beside the door above — this
     // asserts the other direction, that what did come through was read.
+    //
+    // OVER EVERY SITE, not only the ones read as ONE command. A site whose word
+    // list depends on the path taken declares just as much as any other, and
+    // tallying the arms over the readable half alone is how an arm in daily use
+    // reads as unreachable: the fifth one is used at exactly one site, and that
+    // site is conditional by construction, since a flag decided while it runs is
+    // the whole of what the arm says.
     let mut arms: BTreeMap<&str, usize> = BTreeMap::new();
-    for command in &found.commands {
-        let arm = match &command.declared {
+    let declared_at = found
+        .commands
+        .iter()
+        .map(|command| (command.origin(), command.declared.clone()))
+        .chain(found.conditional.iter().map(|site| {
+            let declared = match &site.program {
+                ci_plan::rust::Program::Cargo(declared) => Some(declared.clone()),
+                _ => None,
+            };
+            (site.origin(), declared)
+        }));
+    for (origin, declared) in declared_at {
+        let arm = match &declared {
             Some(Declared::ThisRepository) => "this repository",
             Some(Declared::MadeByThisRun(_)) => "a tree the run made",
             Some(Declared::WhereverTheCallerPoints(_)) => "wherever the caller points",
             Some(Declared::PinnedWhereverItPoints(_)) => "pinned wherever it points",
+            Some(Declared::PinnedWhenItIsOurs(_)) => "pinned when it is ours",
             Some(Declared::Unreadable(_)) | None => {
-                panic!("{} came through the door undeclared", command.origin())
+                panic!("{origin} came through the door undeclared")
             }
         };
         *arms.entry(arm).or_default() += 1;
     }
     println!(
-        "[one-door] {} command(s) read: {arms:?}",
-        found.commands.len()
+        "[one-door] {} command(s) read and {} site(s) whose words depend on the \
+         path taken: {arms:?}",
+        found.commands.len(),
+        found.conditional.len()
     );
     println!(
         "[one-door] {} carried, {} of this workspace's own binaries, {} other \
@@ -157,16 +178,18 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
         println!("[one-door]   unplaceable: {}", site.origin());
     }
 
-    // ALL FOUR ARMS ARE IN USE, and this is the assertion that keeps the two
-    // that decline to name a tree honest. One of them owes `lock_verdict` a
-    // command that resolves nothing and the other owes it `--locked`; if either
-    // ever became the only arm anybody reached for, the rest would be dead
-    // letters and nothing here would say so.
+    // ALL FIVE ARMS ARE IN USE, and this is the assertion that keeps the three
+    // that decline to name a tree outright honest. One owes `lock_verdict` a
+    // command that resolves nothing, one owes it `--locked` on every path, and
+    // one owes it a `--locked` its own code decides; if any of them ever became
+    // the only arm anybody reached for, the rest would be dead letters and
+    // nothing here would say so.
     for arm in [
         "this repository",
         "a tree the run made",
         "wherever the caller points",
         "pinned wherever it points",
+        "pinned when it is ours",
     ] {
         assert!(
             arms.get(arm).copied().unwrap_or(0) > 0,

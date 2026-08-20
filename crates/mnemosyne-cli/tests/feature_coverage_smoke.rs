@@ -145,7 +145,11 @@ fn metadata(manifest: &str, with_deps: bool) -> Metadata {
     // the earlier comment here reasoned past by asking whether the MANIFEST was
     // tracked. It is; the lockfile is not.
     let directory = manifest.strip_suffix("/Cargo.toml").unwrap_or_default();
-    let mut command = issue::cargo(Tree::ThisRepository);
+    let mut command = issue::cargo(Tree::PinnedWhenItIsOurs(
+        "every workspace this repository tracks is asked, and one of them \
+         resolves against a sibling checkout — so the flag below is present \
+         exactly where the lockfile is this repository's",
+    ));
     command
         .args(["metadata", "--format-version", "1"])
         .arg("--manifest-path")

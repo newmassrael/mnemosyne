@@ -141,6 +141,12 @@ pub enum Declared {
     /// to name a tree: the command must say `--locked`, so a disagreement is
     /// reported wherever it is met rather than repaired.
     PinnedWhereverItPoints(String),
+    /// `Tree::PinnedWhenItIsOurs("…")`. The flag is not the site's to spell
+    /// unconditionally: it says `--locked` on the paths where the tree turns out
+    /// to be one of this repository's, and the law reads the flag's presence as
+    /// the answer to that question — held honest by demanding the flag be
+    /// CONDITIONAL, which is a thing a site can fail to do.
+    PinnedWhenItIsOurs(String),
     /// A `Tree` expression this reader cannot read — a variable, a call, a
     /// variant it does not know. NOT a pass.
     Unreadable(String),
@@ -166,6 +172,39 @@ pub enum Program {
     Unplaceable(String),
 }
 
+/// How many ways a site's choices may go before [`RustSpawn::variants`] gives
+/// up and says so.
+///
+/// A NUMBER RATHER THAN A TRUNCATION. Sixty-four is more than any site in this
+/// repository has and small enough that a report listing them is one a person
+/// can read; past it the honest answer is that this reader did not enumerate,
+/// because a list cut short reads exactly like a complete one.
+const VARIANT_CAP: usize = 64;
+
+/// The arm of one choice point a conditional word was added by.
+///
+/// WORDS ADDED TOGETHER STAY TOGETHER AND WORDS FROM DIFFERENT ARMS NEVER MEET.
+/// `if let Some(m) = … { c.arg("--manifest-path").arg(m) }` is two words and ONE
+/// decision — a reading that chose them independently would enumerate a command
+/// carrying `--manifest-path` with nothing after it, and a `match` whose three
+/// arms each add a word would be read as a command that can carry all three at
+/// once. Neither is a command anything runs, and a false verdict about one is
+/// worse than no verdict at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Branch {
+    /// The choice point, numbered within the file being walked.
+    pub choice: usize,
+    /// Which of its arms added the word.
+    pub arm: usize,
+    /// How many arms the choice has.
+    pub arms: usize,
+    /// Whether taking NONE of them is possible: an `if` with no `else`, a loop
+    /// that may run zero times. A `match` is exhaustive and an `if`/`else` is
+    /// too, so for those the answer is no — and an arm that adds no words is
+    /// already one of the arms rather than an absence.
+    pub may_take_none: bool,
+}
+
 /// One argument a spawn site hands to the program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Word {
@@ -184,9 +223,10 @@ pub enum Word {
     ///
     /// Reading it as present is how a gate comes to say a command pins its
     /// lockfile when it pins it every other Tuesday; reading it as absent is a
-    /// false alarm on a command that is fine. It is neither, and a law that
-    /// needs to know whether a flag is there gets told that nobody can say.
-    Sometimes(String),
+    /// false alarm on a command that is fine. It is neither — and the ARMS that
+    /// added it are carried, so [`RustSpawn::variants`] can hand a law every
+    /// command the site actually issues instead of one nobody runs.
+    Sometimes(String, Vec<Branch>),
 }
 
 impl Word {
@@ -195,7 +235,7 @@ impl Word {
     pub fn rendered(&self) -> String {
         match self {
             Self::Spelled(word) | Self::Runtime(word) | Self::Unknown(word) => word.clone(),
-            Self::Sometimes(word) => format!("[{word}]?"),
+            Self::Sometimes(word, _) => format!("[{word}]?"),
         }
     }
 }
@@ -288,7 +328,8 @@ impl RustSpawn {
             Program::Cargo(
                 Declared::MadeByThisRun(why)
                 | Declared::WhereverTheCallerPoints(why)
-                | Declared::PinnedWhereverItPoints(why),
+                | Declared::PinnedWhereverItPoints(why)
+                | Declared::PinnedWhenItIsOurs(why),
             ) => format!("cargo [{why}]"),
             Program::Cargo(Declared::Unreadable(written)) => format!("cargo [{written}?]"),
             Program::CargoBesideTheDoor(how)
@@ -344,6 +385,117 @@ impl RustSpawn {
              cannot read: {}",
             self.from_callers.len(),
             unread.join(", ")
+        )
+    }
+
+    /// Every command this site can issue: one word list per way the choices
+    /// enclosing its conditional words can go.
+    ///
+    /// A SITE WITH A CONDITIONAL WORD IS NOT ONE COMMAND. `cargo metadata
+    /// [--locked]? [--no-deps]?` is four, and a law that reads it as one has to
+    /// choose between calling the flag present (which says a command pins a
+    /// lockfile it pins every other Tuesday) and calling it absent (a false
+    /// alarm on a command that is fine). Neither is true; all four are.
+    ///
+    /// `None` when the site hands over a list this reader cannot count — a hole
+    /// admits any number of words, so there is nothing to enumerate — or when
+    /// the choices multiply past what a report can be read as, which is a limit
+    /// this says out loud rather than truncating.
+    #[must_use]
+    pub fn variants(&self) -> Option<Vec<Vec<String>>> {
+        // THE HOLE IS ANSWERED IN ONE PLACE, down in the loop where each word is
+        // read. A first draft also checked for one up here, and the injection
+        // written to prove that check mattered came back with nothing red: the
+        // two clauses answered the same question, and R1262's rule for a clause
+        // nothing exercises is to delete it rather than keep it for the shape.
+        //
+        // ONE ENTRY PER CHOICE POINT, holding how many ways it can go. The arms
+        // are read off the words rather than counted separately, because a
+        // choice no word depends on is a choice this command does not have.
+        let mut choices: BTreeMap<usize, (usize, bool)> = BTreeMap::new();
+        for word in &self.words {
+            if let Word::Sometimes(_, path) = word {
+                for branch in path {
+                    choices.insert(branch.choice, (branch.arms, branch.may_take_none));
+                }
+            }
+        }
+        let ways: usize = choices
+            .values()
+            .map(|(arms, none)| arms + usize::from(*none))
+            .product();
+        if ways > VARIANT_CAP {
+            return None;
+        }
+        let numbered: Vec<(usize, usize, bool)> = choices
+            .into_iter()
+            .map(|(choice, (arms, none))| (choice, arms, none))
+            .collect();
+        let mut found: Vec<Vec<String>> = Vec::new();
+        for way in 0..ways {
+            // The way is read as a mixed-radix number, one digit per choice.
+            // WHERE TAKING NONE IS POSSIBLE IT IS THE FIRST DIGIT, so the
+            // plainest command a site can issue is the first one a report
+            // prints — `cargo build` before `cargo build --locked`, which is the
+            // order a person reads them in anyway.
+            let mut rest = way;
+            let mut taken: BTreeMap<usize, usize> = BTreeMap::new();
+            for (choice, arms, none) in &numbered {
+                let options = arms + usize::from(*none);
+                let digit = rest % options;
+                let arm = if *none {
+                    // Digit 0 is "none of them", which no arm answers to.
+                    digit.checked_sub(1).unwrap_or(usize::MAX)
+                } else {
+                    digit
+                };
+                taken.insert(*choice, arm);
+                rest /= options;
+            }
+            let mut words = Vec::new();
+            for word in &self.words {
+                match word {
+                    Word::Spelled(text) | Word::Runtime(text) => words.push(text.clone()),
+                    Word::Sometimes(text, path) => {
+                        if path
+                            .iter()
+                            .all(|branch| taken.get(&branch.choice) == Some(&branch.arm))
+                        {
+                            words.push(text.clone());
+                        }
+                    }
+                    Word::Unknown(_) => return None,
+                }
+            }
+            if !found.contains(&words) {
+                found.push(words);
+            }
+        }
+        Some(found)
+    }
+
+    /// Every command this site issues, as the population's own type.
+    ///
+    /// `None` for a site whose words cannot be enumerated, and for one that does
+    /// not run cargo through the door — a spawn with no declaration is not a
+    /// command any of these laws is about.
+    #[must_use]
+    pub fn commands(&self) -> Option<Vec<CargoCommand>> {
+        let declared = match &self.program {
+            Program::Cargo(
+                declared @ (Declared::ThisRepository
+                | Declared::MadeByThisRun(_)
+                | Declared::WhereverTheCallerPoints(_)
+                | Declared::PinnedWhereverItPoints(_)
+                | Declared::PinnedWhenItIsOurs(_)),
+            ) => declared.clone(),
+            _ => return None,
+        };
+        Some(
+            self.variants()?
+                .into_iter()
+                .map(|words| self.as_command(words, declared.clone()))
+                .collect(),
         )
     }
 
@@ -445,6 +597,16 @@ pub struct RustSpawns {
     /// `lock_verdict` needs, and a command held out of the population is one no
     /// law asks anything of.
     pub commands: Vec<CargoCommand>,
+    /// Cargo spawns whose every word is readable but whose word LIST depends on
+    /// the path taken — a flag inside an `if`, an argument from a `match` arm.
+    ///
+    /// A THIRD BUCKET RATHER THAN A HOLE, because a hole and a choice are not
+    /// the same ignorance: nobody can enumerate the words behind an
+    /// `.args(expr)`, and everybody can enumerate the ways an `if` goes.
+    /// [`RustSpawn::variants`] hands over one word list per way, so a law that
+    /// wants a verdict gets one per command the site issues instead of picking a
+    /// path and being right about a third of the time.
+    pub conditional: Vec<RustSpawn>,
     /// Cargo spawns through the door handing over a list of unknown length that
     /// no call site of theirs finished either.
     pub carried: Vec<RustSpawn>,
@@ -558,7 +720,8 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                     declared @ (Declared::ThisRepository
                     | Declared::MadeByThisRun(_)
                     | Declared::WhereverTheCallerPoints(_)
-                    | Declared::PinnedWhereverItPoints(_)),
+                    | Declared::PinnedWhereverItPoints(_)
+                    | Declared::PinnedWhenItIsOurs(_)),
                 ) => declared.clone(),
                 // THE DOOR'S OWN SPAWN NEEDS NO EXCEPTION HERE, which is a
                 // finding rather than an omission. It ends in a `Command::new`,
@@ -604,7 +767,15 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                         }
                     }
                     if !site.every_call_read() {
-                        found.carried.push(site);
+                        // A CHOICE IS NOT A HOLE. What is left after the hop
+                        // back is either a word list nobody can count, or
+                        // several lists anybody can — and only the first is
+                        // beyond a verdict.
+                        if site.variants().is_some() {
+                            found.conditional.push(site);
+                        } else {
+                            found.carried.push(site);
+                        }
                     }
                 }
             }
@@ -735,6 +906,13 @@ struct Walk<'a> {
     /// the site was OPENED at, so a whole command written inside one `if` reads
     /// as unconditional while a flag added by a second one does not.
     depth: usize,
+    /// The arms enclosing what is being visited, outermost first — the same
+    /// nesting `depth` counts, with WHICH arm of WHICH choice kept so the words
+    /// one of them adds can be told from another's.
+    branches: Vec<Branch>,
+    /// How many choice points this file's walk has met, so the next one gets a
+    /// number nothing else has.
+    choices: usize,
     /// The depth each site was opened at.
     opened_at: Vec<usize>,
 }
@@ -758,6 +936,8 @@ impl<'a> Walk<'a> {
             parameters: Vec::new(),
             shadowed: BTreeSet::new(),
             depth: 0,
+            branches: Vec::new(),
+            choices: 0,
             opened_at: Vec::new(),
         }
     }
@@ -803,10 +983,31 @@ impl<'a> Walk<'a> {
         }
     }
 
-    /// Walk something that only happens on SOME paths.
-    fn in_a_branch(&mut self, walk: impl FnOnce(&mut Self)) {
+    /// Take a number for a choice point about to be walked.
+    fn a_choice(&mut self) -> usize {
+        self.choices += 1;
+        self.choices - 1
+    }
+
+    /// Walk ONE ARM of a choice point — a `then`, an `else`, a `match` arm, a
+    /// loop body, a closure body.
+    fn in_a_branch(
+        &mut self,
+        choice: usize,
+        arm: usize,
+        arms: usize,
+        may_take_none: bool,
+        walk: impl FnOnce(&mut Self),
+    ) {
         self.depth += 1;
+        self.branches.push(Branch {
+            choice,
+            arm,
+            arms,
+            may_take_none,
+        });
         walk(self);
+        self.branches.pop();
         self.depth -= 1;
     }
 
@@ -829,13 +1030,19 @@ impl<'a> Walk<'a> {
     }
 
     /// Add one word to a site, saying whether every path through the function
-    /// reaches it.
+    /// reaches it — and when it does not, WHICH arms decide.
+    ///
+    /// The arms are the ones the site was not already inside: a whole command
+    /// written within one `if` is unconditional as a command, and only a word
+    /// added by a choice made AFTER it opened depends on anything.
     fn add(&mut self, site: usize, word: Word) {
-        let certain = self.depth <= self.opened_at[site];
+        let opened_at = self.opened_at[site];
+        let certain = self.depth <= opened_at;
+        let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().collect();
         self.sites[site].words.push(match (certain, word) {
             (true, word) => word,
-            (false, Word::Spelled(text) | Word::Runtime(text) | Word::Sometimes(text)) => {
-                Word::Sometimes(text)
+            (false, Word::Spelled(text) | Word::Runtime(text) | Word::Sometimes(text, _)) => {
+                Word::Sometimes(text, path)
             }
             // An unknown COUNT stays an unknown count: which hole it is does not
             // get smaller for being conditional.
@@ -896,23 +1103,36 @@ impl<'a> Walk<'a> {
             // it was.
             syn::Expr::If(node) => {
                 self.visit_expr(&node.cond);
+                let choice = self.a_choice();
+                // AN `if` WITH NO `else` CAN TAKE NEITHER ARM, and one with an
+                // `else` always takes exactly one. That is the whole difference
+                // between two possible commands and three.
+                let has_else = node.else_branch.is_some();
+                let arms = if has_else { 2 } else { 1 };
                 let mut sites = Vec::new();
-                self.in_a_branch(|walk| {
+                self.in_a_branch(choice, 0, arms, !has_else, |walk| {
                     sites.extend(walk.root_of_block(&node.then_branch));
-                    if let Some((_, otherwise)) = &node.else_branch {
-                        sites.extend(walk.root(otherwise));
-                    }
                 });
+                if let Some((_, otherwise)) = &node.else_branch {
+                    self.in_a_branch(choice, 1, arms, false, |walk| {
+                        sites.extend(walk.root(otherwise));
+                    });
+                }
                 sites
             }
             syn::Expr::Match(node) => {
                 self.visit_expr(&node.expr);
+                let choice = self.a_choice();
+                let arms = node.arms.len();
                 let mut sites = Vec::new();
-                self.in_a_branch(|walk| {
-                    for arm in &node.arms {
+                for (at, arm) in node.arms.iter().enumerate() {
+                    // A `match` IS EXHAUSTIVE, so "none of them" is not one of
+                    // the ways this can go; an arm that adds no words is already
+                    // an arm rather than an absence.
+                    self.in_a_branch(choice, at, arms, false, |walk| {
                         sites.extend(walk.root(&arm.body));
-                    }
-                });
+                    });
+                }
                 sites
             }
             syn::Expr::Block(node) => self.root_of_block(&node.block),
@@ -1109,24 +1329,37 @@ impl<'ast> Visit<'ast> for Walk<'_> {
     // chosen by a branch — and a second spelling of the rule here would be one
     // free to disagree with that one.
 
+    // A LOOP OR A CLOSURE IS ONE ARM THAT MAY NOT BE TAKEN. A body that runs
+    // zero times adds nothing, and one that runs many times adds its words more
+    // than once — which is a shape no law here asks about, so the reading is the
+    // safe half: the words are there or they are not.
+
     fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
         self.visit_expr(&node.cond);
-        self.in_a_branch(|walk| walk.visit_block(&node.body));
+        let choice = self.a_choice();
+        self.in_a_branch(choice, 0, 1, true, |walk| walk.visit_block(&node.body));
     }
 
     fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
         self.visit_expr(&node.expr);
         let bound = names_bound_by(&node.pat);
-        self.in_a_branch(|walk| walk.under_a_pattern(bound, |walk| walk.visit_block(&node.body)));
+        let choice = self.a_choice();
+        self.in_a_branch(choice, 0, 1, true, |walk| {
+            walk.under_a_pattern(bound, |walk| walk.visit_block(&node.body));
+        });
     }
 
     fn visit_expr_loop(&mut self, node: &'ast syn::ExprLoop) {
-        self.in_a_branch(|walk| walk.visit_block(&node.body));
+        let choice = self.a_choice();
+        self.in_a_branch(choice, 0, 1, true, |walk| walk.visit_block(&node.body));
     }
 
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
         let bound = node.inputs.iter().flat_map(names_bound_by).collect();
-        self.in_a_branch(|walk| walk.under_a_pattern(bound, |walk| walk.visit_expr(&node.body)));
+        let choice = self.a_choice();
+        self.in_a_branch(choice, 0, 1, true, |walk| {
+            walk.under_a_pattern(bound, |walk| walk.visit_expr(&node.body));
+        });
     }
 }
 
@@ -1429,7 +1662,7 @@ fn follow_back(site: &mut RustSpawn, other: &TheOtherDirection) {
     if let Some(sometimes) = site
         .words
         .iter()
-        .find(|word| matches!(word, Word::Sometimes(_)))
+        .find(|word| matches!(word, Word::Sometimes(..)))
     {
         refuse(format!(
             "`{}` is added on some paths through the function only, which no \
@@ -1614,6 +1847,12 @@ fn one_declaration(expression: &syn::Expr) -> Declared {
                 Declared::PinnedWhereverItPoints,
             )
         }
+        syn::Expr::Call(call) if ends_with(call, &["PinnedWhenItIsOurs"]) => {
+            call.args.first().and_then(string_literal).map_or_else(
+                || Declared::Unreadable(rendered_text),
+                Declared::PinnedWhenItIsOurs,
+            )
+        }
         _ => Declared::Unreadable(rendered_text),
     }
 }
@@ -1749,7 +1988,7 @@ fn without_a_hole(words: &[Word]) -> Option<Vec<String>> {
         .iter()
         .map(|word| match word {
             Word::Spelled(text) | Word::Runtime(text) => Some(text.clone()),
-            Word::Unknown(_) | Word::Sometimes(_) => None,
+            Word::Unknown(_) | Word::Sometimes(..) => None,
         })
         .collect()
 }

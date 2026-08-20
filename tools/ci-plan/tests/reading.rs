@@ -1882,11 +1882,18 @@ fn an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent() 
            }"#,
     );
     assert_eq!(
-        site.words,
-        vec![
-            Word::Spelled("build".to_string()),
-            Word::Sometimes("--locked".to_string())
-        ],
+        site.words.iter().map(Word::rendered).collect::<Vec<_>>(),
+        vec!["build".to_string(), "[--locked]?".to_string()],
+        "{site:#?}"
+    );
+    // AND THE TWO COMMANDS IT ISSUES ARE BOTH ANSWERED. Reading it as one is
+    // what forced the choice above; reading it as the set it is dissolves it.
+    assert_eq!(
+        site.variants(),
+        Some(vec![
+            vec!["build".to_string()],
+            vec!["build".to_string(), "--locked".to_string()],
+        ]),
         "{site:#?}"
     );
 
@@ -2010,6 +2017,162 @@ fn two_functions_holding_a_command_each_do_not_share_one() {
     assert_eq!(found.len(), 2, "{found:#?}");
     assert_eq!(found[0].words, vec![Word::Spelled("build".to_string())]);
     assert_eq!(found[1].words, vec![Word::Spelled("test".to_string())]);
+}
+
+// --- a site with a conditional word is a set of commands ---------------------
+
+fn paths_of(text: &str) -> Vec<Vec<String>> {
+    only(text).variants().expect("the paths can be enumerated")
+}
+
+#[test]
+fn words_one_branch_adds_together_are_never_separated() {
+    // `if let Some(m) = … { c.arg("--manifest-path").arg(m) }` is TWO words and
+    // ONE decision. Read as two decisions it enumerates a command carrying
+    // `--manifest-path` with nothing after it — a command nothing runs, judged
+    // as though something did.
+    assert_eq!(
+        paths_of(
+            r#"fn f(manifest: Option<&str>) {
+                   let mut c = issue::cargo(Tree::ThisRepository);
+                   c.arg("metadata");
+                   if let Some(m) = manifest { c.arg("--manifest-path").arg(m); }
+               }"#,
+        ),
+        vec![
+            vec!["metadata".to_string()],
+            vec![
+                "metadata".to_string(),
+                "--manifest-path".to_string(),
+                "$m".to_string(),
+            ],
+        ],
+    );
+}
+
+#[test]
+fn two_arms_of_one_match_never_appear_in_the_same_command() {
+    // A `match` picks one. A reading that chose its arms independently would
+    // enumerate a command carrying every arm's words at once, and none carrying
+    // any — two commands this program cannot issue.
+    let paths = paths_of(
+        r#"fn f(which: u8) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.arg("run");
+               match which {
+                   0 => { c.arg("--first"); }
+                   _ => { c.arg("--second"); }
+               }
+           }"#,
+    );
+    assert_eq!(
+        paths,
+        vec![
+            vec!["run".to_string(), "--first".to_string()],
+            vec!["run".to_string(), "--second".to_string()],
+        ],
+        "{paths:?}"
+    );
+}
+
+#[test]
+fn an_if_with_an_else_never_takes_neither_arm() {
+    let paths = paths_of(
+        r#"fn f(pin: bool) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.arg("build");
+               if pin { c.arg("--locked"); } else { c.arg("--offline"); }
+           }"#,
+    );
+    assert_eq!(
+        paths,
+        vec![
+            vec!["build".to_string(), "--locked".to_string()],
+            vec!["build".to_string(), "--offline".to_string()],
+        ],
+        "{paths:?}"
+    );
+}
+
+#[test]
+fn a_word_inside_a_loop_is_one_the_command_may_not_carry() {
+    // A body that runs zero times adds nothing, so "neither" is one of the ways
+    // this goes — unlike a `match`, where every way is an arm.
+    let paths = paths_of(
+        r#"fn f(packages: &[&str]) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.arg("check");
+               for p in packages { c.arg("-p").arg(p); }
+           }"#,
+    );
+    assert_eq!(
+        paths,
+        vec![
+            vec!["check".to_string()],
+            vec!["check".to_string(), "-p".to_string(), "$p".to_string()],
+        ],
+        "{paths:?}"
+    );
+}
+
+#[test]
+fn a_word_inside_two_branches_needs_both_of_them() {
+    // The inner choice is not free of the outer one: there is no command
+    // carrying `--offline` without `--locked` here, and enumerating one would
+    // be a verdict about a path the function has no way to take.
+    let paths = paths_of(
+        r#"fn f(pin: bool, quiet: bool) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.arg("build");
+               if pin {
+                   c.arg("--locked");
+                   if quiet { c.arg("--offline"); }
+               }
+           }"#,
+    );
+    assert_eq!(
+        paths,
+        vec![
+            vec!["build".to_string()],
+            vec!["build".to_string(), "--locked".to_string()],
+            vec![
+                "build".to_string(),
+                "--locked".to_string(),
+                "--offline".to_string()
+            ],
+        ],
+        "{paths:?}"
+    );
+}
+
+#[test]
+fn a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate() {
+    // A hole admits any NUMBER of words, so there is nothing to enumerate — and
+    // answering with the paths of the words beside it would be a command list
+    // that leaves out the flag the hole may hold.
+    let site = only(
+        r#"fn f(argv: &[&str], pin: bool) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.args(argv);
+               if pin { c.arg("--locked"); }
+           }"#,
+    );
+    assert_eq!(site.variants(), None, "{site:#?}");
+}
+
+#[test]
+fn a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list() {
+    // Seven independent `if`s are 128 ways, past the cap. A list cut short reads
+    // exactly like a complete one, so the answer is that this reader did not
+    // enumerate.
+    let mut source =
+        String::from("fn f(a: bool) {\n    let mut c = issue::cargo(Tree::ThisRepository);\n");
+    for at in 0..7 {
+        source.push_str(&format!("    if a {{ c.arg(\"--flag{at}\"); }}\n"));
+    }
+    source.push_str("}\n");
+    let site = only(&source);
+    assert_eq!(site.variants(), None, "{site:#?}");
 }
 
 // --- the hop in the other direction -----------------------------------------
@@ -2390,6 +2553,7 @@ fn every_cargo_spawn_in_tracked_rust_is_placed() {
                     ci_plan::rust::Declared::MadeByThisRun(why)
                     | ci_plan::rust::Declared::WhereverTheCallerPoints(why)
                     | ci_plan::rust::Declared::PinnedWhereverItPoints(why)
+                    | ci_plan::rust::Declared::PinnedWhenItIsOurs(why)
                     | ci_plan::rust::Declared::Unreadable(why),
                 ) => why.clone(),
                 None => "undeclared".to_string(),

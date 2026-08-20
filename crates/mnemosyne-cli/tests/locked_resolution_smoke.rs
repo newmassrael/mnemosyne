@@ -76,11 +76,13 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
     }
     println!(
         "[locked-resolution] the sixth source: {} spawn(s) in {} tracked Rust \
-         file(s) — {} cargo command(s) read, {} carried (an `.args(..)` this \
-         reader cannot count), {} spawn(s) whose program it cannot name",
+         file(s) — {} cargo command(s) read, {} site(s) whose word list depends \
+         on the path taken, {} carried (an `.args(..)` this reader cannot \
+         count), {} spawn(s) whose program it cannot name",
         issued.rust.spawns,
         issued.rust.files,
         issued.rust.commands.len(),
+        issued.rust.conditional.len(),
         issued.rust.carried.len(),
         issued.rust.unplaceable.len()
     );
@@ -91,7 +93,105 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
             site.reach()
         );
     }
-    issued.commands
+    // A SITE WITH A CONDITIONAL WORD IS EVERY COMMAND IT CAN ISSUE (R1265).
+    // Before that it was one command nobody could read, and the law below said
+    // nothing about it — which is the same silence as a clean answer. Each way
+    // the choices go is a command this repository issues, and each is judged
+    // beside the ones written whole.
+    let mut ways = 0;
+    let mut every_path = Vec::new();
+    for site in &issued.rust.conditional {
+        let Some(commands) = site.commands() else {
+            panic!(
+                "{} is filed as a site whose paths can be enumerated and it \
+                 could not be: {site:#?}",
+                site.origin()
+            );
+        };
+        println!(
+            "[locked-resolution]   on {} path(s): {} — {}",
+            commands.len(),
+            site.origin(),
+            site.rendered()
+        );
+        ways += commands.len();
+        every_path.extend(commands);
+    }
+    println!(
+        "[locked-resolution] {} site(s) written with a conditional word issue \
+         {ways} command(s) between them, and every one of them is judged below",
+        issued.rust.conditional.len()
+    );
+    let mut all = issued.commands;
+    all.extend(every_path);
+    all
+}
+
+/// A site that pins when the tree is ours OWES A CONDITIONAL FLAG.
+///
+/// The verdict half of `Tree::PinnedWhenItIsOurs` cannot fail: the arm says the
+/// flag is present exactly where the lockfile is this repository's, so
+/// `lock_verdict` reads ownership off the flag and both paths pass. R1259 spent
+/// a round on what an expectation like that is worth, and the answer is nothing
+/// — so the teeth are here, over the SITE rather than over one of its commands.
+///
+/// A site declaring this arm and spelling `--locked` unconditionally is claiming
+/// a condition its code does not have; one spelling it nowhere is claiming the
+/// opposite. Both are a declaration the file contradicts, and both are things a
+/// program can see. What no program here can see is whether the condition is
+/// OWNERSHIP rather than something else — the semantic ceiling every arm shares
+/// and the reason this one is not a way around the other four.
+#[test]
+fn a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag() {
+    let root = repository_root();
+    let commands = everything_this_repository_issues(&root);
+    // THE SITE IS ASKED THROUGH ITS COMMANDS, because a site whose flag is
+    // unconditional issues exactly ONE and that is the whole defect. Commands
+    // from one site share the file and the function that wrote them, which is
+    // what `origin` is; a function holding two cargo spawns would be read as one
+    // site here, and the claim — that this function's `--locked` is decided
+    // while it runs — is still the right one to make about it.
+    let mut by_site: BTreeMap<String, (bool, bool)> = BTreeMap::new();
+    for command in &commands {
+        if matches!(
+            command.declared,
+            Some(ci_plan::rust::Declared::PinnedWhenItIsOurs(_))
+        ) {
+            let seen = by_site.entry(command.origin()).or_insert((false, false));
+            if command.has("--locked") {
+                seen.0 = true;
+            } else {
+                seen.1 = true;
+            }
+        }
+    }
+    assert!(
+        !by_site.is_empty(),
+        "no command in this repository declares `Tree::PinnedWhenItIsOurs`, so \
+         this law holds over nothing — the arm is either unnecessary or \
+         unreachable, and both are things to know"
+    );
+    let broken: Vec<String> = by_site
+        .iter()
+        .filter(|(_, (pinned, free))| !(*pinned && *free))
+        .map(|(origin, (pinned, free))| {
+            format!("{origin} — a path that pins: {pinned}, a path that does not: {free}")
+        })
+        .collect();
+    println!(
+        "[locked-resolution] {} site(s) pin when the tree is ours, each issuing \
+         one command that says `--locked` and one that does not",
+        by_site.len()
+    );
+    assert!(
+        broken.is_empty(),
+        "a site declaring that it pins WHEN the tree is ours has to leave that \
+         decision in its code: a `--locked` spelled on every path claims a \
+         condition the file does not have, and one spelled on none claims the \
+         reverse — either way the arm would be a way past the other four rather \
+         than a fifth answer:\n  {}",
+        broken.join("\n  ")
+    );
 }
 
 #[test]

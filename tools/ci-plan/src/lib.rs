@@ -1648,6 +1648,15 @@ pub fn lock_verdict(
         // and the pair below decides the verdict as it does for any other
         // command.
         Some(rust::Declared::PinnedWhereverItPoints(_)) => true,
+        // THE FLAG IS THE ANSWER, BECAUSE THE SITE SAID IT WOULD BE. This arm
+        // declares that `--locked` is present exactly on the paths where the
+        // tree turns out to be one of ours, so reading ownership off the flag is
+        // reading the declaration rather than assuming it. Both ways then pass,
+        // WHICH IS WHY THE TEETH ARE SOMEWHERE ELSE: the site owes a `--locked`
+        // that is CONDITIONAL, held by `a_site_that_pins_when_the_tree_is_ours…`
+        // over the site rather than over the command, because a command is one
+        // path and the claim is about two.
+        Some(rust::Declared::PinnedWhenItIsOurs(_)) => command.has("--locked"),
         Some(rust::Declared::Unreadable(written)) => {
             return LockVerdict::Unreadable(format!(
                 "the tree it runs over is declared as `{written}`, which this \

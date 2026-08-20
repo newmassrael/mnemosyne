@@ -52,6 +52,21 @@
         "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
       ]
     },
+    "the-arms-are-tallied-over-the-readable-half-only": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/one_door_for_cargo.rs",
+          "from": "        .chain(found.conditional.iter().map(|site| {",
+          "to": "        .chain(found.conditional.iter().take(0).map(|site| {"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ],
+      "tests": [
+        "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ]
+    },
     "the-declaration-is-a-value-nobody-can-read": {
       "edits": [
         {

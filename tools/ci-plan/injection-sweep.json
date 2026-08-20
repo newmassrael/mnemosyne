@@ -467,13 +467,19 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "        let certain = self.depth <= self.opened_at[site];",
+          "from": "        let certain = self.depth <= opened_at;",
           "to": "        let certain = true;"
         }
       ],
       "expect_red": [
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
       ]
     },
     {
@@ -539,7 +545,14 @@
         "a_command_built_over_several_statements_is_one_command",
         "two_functions_holding_a_command_each_do_not_share_one",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
       ]
     },
     {
@@ -588,7 +601,121 @@
         "an_associated_function_is_not_a_call_of_a_free_function_of_that_name",
         "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name",
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
-        "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters"
+        "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters",
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "words_one_branch_adds_together_are_never_separated"
+      ]
+    },
+    {
+      "name": "a-conditional-word-forgets-which-arm-added-it",
+      "why": "words one branch adds together stop being together: `if let Some(m) = … { arg(\"--manifest-path\").arg(m) }` is enumerated as two decisions, so a command carrying `--manifest-path` with nothing after it joins the population and is judged as though something ran it",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().collect();",
+          "to": "        let path: Vec<Branch> = Vec::new();"
+        }
+      ],
+      "expect_red": [
+        "words_one_branch_adds_together_are_never_separated",
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "an_if_with_an_else_never_takes_neither_arm",
+        "two_arms_of_one_match_never_appear_in_the_same_command",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+      ]
+    },
+    {
+      "name": "only-the-innermost-branch-is-remembered",
+      "why": "the inner choice would be free of the outer one, so a command carrying the inner flag WITHOUT the outer would be enumerated — a path the function has no way to take, given a verdict all the same",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().collect();",
+          "to": "        let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().rev().take(1).collect();"
+        }
+      ],
+      "expect_red": [
+        "a_word_inside_two_branches_needs_both_of_them"
+      ]
+    },
+    {
+      "name": "each-match-arm-becomes-its-own-choice",
+      "why": "a `match` picks ONE arm; read as independent choices it enumerates a command carrying every arm's words at once and one carrying none, neither of which this program can issue",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    self.in_a_branch(choice, at, arms, false, |walk| {",
+          "to": "                    self.in_a_branch(choice + at, at, arms, false, |walk| {"
+        }
+      ],
+      "expect_red": [
+        "two_arms_of_one_match_never_appear_in_the_same_command"
+      ]
+    },
+    {
+      "name": "a-match-is-read-as-something-it-can-decline",
+      "why": "every way a `match` goes is an arm — an arm adding no words is already one of them — so admitting `none of them` invents a command with nothing from the match at all",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    self.in_a_branch(choice, at, arms, false, |walk| {\n                        sites.extend(walk.root(&arm.body));",
+          "to": "                    self.in_a_branch(choice, at, arms, true, |walk| {\n                        sites.extend(walk.root(&arm.body));"
+        }
+      ],
+      "expect_red": [
+        "two_arms_of_one_match_never_appear_in_the_same_command"
+      ]
+    },
+    {
+      "name": "an-if-with-no-else-is-read-as-one-it-must-take",
+      "why": "an `if` with no `else` can take neither arm, and reading it as always taken is the false green this whole reading exists to refuse: the flag inside it would be present in every command the site issues",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                self.in_a_branch(choice, 0, arms, !has_else, |walk| {",
+          "to": "                self.in_a_branch(choice, 0, arms, false, |walk| {"
+        }
+      ],
+      "expect_red": [
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "a_word_inside_two_branches_needs_both_of_them",
+        "words_one_branch_adds_together_are_never_separated",
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+      ]
+    },
+    {
+      "name": "a-hole-is-enumerated-as-though-it-were-a-choice",
+      "why": "a hole admits any NUMBER of words, so the paths of the words BESIDE it are a command list that leaves out whatever the hole holds — a flag among them, judged absent",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    Word::Unknown(_) => return None,",
+          "to": "                    Word::Unknown(text) => words.push(text.clone()),"
+        }
+      ],
+      "expect_red": [
+        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+      ]
+    },
+    {
+      "name": "the-list-of-paths-is-cut-short-instead-of-refused",
+      "why": "a list cut short reads exactly like a complete one; raising the cap past what a report can hold is how a site with a hundred ways comes to be reported on the strength of the first few",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "const VARIANT_CAP: usize = 64;",
+          "to": "const VARIANT_CAP: usize = 1024;"
+        }
+      ],
+      "expect_red": [
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
       ]
     },
     {
@@ -695,7 +822,7 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "        .find(|word| matches!(word, Word::Sometimes(_)))",
+          "from": "        .find(|word| matches!(word, Word::Sometimes(..)))",
           "to": "        .find(|_word| false)"
         }
       ],

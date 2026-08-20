@@ -95,6 +95,26 @@ pub enum Tree {
     /// throwaway makes their lockfiles first (`cargo generate-lockfile`), which
     /// is one line and says what it is doing.
     PinnedWhereverItPoints(&'static str),
+    /// Whichever tree the caller points at, PINNED EXACTLY WHEN IT TURNS OUT TO
+    /// BE ONE OF THIS REPOSITORY'S — a fact the site decides while it runs.
+    ///
+    /// `feature_coverage_smoke` asks every workspace this repository tracks for
+    /// its metadata, and one of them resolves against a sibling checkout: its
+    /// lockfile moves when that sibling moves and is not ours to pin. So the
+    /// command pins on one path and not the other, and neither
+    /// [`Tree::ThisRepository`] nor an arm that declines to name a tree is true
+    /// of it — the first is false wherever the flag is absent, which is how
+    /// R1265 found this site declaring something it is not.
+    ///
+    /// THE OBLIGATION IS ON THE SITE AND IT IS FALSIFIABLE: `--locked` must be a
+    /// word this site adds ON SOME PATHS. Spelled unconditionally the arm is a
+    /// lie about the code (there is no condition), and absent altogether it is a
+    /// lie the other way — and a law that only ever agreed with whatever the
+    /// site did would be the expectation that cannot fail R1259 spent a round
+    /// on. What no program here can check is whether the CONDITION is ownership
+    /// rather than something else; that is the semantic ceiling every one of
+    /// these arms shares.
+    PinnedWhenItIsOurs(&'static str),
 }
 
 impl Tree {
@@ -105,7 +125,8 @@ impl Tree {
             Self::ThisRepository => None,
             Self::MadeByThisRun(why)
             | Self::WhereverTheCallerPoints(why)
-            | Self::PinnedWhereverItPoints(why) => Some(why),
+            | Self::PinnedWhereverItPoints(why)
+            | Self::PinnedWhenItIsOurs(why) => Some(why),
         }
     }
 }

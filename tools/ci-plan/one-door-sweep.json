@@ -117,6 +117,20 @@
       "expect_red": [
         "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
       ]
+    },
+    {
+      "name": "the-arms-are-tallied-over-the-readable-half-only",
+      "why": "a site whose word list depends on the path taken declares as much as any other, and one of this repository's five arms is used at exactly one such site — count only the commands read whole and that arm reads as unreachable, which is the state this law exists to refuse",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/one_door_for_cargo.rs",
+          "from": "        .chain(found.conditional.iter().map(|site| {",
+          "to": "        .chain(found.conditional.iter().take(0).map(|site| {"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ]
     }
   ]
 }

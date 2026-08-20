@@ -9,15 +9,17 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "            Word::Unknown(_) | Word::Sometimes(_) => None,",
-          "to": "            Word::Unknown(text) | Word::Sometimes(text) => Some(text.clone()),"
+          "from": "            Word::Unknown(_) | Word::Sometimes(..) => None,",
+          "to": "            Word::Unknown(text) | Word::Sometimes(text, _) => Some(text.clone()),"
         }
       ],
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
-        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
       ],
       "tests": [
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
@@ -97,6 +99,36 @@
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     },
+    "a-site-that-pins-when-ours-spells-the-flag-on-every-path": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/feature_coverage_smoke.rs",
+          "from": "    if !cannot_be_pinned().contains(directory) {\n        command.arg(\"--locked\");\n    }",
+          "to": "    command.arg(\"--locked\");"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ]
+    },
+    "a-site-whose-words-depend-on-the-path-is-left-unjudged": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "    all.extend(every_path);",
+          "to": "    all.extend(Vec::new());"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ]
+    },
     "a-workflow-step-resolves-freely": {
       "edits": [
         {
@@ -125,6 +157,21 @@
       ],
       "tests": [
         "locked_resolution_smoke::a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile"
+      ]
+    },
+    "pinning-when-the-tree-is-ours-is-read-as-always-ours": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::PinnedWhenItIsOurs(_)) => command.has(\"--locked\"),",
+          "to": "        Some(rust::Declared::PinnedWhenItIsOurs(_)) => true,"
+        }
+      ],
+      "expect_red": [
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     },
     "pinning-wherever-it-points-is-read-as-owning-nothing": {
@@ -212,9 +259,11 @@
       ],
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
-        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
       ],
       "tests": [
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
