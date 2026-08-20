@@ -766,6 +766,35 @@ pub struct RustSpawns {
     pub spawns: usize,
 }
 
+impl RustSpawns {
+    /// EVERY command these spawns issue — the ones written whole, and every way
+    /// a conditional site can go.
+    ///
+    /// R1268, and it exists because [`RustSpawns::commands`] stopped being that
+    /// list the moment R1265 made a conditional site enumerable. A site with a
+    /// conditional word IS a set of commands, and those commands lived nowhere
+    /// but in the site: the population `commands_this_repository_issues` handed
+    /// over held the twelve of them in a shape only a caller that knew to
+    /// expand it could read. One law knew — `locked_resolution_smoke` expanded
+    /// them itself — and the other two received a population twelve commands
+    /// short and said nothing, which is R1228's defect exactly, one bucket
+    /// over: a fact one caller reconstructs is a fact the others never have.
+    ///
+    /// A site this reader cannot enumerate contributes nothing here and is
+    /// counted by [`RustSpawns::ways_beyond_a_report`] instead, so the drop is
+    /// a number rather than a silence.
+    #[must_use]
+    pub fn every_command(&self) -> Vec<CargoCommand> {
+        let mut all = self.commands.clone();
+        for site in &self.conditional {
+            if let Some(commands) = site.commands() {
+                all.extend(commands);
+            }
+        }
+        all
+    }
+}
+
 /// Every cargo command tracked Rust sources issue, and what could not be read.
 ///
 /// # Panics

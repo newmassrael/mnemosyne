@@ -317,7 +317,8 @@
         "every_cargo_spawn_in_tracked_rust_is_placed",
         "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
         "a_shell_line_is_split_where_cargo_stops_and_the_harness_starts",
-        "the_declaration_is_read_for_the_commands_it_issues"
+        "the_declaration_is_read_for_the_commands_it_issues",
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ]
     },
     {
@@ -607,7 +608,8 @@
         "a_string_literal_converted_to_a_string_is_still_that_word",
         "a_word_pushed_after_the_binding_is_in_the_command",
         "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
-        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ]
     },
     {
@@ -971,6 +973,48 @@
       "expect_red": [
         "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
         "a_call_written_inside_a_macro_is_listed_rather_than_missed"
+      ]
+    },
+    {
+      "name": "a-conditional-sites-commands-stay-inside-the-site",
+      "why": "this is the defect R1268 found, put back: the ways a conditional site can go are commands this repository issues, and a population that leaves them in the residue is one only a law that knows to expand it can read — which is how two of the four laws came to be judging 320 commands out of 332 with nothing saying so",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            if let Some(commands) = site.commands() {\n                all.extend(commands);\n            }",
+          "to": "            let _ = site.commands();"
+        }
+      ],
+      "expect_red": [
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
+      ]
+    },
+    {
+      "name": "a-law-over-this-population-goes-unnamed",
+      "why": "the list of laws is the half of this population nothing checked until R1268, and a name that no longer matches a file is exactly how it went stale in silence the first time",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    \"crates/mnemosyne-cli/tests/build_width.rs\",",
+          "to": "    \"crates/mnemosyne-cli/tests/a_law_nobody_wrote.rs\","
+        }
+      ],
+      "expect_red": [
+        "every_law_over_this_population_is_one_this_crate_names"
+      ]
+    },
+    {
+      "name": "a-call-inside-a-function-body-is-not-looked-for",
+      "why": "every call to this population's assembly is written inside a body, which is a token GROUP — a scan that reads only the outermost tokens finds none of them and reports that no law reads the population at all, the empty answer that looks like a tidy one",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        proc_macro2::TokenTree::Group(group) => names(group.stream(), name),",
+          "to": "        proc_macro2::TokenTree::Group(_) => false,"
+        }
+      ],
+      "expect_red": [
+        "every_law_over_this_population_is_one_this_crate_names"
       ]
     }
   ]

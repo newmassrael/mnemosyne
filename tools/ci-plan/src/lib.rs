@@ -1886,18 +1886,22 @@ pub fn sweep_cargo_commands(root: &Path) -> Vec<CargoCommand> {
 /// workspaces present HERE, so on a workstation holding the sibling checkout
 /// this population is `studio`'s eight commands larger than it is on a hosted
 /// runner — and until this round the function handed back the commands alone
-/// and dropped the reason. Three laws read it that way (`locked_resolution_
-/// smoke`, `build_width`, `judged_test_runs`) and not one of them could say
-/// what it had not judged, while the three laws that take the lister's answer
-/// directly all say it. The difference was not the authors' care: it was that
-/// this shape had nowhere to put the second fact.
+/// and dropped the reason. The laws over this population — which are
+/// [`LAWS_OVER_THIS_POPULATION`], and are checked to be, rather than listed in
+/// a sentence here — read it that way and not one of them could say what it
+/// had not judged, while the three laws that take the lister's answer directly
+/// all say it. The difference was not the authors' care: it was that this shape
+/// had nowhere to put the second fact.
 ///
 /// Returning it means a caller RECEIVES what it could not reach, which the
 /// compiler enforces, and a caller that then says nothing about it is a
 /// decision somebody made rather than a fact nobody was handed.
 #[derive(Debug, Clone, Default)]
 pub struct IssuedCommands {
-    /// The commands, from all six sources.
+    /// The commands, from all six sources — and from the sixth, every way a
+    /// conditional site can go as well as the spawns written whole (R1268).
+    /// What a law receives here is the whole population; nothing about it is
+    /// left for a caller to reconstruct.
     pub commands: Vec<CargoCommand>,
     /// The workspaces the lister declined on this machine, with its reasons.
     /// Empty is a real answer — it says every separate workspace was reachable
@@ -1958,11 +1962,98 @@ pub fn commands_this_repository_issues(root: &Path) -> IssuedCommands {
     issued.extend(sweep_cargo_commands(root));
     // THE SIXTH SOURCE, and the only one that hands back a residue of its own:
     // what a Rust program spells, this reader reads, and what it computes is
-    // counted rather than guessed at (R1262).
+    // counted rather than guessed at (R1262). ALL of it, including every way a
+    // conditional site can go — see `RustSpawns::every_command`, which is where
+    // that expansion lives now that more than one law reads the population.
     let read = rust::cargo_commands(root);
-    issued.extend(read.commands.clone());
+    issued.extend(read.every_command());
     issued.rust = read;
     issued
+}
+
+/// The laws over [`commands_this_repository_issues`], as the tracked files that
+/// hold them.
+///
+/// R1268, AND IT IS A LIST BECAUSE THE LAST ONE WAS PROSE. [`IssuedCommands`]
+/// named these files in a doc comment written by R1228, and that sentence was
+/// correct when it was written and stayed correct by luck: nothing read it, so
+/// nothing could have said when a fourth law arrived or when one of the three
+/// stopped asking. The population is what several laws share, and the set of
+/// laws is the other half of that — a datum, not a remark.
+///
+/// A NEW LAW HERE IS A DECISION, which is the whole point. The population
+/// carries shapes only the sixth source produces, and each of them is a
+/// question the arriving law has to have an answer for:
+///
+/// - a command whose words a conditional site chose ([`rust::RustSpawn`]) —
+///   every way it can go is in the population, so a law reads them like any
+///   other command;
+/// - a command carrying a HOLE (`CargoCommand::uncounted`) — a hole cannot take
+///   a word away, so a flag beside one is definitely there and a flag's ABSENCE
+///   cannot be claimed. A law that asks whether something is missing has to say
+///   `unreadable` rather than `no`;
+/// - a command carrying a DECLARATION (`CargoCommand::declared`) about the tree
+///   it runs over — this repository's, a fixture the run built, or wherever its
+///   caller points. A law about what this repository's own commands must do is
+///   a law about the first of those.
+pub const LAWS_OVER_THIS_POPULATION: [&str; 4] = [
+    "crates/mnemosyne-cli/tests/build_width.rs",
+    "crates/mnemosyne-cli/tests/judged_test_runs.rs",
+    "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+    "tools/ci-plan/tests/reading.rs",
+];
+
+/// Which tracked Rust files read [`commands_this_repository_issues`], asked of
+/// the tree rather than remembered.
+///
+/// The identifier is looked for in the TOKENS of each file, so a call inside a
+/// macro counts and a mention inside a doc comment does not — R1263 measured
+/// that difference the hard way, on a reader that could not see through
+/// `assert!(..)` and reported a half-read site as a whole one.
+///
+/// # Panics
+///
+/// When a tracked `.rs` file does not parse, and when the function this is
+/// about is defined nowhere or in more than one place — a walk that found no
+/// definition is a walk whose empty answer means nothing.
+#[must_use]
+pub fn laws_over_this_population(root: &Path) -> BTreeSet<String> {
+    const NAME: &str = "commands_this_repository_issues";
+    let mut readers = BTreeSet::new();
+    let mut definitions = Vec::new();
+    for path in tracked_files(root, &["ls-files", "*.rs"]) {
+        let text = std::fs::read_to_string(root.join(&path))
+            .unwrap_or_else(|why| panic!("read {path}: {why}"));
+        let file = syn::parse_file(&text)
+            .unwrap_or_else(|why| panic!("{path} does not parse as Rust: {why}"));
+        if file
+            .items
+            .iter()
+            .any(|item| matches!(item, syn::Item::Fn(function) if function.sig.ident == NAME))
+        {
+            definitions.push(path);
+            continue;
+        }
+        if names(quote::ToTokens::to_token_stream(&file), NAME) {
+            readers.insert(path);
+        }
+    }
+    assert_eq!(
+        definitions.len(),
+        1,
+        "`{NAME}` is defined in {definitions:?}, and a population with two \
+         assemblies is two populations"
+    );
+    readers
+}
+
+/// Does this token stream hold `name` as an identifier?
+fn names(tokens: proc_macro2::TokenStream, name: &str) -> bool {
+    tokens.into_iter().any(|tree| match tree {
+        proc_macro2::TokenTree::Ident(ident) => ident == name,
+        proc_macro2::TokenTree::Group(group) => names(group.stream(), name),
+        _ => false,
+    })
 }
 
 /// The words in one command that decide how wide it runs, if it decides at all.

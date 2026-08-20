@@ -134,9 +134,9 @@
     "a-site-whose-words-depend-on-the-path-is-left-unjudged": {
       "edits": [
         {
-          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "    all.extend(every_path);",
-          "to": "    all.extend(Vec::new());"
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            if let Some(commands) = site.commands() {\n                all.extend(commands);\n            }",
+          "to": "            let _ = site.commands();"
         }
       ],
       "expect_red": [

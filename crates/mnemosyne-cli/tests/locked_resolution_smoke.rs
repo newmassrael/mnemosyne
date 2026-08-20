@@ -93,13 +93,15 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
             site.reach()
         );
     }
-    // A SITE WITH A CONDITIONAL WORD IS EVERY COMMAND IT CAN ISSUE (R1265).
-    // Before that it was one command nobody could read, and the law below said
-    // nothing about it — which is the same silence as a clean answer. Each way
-    // the choices go is a command this repository issues, and each is judged
-    // beside the ones written whole.
+    // A SITE WITH A CONDITIONAL WORD IS EVERY COMMAND IT CAN ISSUE (R1265),
+    // AND THE POPULATION ARRIVES HOLDING THEM (R1268). This function used to
+    // expand the sites itself and append the result, which made it the only law
+    // of the three reading a whole population — `build_width` and
+    // `judged_test_runs` received the same struct twelve commands short and had
+    // no way to know. The expansion moved into `commands_this_repository_issues`
+    // where the other five sources are assembled; what stays here is the REPORT,
+    // and the assertion that a site filed as enumerable is one.
     let mut ways = 0;
-    let mut every_path = Vec::new();
     for site in &issued.rust.conditional {
         let Some(commands) = site.commands() else {
             panic!(
@@ -115,7 +117,6 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
             site.rendered()
         );
         ways += commands.len();
-        every_path.extend(commands);
     }
     println!(
         "[locked-resolution] {} site(s) written with a conditional word issue \
@@ -127,9 +128,7 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
         issued.rust.ways_no_table_can_key_on,
         issued.rust.ways_beyond_a_report
     );
-    let mut all = issued.commands;
-    all.extend(every_path);
-    all
+    issued.commands
 }
 
 /// A site that pins when the tree is ours OWES A CONDITIONAL FLAG.

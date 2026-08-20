@@ -2949,3 +2949,121 @@ fn every_cargo_spawn_in_tracked_rust_is_placed() {
         found.files
     );
 }
+
+/// WHO READS THIS POPULATION, asked of the tree rather than of a memory of it.
+///
+/// R1268. The question this round is about — "what shape has each law over this
+/// population never met?" — cannot be asked at all until the set of laws is
+/// something a program answers. It was a sentence in a doc comment
+/// (`IssuedCommands`, written by R1228), it was accurate, and it was accurate
+/// by luck: a fourth law could have arrived at any point and nothing would have
+/// said so, which is how a population grows two readings.
+///
+/// The failing message is the useful half. A law arriving here has to meet the
+/// shapes only the sixth source produces — a conditional site's ways, a hole,
+/// a declaration about the tree — and those are written beside the list.
+#[test]
+fn every_law_over_this_population_is_one_this_crate_names() {
+    let root = repository_root();
+    let reading = ci_plan::laws_over_this_population(&root);
+    let named: BTreeSet<String> = ci_plan::LAWS_OVER_THIS_POPULATION
+        .iter()
+        .map(|path| (*path).to_string())
+        .collect();
+    println!(
+        "[population] {} law(s) read `commands_this_repository_issues`: {}",
+        reading.len(),
+        reading.iter().cloned().collect::<Vec<_>>().join(", ")
+    );
+    let arrived: Vec<&String> = reading.difference(&named).collect();
+    let left: Vec<&String> = named.difference(&reading).collect();
+    assert!(
+        arrived.is_empty(),
+        "{arrived:?} reads the population and is not in \
+         `LAWS_OVER_THIS_POPULATION` — add it there, and answer the three \
+         questions written beside that list first: what does this law say about \
+         a command a conditional site chose the words of, about one carrying a \
+         hole (an absence cannot be claimed over one), and about one declaring \
+         it runs over a tree that is not this repository's?"
+    );
+    assert!(
+        left.is_empty(),
+        "{left:?} is named as a law over this population and does not read it — \
+         a list that outlives its members is the drift this list exists to stop"
+    );
+}
+
+/// WHAT EVERY LAW OVER THIS POPULATION RECEIVES — and it is the same thing.
+///
+/// R1268. Three laws read `commands_this_repository_issues`, and until this
+/// round only one of them read a whole population: a conditional site's
+/// commands (R1265) existed nowhere but inside the site, so a caller got them
+/// only by expanding the residue itself. `locked_resolution_smoke` did;
+/// `build_width` and `judged_test_runs` never knew there was anything to
+/// expand, and received twelve fewer commands with nothing saying so.
+///
+/// This is R1228's defect one bucket over, and the same answer: a fact a caller
+/// has to RECONSTRUCT is a fact most callers will not have. The assertion is
+/// over the assembled population rather than over the two laws, because a law
+/// that never learns of a command cannot be asked about it — the only place the
+/// omission is visible is here.
+#[test]
+fn the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues() {
+    let root = repository_root();
+    let issued = ci_plan::commands_this_repository_issues(&root);
+    let mut from_sites: Vec<CargoCommand> = Vec::new();
+    for site in &issued.rust.conditional {
+        if let Some(commands) = site.commands() {
+            from_sites.extend(commands);
+        }
+    }
+    // THE RESIDUE, WITH ITS SIZE. A population that says how much of itself it
+    // could not read is one a law can weigh; the count below is what the next
+    // question about this population is about — a command carrying a hole
+    // answers "that flag is present" and can never answer "it is absent".
+    let holed: Vec<&CargoCommand> = issued
+        .commands
+        .iter()
+        .filter(|command| command.uncounted > 0)
+        .collect();
+    println!(
+        "[population] {} command(s) handed over; {} conditional site(s) issue \
+         {} of them between them; {} carry a hole",
+        issued.commands.len(),
+        issued.rust.conditional.len(),
+        from_sites.len(),
+        holed.len()
+    );
+    for command in &holed {
+        println!(
+            "[population]   a hole of {} word(s): {} — {}",
+            command.uncounted,
+            command.origin(),
+            command.rendered()
+        );
+    }
+    // NON-VACUITY FIRST, and it is the whole risk here: a reader that stopped
+    // filing conditional sites would leave nothing to look for and this law
+    // would pass on an empty question — which is exactly what it was built to
+    // catch, one level up.
+    assert!(
+        !from_sites.is_empty(),
+        "no conditional site in this repository issues a command, so this law \
+         holds over nothing — either the reader stopped filing them or the tree \
+         stopped writing them, and both are things to know: {} site(s) filed",
+        issued.rust.conditional.len()
+    );
+    let missing: Vec<String> = from_sites
+        .iter()
+        .filter(|command| !issued.commands.contains(command))
+        .map(|command| format!("{} — {}", command.origin(), command.rendered()))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "{} command(s) a conditional site issues are not in the population every \
+         law is handed, so a law can only reach them by assembling the sixth \
+         source a second time — and a second assembly is a second answer:\n  {}",
+        missing.len(),
+        missing.join("\n  ")
+    );
+}

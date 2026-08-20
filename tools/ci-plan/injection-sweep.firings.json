@@ -20,6 +20,21 @@
         "a_program_named_by_a_parameter_is_not_resolved_through_a_function_of_the_same_name"
       ]
     },
+    "a-call-inside-a-function-body-is-not-looked-for": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        proc_macro2::TokenTree::Group(group) => names(group.stream(), name),",
+          "to": "        proc_macro2::TokenTree::Group(_) => false,"
+        }
+      ],
+      "expect_red": [
+        "every_law_over_this_population_is_one_this_crate_names"
+      ],
+      "tests": [
+        "every_law_over_this_population_is_one_this_crate_names"
+      ]
+    },
     "a-call-inside-a-macro-is-not-looked-for": {
       "edits": [
         {
@@ -100,6 +115,21 @@
         "two_arms_of_one_match_never_appear_in_the_same_command",
         "two_functions_holding_a_command_each_do_not_share_one",
         "words_one_branch_adds_together_are_never_separated"
+      ]
+    },
+    "a-conditional-sites-commands-stay-inside-the-site": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            if let Some(commands) = site.commands() {\n                all.extend(commands);\n            }",
+          "to": "            let _ = site.commands();"
+        }
+      ],
+      "expect_red": [
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
+      ],
+      "tests": [
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ]
     },
     "a-conditional-word-forgets-which-arm-added-it": {
@@ -257,6 +287,21 @@
       ],
       "tests": [
         "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ]
+    },
+    "a-law-over-this-population-goes-unnamed": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    \"crates/mnemosyne-cli/tests/build_width.rs\",",
+          "to": "    \"crates/mnemosyne-cli/tests/a_law_nobody_wrote.rs\","
+        }
+      ],
+      "expect_red": [
+        "every_law_over_this_population_is_one_this_crate_names"
+      ],
+      "tests": [
+        "every_law_over_this_population_is_one_this_crate_names"
       ]
     },
     "a-list-a-binding-holds-is-not-read-at-all": {
@@ -686,14 +731,16 @@
         "every_cargo_spawn_in_tracked_rust_is_placed",
         "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
         "a_shell_line_is_split_where_cargo_stops_and_the_harness_starts",
-        "the_declaration_is_read_for_the_commands_it_issues"
+        "the_declaration_is_read_for_the_commands_it_issues",
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ],
       "tests": [
         "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
         "a_shell_line_is_split_where_cargo_stops_and_the_harness_starts",
         "cargos_own_marker_does_not_start_a_second_command",
         "every_cargo_spawn_in_tracked_rust_is_placed",
-        "the_declaration_is_read_for_the_commands_it_issues"
+        "the_declaration_is_read_for_the_commands_it_issues",
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ]
     },
     "each-match-arm-becomes-its-own-choice": {
@@ -940,7 +987,8 @@
         "a_string_literal_converted_to_a_string_is_still_that_word",
         "a_word_pushed_after_the_binding_is_in_the_command",
         "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
-        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ],
       "tests": [
         "a_binding_read_without_being_changed_stays_readable",
@@ -982,6 +1030,7 @@
         "the_declaration_is_read_beside_the_words_and_a_variant_nobody_knows_is_refused",
         "the_door_is_the_door_however_its_module_is_spelled",
         "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
+        "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues",
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
         "two_arms_of_one_match_never_appear_in_the_same_command",
         "two_functions_holding_a_command_each_do_not_share_one",

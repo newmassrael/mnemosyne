@@ -217,12 +217,12 @@
     },
     {
       "name": "a-site-whose-words-depend-on-the-path-is-left-unjudged",
-      "why": "before R1265 a site written with a conditional word was one command nobody could read, and this law said nothing about it — which is the same silence as a clean answer. Dropping the paths again takes ten commands out of the population, one of them the `RepairsWhatItShouldReport` this round found",
+      "why": "before R1265 a site written with a conditional word was one command nobody could read, and this law said nothing about it — which is the same silence as a clean answer. Dropping the paths again takes twelve commands out of the population, one of them the `RepairsWhatItShouldReport` R1265 found. THE ANCHOR MOVED IN R1268 and the injection followed it rather than being retired: the expansion used to live in this law, which is exactly why two of the other three laws never saw those commands, and it now lives in `RustSpawns::every_command` where every law reads it",
       "edits": [
         {
-          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "    all.extend(every_path);",
-          "to": "    all.extend(Vec::new());"
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            if let Some(commands) = site.commands() {\n                all.extend(commands);\n            }",
+          "to": "            let _ = site.commands();"
         }
       ],
       "expect_red": [
