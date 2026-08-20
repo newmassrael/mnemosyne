@@ -319,6 +319,7 @@ pub fn check_command(manifest: &str, all_features: bool) -> CargoCommand {
         // whose lockfile this resolves — the reading every command written as
         // data gets.
         declared: None,
+        uncounted: 0,
     }
 }
 

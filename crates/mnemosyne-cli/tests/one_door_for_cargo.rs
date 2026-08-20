@@ -145,6 +145,26 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
         println!("[one-door]   carried: {} — {}", site.origin(), site.reach());
     }
 
+    // NOTHING THAT CAME THROUGH THE DOOR FALLS OUT OF EVERY ANSWER, and this
+    // law exists because R1266 broke it while building. When the hop backwards
+    // learned to read a caller's local binding, two sites whose callers all
+    // handed over lists WITH HOLES stopped being carried — every call site was
+    // read — while producing no command either, because the merged words still
+    // held a hole. They left every bucket and every number in the same moment,
+    // which is what a silent drop looks like from the outside: nothing.
+    assert_eq!(
+        found.read_but_unanswered, 0,
+        "{} call site(s) had their words READ and produced no answer at all — no \
+         command in the population and no count naming what stopped them, which \
+         is the one state this reader must never reach",
+        found.read_but_unanswered
+    );
+    println!(
+        "[one-door] {} way(s) no table can be keyed on, {} site(s) with more \
+         ways than a report can hold, 0 call site(s) read and unanswered",
+        found.ways_no_table_can_key_on, found.ways_beyond_a_report
+    );
+
     // THE HOP BACKWARDS IS IN USE, and this is what keeps it from going quiet.
     // A wrapper's words are at its call sites, and a reader that stopped
     // following them there would report every one of those commands as carried —

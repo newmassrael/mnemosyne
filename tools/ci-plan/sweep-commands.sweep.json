@@ -80,6 +80,35 @@
       "expect_red": [
         "judged_test_runs::every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it"
       ]
+    },
+    {
+      "name": "a-listing-is-read-as-a-test-run",
+      "why": "R1266 — `cargo test … -- --list` prints the names a harness knows and RUNS NOTHING, so there is no coverage for the wrapper to hold a log against; read as a run it is a true-looking finding about a command that never had the property. It arrived here the moment R1266 made `item-citations`' assembled argv readable, and the law was right to refuse a command it could not place — what was missing was the population, not the wrapper",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        && !command.harness_args.iter().any(|word| word == \"--list\")",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "judged_test_runs::every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it",
+        "judged_test_runs::a_command_that_builds_the_binaries_without_running_them_is_not_a_run"
+      ]
+    },
+    {
+      "name": "a-build-without-a-run-is-read-as-a-test-run",
+      "why": "`--no-run` builds the test binaries and runs none of them, which is the other half of the same fact; the reading is here rather than in the law because it is a fact about the command, and `unrun-tests` assembles exactly this shape",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    command.subcommand() == Some(\"test\")\n        && !command.has(\"--no-run\")",
+          "to": "    command.subcommand() == Some(\"test\")"
+        }
+      ],
+      "expect_red": [
+        "judged_test_runs::a_command_that_builds_the_binaries_without_running_them_is_not_a_run"
+      ]
     }
   ]
 }

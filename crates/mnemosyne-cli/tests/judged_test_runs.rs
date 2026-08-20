@@ -120,9 +120,16 @@ fn issued_by_a_sweep(command: &CargoCommand) -> bool {
 fn every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it() {
     let root = repository_root();
     let commands = everything_this_repository_issues(&root);
+    // THE POPULATION IS TEST RUNS AND NOT `cargo test` SPELLINGS (R1266). A
+    // `cargo test … -- --list` prints the names a harness knows and runs
+    // nothing, and `--no-run` builds the binaries and runs nothing; neither has
+    // coverage for the wrapper to hold a log against. `ci_plan::runs_tests` is
+    // the one reader of that, because it is a fact about the command rather than
+    // about this law — and it was written when R1266 made the second listing in
+    // this repository readable and it walked in here.
     let suites: Vec<&CargoCommand> = commands
         .iter()
-        .filter(|command| command.subcommand() == Some("test"))
+        .filter(|command| ci_plan::runs_tests(command))
         .collect();
 
     let unwrapped: Vec<String> = suites
@@ -216,6 +223,7 @@ fn the_wrapper_is_found_wherever_it_carries_and_a_command_it_does_not_carry_is_n
         harness_args: Vec::new(),
         env: Default::default(),
         declared: None,
+        uncounted: 0,
     };
     assert!(
         judged_for_coverage(&carried),
@@ -232,6 +240,73 @@ fn the_wrapper_is_found_wherever_it_carries_and_a_command_it_does_not_carry_is_n
         "and a suite carried by something that is NOT the wrapper is still \
          unjudged — a law that answered yes here would accept every command in \
          this repository"
+    );
+}
+
+/// A `cargo test` THAT RUNS NOTHING IS NOT A RUN, and both spellings are pinned
+/// here because only one of them exists in this tree (R1266).
+///
+/// `-- --list` prints the names a harness knows; `--no-run` builds the binaries
+/// and runs none of them. Neither has coverage for the wrapper to hold a log
+/// against, and reading either as a run is a true-looking finding about a
+/// command that never had the property. This repository holds one listing and no
+/// readable `--no-run`, so the second half is a fixture: a law whose only test
+/// is the tree can only be checked on what the tree happens to hold today.
+#[test]
+fn a_command_that_builds_the_binaries_without_running_them_is_not_a_run() {
+    let a_run = CargoCommand {
+        source: "a case".to_string(),
+        owner: "a case".to_string(),
+        carrier: Vec::new(),
+        cargo_args: ["cargo", "test", "--workspace"]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect(),
+        harness_args: Vec::new(),
+        env: Default::default(),
+        declared: None,
+        uncounted: 0,
+    };
+    assert!(
+        ci_plan::runs_tests(&a_run),
+        "a plain `cargo test` runs tests, and a reader that said otherwise would \
+         empty this law's population"
+    );
+
+    let built_only = CargoCommand {
+        cargo_args: ["cargo", "test", "--workspace", "--no-run"]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect(),
+        ..a_run.clone()
+    };
+    assert!(
+        !ci_plan::runs_tests(&built_only),
+        "`--no-run` builds the test binaries and runs none of them"
+    );
+
+    let listed_only = CargoCommand {
+        harness_args: vec!["--list".to_string()],
+        ..a_run.clone()
+    };
+    assert!(
+        !ci_plan::runs_tests(&listed_only),
+        "`-- --list` prints the names a harness knows and runs nothing"
+    );
+
+    // AND THE FLAG IS READ ON THE SIDE IT IS WRITTEN. `--list` before the bare
+    // `--` is not a harness flag, and `--no-run` after it is not cargo's; a
+    // reader that pooled the two sides would answer about a command nobody wrote.
+    let cargo_side_list = CargoCommand {
+        cargo_args: ["cargo", "test", "--list"]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect(),
+        ..a_run.clone()
+    };
+    assert!(
+        ci_plan::runs_tests(&cargo_side_list),
+        "`--list` on cargo's own side is not the harness flag that lists tests"
     );
 }
 
@@ -425,6 +500,7 @@ fn a_suite_that_opts_out_of_freshening_is_seen_to() {
         harness_args: Vec::new(),
         env: Default::default(),
         declared: None,
+        uncounted: 0,
     };
     assert!(!opts_out_of_freshening(&freshened));
 

@@ -181,6 +181,50 @@ pub enum Program {
 /// because a list cut short reads exactly like a complete one.
 const VARIANT_CAP: usize = 64;
 
+/// ONE way a site's choices can go: the words it hands over, and which of them
+/// stand for a list this reader could not count.
+///
+/// The hole is a WORD rather than a gap, and it is rendered the way a shell
+/// script's assembled argument is (`$selectors`), because it IS one argument
+/// position as far as anything here can tell. What the positions buy is the only
+/// two questions a hole changes the answer to: whether the SUBCOMMAND was read
+/// before it, and whether a flag's ABSENCE can be claimed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Way {
+    /// The words, in order, the hole among them.
+    pub words: Vec<String>,
+    /// The positions in [`Way::words`] that stand for a list of unknown length.
+    pub uncounted: Vec<usize>,
+    /// The positions holding ONE word whose value is decided while the program
+    /// runs — `$manifest`, `$subcommand`.
+    ///
+    /// Kept for one question only: whether the SUBCOMMAND is a word any table
+    /// can be keyed on. Everywhere else this repository's reading of a runtime
+    /// word is the one [`Word::Runtime`] states — one argument, and not a flag
+    /// the site spells — which predates this and is not widened here.
+    pub unspelled: Vec<usize>,
+}
+
+impl Way {
+    /// Was the SUBCOMMAND read as a word a table can be keyed on?
+    ///
+    /// Two ways it is not. A HOLE before it renders without a leading `-`, so a
+    /// reader looking for the first word that is not a flag would take the hole
+    /// FOR the subcommand. And the subcommand may itself be decided while the
+    /// program runs — `locked_resolution_smoke` loops over every subcommand cargo
+    /// has, which is the one site in this repository that does it — and no table
+    /// classifies a word nobody spelled.
+    #[must_use]
+    pub fn subcommand_was_read(&self) -> bool {
+        let Some(first) = self.words.iter().position(|word| !word.starts_with('-')) else {
+            // No subcommand at all is a reading `lock_verdict` already refuses in
+            // its own words, so it is not this method's to hide.
+            return true;
+        };
+        !self.uncounted.iter().any(|hole| *hole <= first) && !self.unspelled.contains(&first)
+    }
+}
+
 /// The arm of one choice point a conditional word was added by.
 ///
 /// WORDS ADDED TOGETHER STAY TOGETHER AND WORDS FROM DIFFERENT ARMS NEVER MEET.
@@ -397,23 +441,48 @@ impl RustSpawn {
     /// lockfile it pins every other Tuesday) and calling it absent (a false
     /// alarm on a command that is fine). Neither is true; all four are.
     ///
-    /// `None` when the site hands over a list this reader cannot count — a hole
-    /// admits any number of words, so there is nothing to enumerate — or when
-    /// the choices multiply past what a report can be read as, which is a limit
-    /// this says out loud rather than truncating.
+    /// A HOLE AMONG THE WORDS IS KEPT AS A WORD AND COUNTED (R1266), because a
+    /// hole cannot take a word away: a flag spelled beside one is definitely
+    /// there, and only its ABSENCE is a thing the hole can hide. Refusing the
+    /// whole site instead was the earlier reading, and it left two commands whose
+    /// `--locked` sits in a literal one statement up unread by any law.
+    ///
+    /// `None` only when the choices multiply past what a report can be read as,
+    /// which is a limit this says out loud rather than truncating.
     #[must_use]
-    pub fn variants(&self) -> Option<Vec<Vec<String>>> {
-        // THE HOLE IS ANSWERED IN ONE PLACE, down in the loop where each word is
-        // read. A first draft also checked for one up here, and the injection
-        // written to prove that check mattered came back with nothing red: the
-        // two clauses answered the same question, and R1262's rule for a clause
-        // nothing exercises is to delete it rather than keep it for the shape.
-        //
+    pub fn variants(&self) -> Option<Vec<Way>> {
+        ways_of(&self.words)
+    }
+
+    /// The ways this site can go that no table can be keyed on, because the
+    /// subcommand is behind a hole or is a word nobody spelled.
+    #[must_use]
+    pub fn ways_no_table_can_key_on(&self) -> usize {
+        self.variants().map_or(0, |ways| {
+            ways.iter().filter(|way| !way.subcommand_was_read()).count()
+        })
+    }
+}
+
+/// Every way ONE word list can go: one entry per combination of the arms its
+/// conditional words depend on.
+///
+/// A FREE FUNCTION BECAUSE THERE ARE TWO LISTS TO ENUMERATE. A site's own words
+/// are one; the same words with a caller's spliced into their hole are another,
+/// and a second spelling of this would be one free to enumerate them differently
+/// — which is how a command judged through a wrapper comes to be a different
+/// command from the one judged at the spawn.
+///
+/// `None` when the choices multiply past what a report can be read as, which is
+/// a limit this says out loud rather than truncating.
+#[must_use]
+pub fn ways_of(words: &[Word]) -> Option<Vec<Way>> {
+    {
         // ONE ENTRY PER CHOICE POINT, holding how many ways it can go. The arms
         // are read off the words rather than counted separately, because a
         // choice no word depends on is a choice this command does not have.
         let mut choices: BTreeMap<usize, (usize, bool)> = BTreeMap::new();
-        for word in &self.words {
+        for word in words {
             if let Word::Sometimes(_, path) = word {
                 for branch in path {
                     choices.insert(branch.choice, (branch.arms, branch.may_take_none));
@@ -431,7 +500,7 @@ impl RustSpawn {
             .into_iter()
             .map(|(choice, (arms, none))| (choice, arms, none))
             .collect();
-        let mut found: Vec<Vec<String>> = Vec::new();
+        let mut found: Vec<Way> = Vec::new();
         for way in 0..ways {
             // The way is read as a mixed-radix number, one digit per choice.
             // WHERE TAKING NONE IS POSSIBLE IT IS THE FIRST DIGIT, so the
@@ -452,33 +521,53 @@ impl RustSpawn {
                 taken.insert(*choice, arm);
                 rest /= options;
             }
-            let mut words = Vec::new();
-            for word in &self.words {
+            let mut way = Way {
+                words: Vec::new(),
+                uncounted: Vec::new(),
+                unspelled: Vec::new(),
+            };
+            for word in words {
                 match word {
-                    Word::Spelled(text) | Word::Runtime(text) => words.push(text.clone()),
+                    Word::Spelled(text) => way.words.push(text.clone()),
+                    Word::Runtime(text) => {
+                        way.unspelled.push(way.words.len());
+                        way.words.push(text.clone());
+                    }
                     Word::Sometimes(text, path) => {
                         if path
                             .iter()
                             .all(|branch| taken.get(&branch.choice) == Some(&branch.arm))
                         {
-                            words.push(text.clone());
+                            way.words.push(text.clone());
                         }
                     }
-                    Word::Unknown(_) => return None,
+                    Word::Unknown(text) => {
+                        way.uncounted.push(way.words.len());
+                        way.words.push(text.clone());
+                    }
                 }
             }
-            if !found.contains(&words) {
-                found.push(words);
+            if !found.contains(&way) {
+                found.push(way);
             }
         }
         Some(found)
     }
+}
 
+impl RustSpawn {
     /// Every command this site issues, as the population's own type.
     ///
     /// `None` for a site whose words cannot be enumerated, and for one that does
     /// not run cargo through the door — a spawn with no declaration is not a
     /// command any of these laws is about.
+    ///
+    /// A WAY WHOSE SUBCOMMAND SITS BEHIND A HOLE IS DROPPED, and that is the one
+    /// thing a hole ruins outright. The hole renders as `$selectors`, which does
+    /// not start with `-`, so a reader looking for the first word that is not a
+    /// flag would take the hole FOR the subcommand and every reading after it
+    /// would be about a command nobody wrote. Dropped rather than guessed, and
+    /// counted by [`RustSpawn::reach`] so the drop is not silent.
     #[must_use]
     pub fn commands(&self) -> Option<Vec<CargoCommand>> {
         let declared = match &self.program {
@@ -494,7 +583,13 @@ impl RustSpawn {
         Some(
             self.variants()?
                 .into_iter()
-                .map(|words| self.as_command(words, declared.clone()))
+                .filter(|way| way.subcommand_was_read())
+                .map(|way| {
+                    let uncounted = way.uncounted.len();
+                    let mut command = self.as_command(way.words, declared.clone());
+                    command.uncounted = uncounted;
+                    command
+                })
                 .collect(),
         )
     }
@@ -519,13 +614,17 @@ impl RustSpawn {
     /// splitting one caller's literals between two parameters is a second
     /// question and this reader answers the first honestly rather than both
     /// vaguely.
+    ///
+    /// The WORDS come back rather than strings, because the caller's own list may
+    /// hold a hole or a conditional word of its own and those are facts about the
+    /// command — [`ways_of`] is what turns the merged list into commands.
     #[must_use]
-    pub fn words_from(&self, caller: &CallerWords) -> Option<Vec<String>> {
+    pub fn words_with(&self, caller: &CallerWords) -> Option<Vec<Word>> {
         let handed = caller.words.as_ref()?;
         let hole = self.holes.first()?;
         let mut filled = self.words.clone();
         filled.splice(hole.at..=hole.at, handed.iter().cloned());
-        without_a_hole(&filled)
+        Some(filled)
     }
 
     /// This site as one of the population's commands, carrying what it declared.
@@ -548,6 +647,9 @@ impl RustSpawn {
             carrier: invocation.carrier,
             cargo_args: invocation.cargo_args,
             harness_args: invocation.harness_args,
+            // Set by `commands`, which is where a way's holes are known. A
+            // command built from a word list alone has none by construction.
+            uncounted: 0,
             env: BTreeMap::new(),
             declared: Some(declared),
         }
@@ -610,6 +712,31 @@ pub struct RustSpawns {
     /// Cargo spawns through the door handing over a list of unknown length that
     /// no call site of theirs finished either.
     pub carried: Vec<RustSpawn>,
+    /// Ways a site can go that no table can be keyed on: the subcommand is
+    /// behind a hole, or is a word decided while the program runs.
+    ///
+    /// DROPPED AND COUNTED IN ONE PLACE, which is where the enumeration happens.
+    /// `locked_resolution_smoke` loops over every subcommand cargo has, so its
+    /// own measurement fixture is the site this exists for — and a drop nobody
+    /// counted is the silence every number in this struct is here to break.
+    pub ways_no_table_can_key_on: usize,
+    /// Sites whose choices multiply past what a report can be read as, so this
+    /// reader did not enumerate them at all.
+    pub ways_beyond_a_report: usize,
+    /// Call sites whose words this walk READ and which produced no answer at
+    /// all: no command, and no count naming what stopped them.
+    ///
+    /// A CONSERVATION LAW, AND IT EXISTS BECAUSE THIS ROUND BROKE IT. When the
+    /// hop backwards learned to read a caller's local binding, two callers
+    /// handing over lists WITH HOLES produced nothing while their site stayed
+    /// answered by its three readable callers — so two commands left every
+    /// bucket and every number at once, which is the exact silence every other
+    /// count here was written to break.
+    ///
+    /// PER CALLER AND NOT PER SITE, which the first draft got wrong and a sweep
+    /// said so: a site with three readable callers and two unreadable ones is
+    /// "answered" by any per-site reading, and the two commands are gone anyway.
+    pub read_but_unanswered: usize,
     /// Commands in [`RustSpawns::commands`] whose words were read at a CALL SITE
     /// rather than beside the spawn.
     ///
@@ -701,6 +828,7 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
     // reached yet. So every file is walked first and the holes are followed
     // afterwards, over the whole tree at once.
     let mut sites = Vec::new();
+    let mut calls = Vec::new();
     let mut walked: Vec<(String, syn::File, String)> = Vec::new();
     for (path, file, named) in parsed {
         found.files += 1;
@@ -708,9 +836,10 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
         let mut walk = Walk::new(&path, &named, &shared, manifest_dir.clone());
         walk.visit_file(&file);
         sites.append(&mut walk.sites);
+        calls.append(&mut walk.calls);
         walked.push((path, file, manifest_dir));
     }
-    follow_every_hole(&mut sites, &walked);
+    follow_every_hole(&mut sites, &walked, calls);
 
     {
         for site in sites {
@@ -748,22 +877,58 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                     continue;
                 }
             };
+            found.ways_no_table_can_key_on += site.ways_no_table_can_key_on();
             match site.complete_words() {
                 Some(words) => found.commands.push(site.as_command(words, declared)),
                 None => {
-                    // ONE COMMAND PER CALL SITE THAT WROTE ITS WORDS DOWN, and
-                    // the site stays carried while any call site did not. Both
-                    // halves are the point: the commands are now judged, and the
-                    // remainder is still counted rather than rounded off by the
-                    // half that became readable.
+                    // ONE COMMAND PER WAY PER CALL SITE THAT WROTE ITS WORDS
+                    // DOWN, and the site stays carried while any call site did
+                    // not. Both halves are the point: the commands are now
+                    // judged, and the remainder is still counted rather than
+                    // rounded off by the half that became readable.
+                    //
+                    // THE CALLER'S WORDS GO THROUGH THE SAME ENUMERATION as the
+                    // site's own, holes and choices alike — a caller that built
+                    // its list with an `extend` of a runtime value hands over a
+                    // hole, and reading that as nothing at all is how two
+                    // commands came to be read and then judged by nobody.
                     for caller in &site.from_callers {
-                        if let Some(words) = site.words_from(caller) {
-                            found.through_a_wrapper += 1;
-                            found.commands.push(site.as_command_from(
-                                caller,
-                                words,
-                                declared.clone(),
-                            ));
+                        // A CALLER WHOSE WORDS WERE NOT READ IS ALREADY NAMED by
+                        // `reach`, which prints it; this loop is about the ones
+                        // that WERE read.
+                        if caller.words.is_none() {
+                            continue;
+                        }
+                        let mut answered = false;
+                        if let Some(words) = site.words_with(caller) {
+                            match ways_of(&words) {
+                                None => {
+                                    found.ways_beyond_a_report += 1;
+                                    answered = true;
+                                }
+                                Some(ways) => {
+                                    for way in ways {
+                                        if !way.subcommand_was_read() {
+                                            found.ways_no_table_can_key_on += 1;
+                                            answered = true;
+                                            continue;
+                                        }
+                                        let uncounted = way.uncounted.len();
+                                        let mut command = site.as_command_from(
+                                            caller,
+                                            way.words,
+                                            declared.clone(),
+                                        );
+                                        command.uncounted = uncounted;
+                                        found.through_a_wrapper += 1;
+                                        found.commands.push(command);
+                                        answered = true;
+                                    }
+                                }
+                            }
+                        }
+                        if !answered {
+                            found.read_but_unanswered += 1;
                         }
                     }
                     if !site.every_call_read() {
@@ -790,7 +955,11 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
 /// definition count is taken over the whole tree because it decides whether a
 /// name may be followed at all, but no tree is walked for calls of a name
 /// nothing is waiting on.
-fn follow_every_hole(sites: &mut [RustSpawn], walked: &[(String, syn::File, String)]) {
+fn follow_every_hole(
+    sites: &mut [RustSpawn],
+    walked: &[(String, syn::File, String)],
+    calls: Vec<(String, Call)>,
+) {
     let wanted: BTreeSet<String> = sites
         .iter()
         .filter(|site| !site.holes.is_empty())
@@ -799,7 +968,7 @@ fn follow_every_hole(sites: &mut [RustSpawn], walked: &[(String, syn::File, Stri
     if wanted.is_empty() {
         return;
     }
-    let other = read_the_other_direction(walked, &wanted);
+    let other = read_the_other_direction(walked, &wanted, calls);
     for site in sites.iter_mut().filter(|site| !site.holes.is_empty()) {
         follow_back(site, &other);
     }
@@ -852,6 +1021,7 @@ pub fn spawns_in(source: &str, text: &str, manifest_dir: &str) -> Vec<RustSpawn>
 pub fn spawns_across(sources: &[(&str, &str, &str)]) -> Vec<RustSpawn> {
     let shared = BTreeMap::new();
     let mut sites = Vec::new();
+    let mut calls = Vec::new();
     let mut walked = Vec::new();
     for (source, text, manifest_dir) in sources {
         let file =
@@ -860,10 +1030,30 @@ pub fn spawns_across(sources: &[(&str, &str, &str)]) -> Vec<RustSpawn> {
         let mut walk = Walk::new(source, &named, &shared, (*manifest_dir).to_string());
         walk.visit_file(&file);
         sites.append(&mut walk.sites);
+        calls.append(&mut walk.calls);
         walked.push(((*source).to_string(), file, (*manifest_dir).to_string()));
     }
-    follow_every_hole(&mut sites, &walked);
+    follow_every_hole(&mut sites, &walked, calls);
     sites
+}
+
+/// A list a local binding holds, as far as the walk has read it.
+///
+/// `Poisoned` IS NOT "EMPTY". A binding something did that this reader does not
+/// model — `clear`, `retain`, `remove`, an assignment, a hand-off to a function
+/// that takes `&mut` — holds words this walk cannot name, and the only sound
+/// answer is that its whole list is a hole. Reading the `vec![..]` and ignoring
+/// the rest is how a command comes to be reported as carrying words it does not.
+#[derive(Debug, Clone)]
+enum ListSoFar {
+    /// The words so far, and the branch depth the binding was declared at — the
+    /// baseline a later `push` inside an `if` is conditional RELATIVE TO.
+    Words {
+        words: Vec<Word>,
+        declared_at: usize,
+    },
+    /// Something happened to it this reader does not model, and what.
+    Poisoned(String),
 }
 
 /// One file's walk.
@@ -893,6 +1083,17 @@ struct Walk<'a> {
     commands: BTreeMap<String, Vec<usize>>,
     /// Local bindings holding something a spawn later names as its program.
     values: BTreeMap<String, syn::Expr>,
+    /// Local bindings holding a LIST OF WORDS, as it stands at the statement
+    /// being visited.
+    ///
+    /// A list built two lines above the spawn is the commonest way a cargo
+    /// command is written in this repository, and reading only the `vec![..]`
+    /// would be the false green this module exists to refuse: a `push` after it
+    /// adds a word, and a command reported as missing a flag it does add is a
+    /// red nobody can act on. So the words accumulate AS THE WALK PASSES THE
+    /// STATEMENTS, and a spelling that could take a word away poisons the whole
+    /// binding rather than being ignored.
+    lists: BTreeMap<String, ListSoFar>,
     /// The parameters of the innermost plain `fn` being walked, in order — empty
     /// inside a method, an associated function, or outside any function at all.
     parameters: Vec<String>,
@@ -913,6 +1114,9 @@ struct Walk<'a> {
     /// How many choice points this file's walk has met, so the next one gets a
     /// number nothing else has.
     choices: usize,
+    /// Every call written `name(..)` this walk passed, with each argument's words
+    /// as read HERE — the other half of the hop backwards.
+    calls: Vec<(String, Call)>,
     /// The depth each site was opened at.
     opened_at: Vec<usize>,
 }
@@ -933,11 +1137,13 @@ impl<'a> Walk<'a> {
             sites: Vec::new(),
             commands: BTreeMap::new(),
             values: BTreeMap::new(),
+            lists: BTreeMap::new(),
             parameters: Vec::new(),
             shadowed: BTreeSet::new(),
             depth: 0,
             branches: Vec::new(),
             choices: 0,
+            calls: Vec::new(),
             opened_at: Vec::new(),
         }
     }
@@ -956,6 +1162,7 @@ impl<'a> Walk<'a> {
     fn in_function(&mut self, name: String, parameters: Vec<String>, body: &syn::Block) {
         let commands = std::mem::take(&mut self.commands);
         let values = std::mem::take(&mut self.values);
+        let lists = std::mem::take(&mut self.lists);
         let shadowed = std::mem::take(&mut self.shadowed);
         let depth = std::mem::take(&mut self.depth);
         let outer_parameters = std::mem::replace(&mut self.parameters, parameters);
@@ -964,6 +1171,7 @@ impl<'a> Walk<'a> {
         self.owners.pop();
         self.commands = commands;
         self.values = values;
+        self.lists = lists;
         self.shadowed = shadowed;
         self.parameters = outer_parameters;
         self.depth = depth;
@@ -1011,6 +1219,150 @@ impl<'a> Walk<'a> {
         self.depth -= 1;
     }
 
+    /// Take one method call on a binding that holds a list of words.
+    ///
+    /// THREE VOCABULARIES AND THE THIRD ONE IS THE POINT. `push` and `extend`
+    /// ADD, and the words they add are read. A handful of spellings READ the list
+    /// without changing it, and those are passed over. EVERYTHING ELSE poisons
+    /// the binding, naming the method — because a reader that ignored what it did
+    /// not recognise would answer about a list the code no longer holds, and this
+    /// is the direction where being wrong is silent.
+    fn a_method_on_a_list(&mut self, name: &str, call: &syn::ExprMethodCall) {
+        let method = call.method.to_string();
+        match method.as_str() {
+            "push" => {
+                let word = call.args.first().map(|first| self.read_word_here(first));
+                if let Some(word) = word {
+                    self.add_to_list(name, word);
+                }
+            }
+            "extend" => {
+                if let Some(first) = call.args.first() {
+                    match word_list(&self.manifest_dir, first) {
+                        Some(words) => {
+                            for word in words {
+                                self.add_to_list(name, word);
+                            }
+                        }
+                        // AN UNKNOWN NUMBER OF WORDS IS A HOLE IN THE LIST, not
+                        // a poisoning: a hole cannot take a word away, so what
+                        // was read before it is still read.
+                        None => self.add_to_list(name, Word::Unknown(rendered_as_a_value(first))),
+                    }
+                }
+            }
+            // SPELLINGS THAT ONLY LOOK. `arguments.join(" ")` in an error message
+            // is not a change to the command, and poisoning on it would leave
+            // this reader unable to read the very shape it was written for.
+            "len" | "is_empty" | "iter" | "join" | "contains" | "first" | "last" | "get"
+            | "clone" | "as_slice" | "to_vec" => {}
+            other => {
+                self.lists.insert(
+                    name.to_string(),
+                    ListSoFar::Poisoned(format!(
+                        "`{name}.{other}(..)` is a spelling this reader does not \
+                         model, so what the list holds afterwards is unknown"
+                    )),
+                );
+            }
+        }
+    }
+
+    /// A list handed to somebody who can WRITE to it holds words this walk never
+    /// saw, so the binding is poisoned.
+    ///
+    /// `&mut arguments` is the whole spelling: Rust says what may be written
+    /// through, and a reader that took `&arguments` and `&mut arguments` for the
+    /// same thing would answer about a list a callee has since appended to. The
+    /// direction matters — `&arguments` is a READ and stays readable, which is
+    /// how `.args(&arguments)` works at all.
+    fn a_list_lent_out(&mut self, expression: &syn::Expr) {
+        let syn::Expr::Reference(reference) = expression else {
+            return;
+        };
+        if reference.mutability.is_none() {
+            return;
+        }
+        let syn::Expr::Path(path) = reference.expr.as_ref() else {
+            return;
+        };
+        let Some(name) = path.path.get_ident().map(|name| name.to_string()) else {
+            return;
+        };
+        if self.lists.contains_key(&name) {
+            self.lists.insert(
+                name.clone(),
+                ListSoFar::Poisoned(format!(
+                    "`&mut {name}` is handed to something that can write to it, \
+                     so what the list holds afterwards is not what this walk read"
+                )),
+            );
+        }
+    }
+
+    /// Add one word to a list a binding holds, conditional on the arms entered
+    /// since the binding was declared.
+    fn add_to_list(&mut self, name: &str, word: Word) {
+        let Some(ListSoFar::Words { words, declared_at }) = self.lists.get_mut(name) else {
+            return;
+        };
+        // THE ARMS ENTERED SINCE THE BINDING WAS DECLARED, and an empty list of
+        // them is what "certain" means — no second spelling of the same fact. A
+        // first draft compared the depths as well, and the injection written to
+        // prove that comparison mattered came back with nothing red: a word whose
+        // branch path is empty is a word every path reaches, which is exactly
+        // what the depths were being asked.
+        let path: Vec<Branch> = self.branches.iter().skip(*declared_at).cloned().collect();
+        if path.is_empty() {
+            words.push(word);
+            return;
+        }
+        words.push(match word {
+            // An unknown COUNT stays an unknown count: which hole it is does not
+            // get smaller for being conditional.
+            Word::Unknown(text) => Word::Unknown(text),
+            Word::Spelled(text) | Word::Runtime(text) | Word::Sometimes(text, _) => {
+                Word::Sometimes(text, path)
+            }
+        });
+    }
+
+    /// One word, read in the file being walked.
+    fn read_word_here(&self, expression: &syn::Expr) -> Word {
+        read_word(&self.manifest_dir, expression)
+    }
+
+    /// The words one argument hands over: a binding this walk has been reading,
+    /// or a list written right there. `None` when it is neither.
+    ///
+    /// A POISONED BINDING IS `None` HERE rather than a hole. At a spawn a hole is
+    /// worth keeping — the words around it are still read — but a CALLER handing
+    /// over a list it has lost track of tells the site nothing at all, and
+    /// `reach` says so by naming the call site.
+    fn words_handed_over(&self, expression: &syn::Expr) -> Option<Vec<Word>> {
+        match self.list_named(expression) {
+            Some(Ok(words)) => Some(words),
+            Some(Err(_)) => None,
+            None => word_list(&self.manifest_dir, expression),
+        }
+    }
+
+    /// The list a `.args(..)` argument names, when it names a binding this walk
+    /// has been reading. `Err` carries why a binding it knows cannot be used.
+    fn list_named(&self, expression: &syn::Expr) -> Option<Result<Vec<Word>, String>> {
+        let syn::Expr::Path(path) = through_the_shapes_that_keep_a_list(expression) else {
+            return None;
+        };
+        let name = path.path.get_ident()?.to_string();
+        if self.shadowed.contains(&name) {
+            return None;
+        }
+        match self.lists.get(&name)? {
+            ListSoFar::Words { words, .. } => Some(Ok(words.clone())),
+            ListSoFar::Poisoned(why) => Some(Err(why.clone())),
+        }
+    }
+
     /// Open a site, and answer where it sits.
     fn open(&mut self, program: Program, span: proc_macro2::Span) -> usize {
         let at: LineColumn = span.start();
@@ -1037,16 +1389,35 @@ impl<'a> Walk<'a> {
     /// added by a choice made AFTER it opened depends on anything.
     fn add(&mut self, site: usize, word: Word) {
         let opened_at = self.opened_at[site];
-        let certain = self.depth <= opened_at;
+        // THE ARMS THE SITE IS NOT ALREADY INSIDE, and an empty list of them is
+        // what "every path reaches this" means. Comparing the depths as well
+        // would be a second spelling of the same fact — see `add_to_list`, where
+        // an injection proved it redundant.
         let path: Vec<Branch> = self.branches.iter().skip(opened_at).cloned().collect();
-        self.sites[site].words.push(match (certain, word) {
-            (true, word) => word,
-            (false, Word::Spelled(text) | Word::Runtime(text) | Word::Sometimes(text, _)) => {
-                Word::Sometimes(text, path)
+        if path.is_empty() {
+            self.sites[site].words.push(word);
+            return;
+        }
+        self.sites[site].words.push(match word {
+            Word::Spelled(text) | Word::Runtime(text) => Word::Sometimes(text, path),
+            // A WORD THAT WAS ALREADY CONDITIONAL KEEPS ITS OWN ARMS AND GAINS
+            // THESE. A `push` inside one `if` handed to `.args()` inside another
+            // depends on BOTH, and replacing the first path with the second
+            // would enumerate a command carrying a word its own branch never
+            // reached. A choice in both paths is necessarily the same arm — the
+            // branch stack is a stack — so the union is by choice.
+            Word::Sometimes(text, own) => {
+                let mut all = own;
+                for branch in path {
+                    if !all.iter().any(|had| had.choice == branch.choice) {
+                        all.push(branch);
+                    }
+                }
+                Word::Sometimes(text, all)
             }
             // An unknown COUNT stays an unknown count: which hole it is does not
             // get smaller for being conditional.
-            (false, Word::Unknown(text)) => Word::Unknown(text),
+            Word::Unknown(text) => Word::Unknown(text),
         });
     }
 
@@ -1061,6 +1432,20 @@ impl<'a> Walk<'a> {
     fn root(&mut self, expression: &syn::Expr) -> Vec<usize> {
         match expression {
             syn::Expr::MethodCall(call) => {
+                // A METHOD ON A LIST-HOLDING BINDING IS READ BEFORE THE CHAIN IS,
+                // because `arguments.push("--locked")` is not a spawn and the
+                // words it adds belong to a command written further down.
+                if let syn::Expr::Path(path) = through_the_shapes_that_keep_a_list(&call.receiver) {
+                    if let Some(name) = path.path.get_ident().map(|name| name.to_string()) {
+                        if self.lists.contains_key(&name) && !self.shadowed.contains(&name) {
+                            self.a_method_on_a_list(&name, call);
+                            for argument in &call.args {
+                                self.visit_expr(argument);
+                            }
+                            return Vec::new();
+                        }
+                    }
+                }
                 let sites = self.root(&call.receiver);
                 if sites.is_empty() {
                     for argument in &call.args {
@@ -1085,8 +1470,29 @@ impl<'a> Walk<'a> {
                     let declared = declaration(call);
                     return vec![self.open(Program::Cargo(declared), call.span())];
                 }
+                // RECORDED HERE AND NOWHERE ELSE, because the words a caller
+                // hands over are read by the walk that is standing in its file
+                // with its bindings in hand.
+                if let Some(name) = called_name(call) {
+                    let at: LineColumn = call.span().start();
+                    let arguments = call
+                        .args
+                        .iter()
+                        .map(|argument| self.words_handed_over(argument))
+                        .collect();
+                    self.calls.push((
+                        name,
+                        Call {
+                            source: self.path.to_string(),
+                            line: at.line,
+                            owner: self.owner(),
+                            arguments,
+                        },
+                    ));
+                }
                 self.visit_expr(&call.func);
                 for argument in &call.args {
+                    self.a_list_lent_out(argument);
                     self.visit_expr(argument);
                 }
                 Vec::new()
@@ -1177,6 +1583,35 @@ impl<'a> Walk<'a> {
             }
             "args" => {
                 if let Some(first) = call.args.first() {
+                    // A BINDING THIS WALK HAS BEEN READING ANSWERS FIRST, and its
+                    // words are the list AS IT STANDS HERE: mutations above this
+                    // statement are in it and mutations below are not, which is
+                    // what `Command::args` does with the slice it is handed.
+                    match self.list_named(first) {
+                        Some(Ok(words)) => {
+                            for word in words {
+                                self.add(site, word);
+                            }
+                            for argument in &call.args {
+                                syn::visit::visit_expr(self, argument);
+                            }
+                            return;
+                        }
+                        Some(Err(why)) => {
+                            let hole = Hole {
+                                at: self.sites[site].words.len(),
+                                parameter: None,
+                                written: format!("{} — {why}", rendered_as_a_value(first)),
+                            };
+                            self.sites[site].holes.push(hole);
+                            self.add(site, Word::Unknown(rendered_as_a_value(first)));
+                            for argument in &call.args {
+                                syn::visit::visit_expr(self, argument);
+                            }
+                            return;
+                        }
+                        None => {}
+                    }
                     // AN ARRAY'S LENGTH IS KNOWN even when its elements are not:
                     // `["run", "--manifest-path", path]` is three words, one of
                     // them decided at runtime, and reading it as a hole would
@@ -1306,6 +1741,25 @@ impl<'ast> Visit<'ast> for Walk<'_> {
         let sites = self.root(&init.expr);
         if let Some(name) = binding_name(&local.pat) {
             if sites.is_empty() {
+                // A BINDING IS DECLARED ONCE AND READ AFTERWARDS, so a second
+                // `let` of the same name starts a new list rather than adding to
+                // the old one — and a binding whose initialiser is not a list
+                // this reader can spell is poisoned rather than left holding
+                // whatever the previous one held.
+                match word_list(&self.manifest_dir, &init.expr) {
+                    Some(words) => {
+                        self.lists.insert(
+                            name.clone(),
+                            ListSoFar::Words {
+                                words,
+                                declared_at: self.depth,
+                            },
+                        );
+                    }
+                    None => {
+                        self.lists.remove(&name);
+                    }
+                }
                 self.values.insert(name, (*init.expr).clone());
             } else {
                 self.commands.insert(name, sites);
@@ -1409,14 +1863,22 @@ fn named_values(file: &syn::File) -> Landings {
 
 /// One call written `name(..)`, kept so a hole in a spawn's words can be
 /// followed back to the words its caller wrote.
+/// One call written `name(..)`, RECORDED BY THE WALK THAT PASSED IT.
+///
+/// The words are read where the call is written, by the walk that was already
+/// reading that file — which is what lets a caller hand over a list it built two
+/// lines earlier. A second visitor over the same files could see the call and
+/// not the binding, and that is not a caution: `item-citations` writes
+/// `let mut argv = vec![.., "--locked", ..]; argv.extend(..); cargo(root, &argv)`
+/// at two of its five call sites, and a reader of the call alone reports the
+/// flag as unreadable while it sits in a literal one statement up.
 struct Call {
     source: String,
     line: usize,
     owner: String,
-    /// What `env!("CARGO_MANIFEST_DIR")` reads as in the CALLER's file, which is
-    /// where these words are written and therefore whose crate decides it.
-    manifest_dir: String,
-    arguments: Vec<syn::Expr>,
+    /// Each argument's words as this walk read them where they are written, or
+    /// `None` for an argument that is not a list it can read.
+    arguments: Vec<Option<Vec<Word>>>,
 }
 
 /// What the hop backwards needs to know about the tree it is taken in.
@@ -1449,9 +1911,19 @@ struct TheOtherDirection {
 fn read_the_other_direction(
     files: &[(String, syn::File, String)],
     wanted: &BTreeSet<String>,
+    seen: Vec<(String, Call)>,
 ) -> TheOtherDirection {
     let mut found = TheOtherDirection::default();
-    for (path, file, manifest_dir) in files {
+    for (name, call) in seen {
+        if wanted.contains(&name) {
+            found.calls.entry(name).or_default().push(call);
+        }
+    }
+    // THE FILES ARE READ FOR TWO THINGS ONLY NOW — how many functions answer to
+    // each name, and which calls hide inside macro tokens. The WORDS come from
+    // the walk, which is the whole of R1266's change here: a second visitor over
+    // these files could see a call and not the binding one statement above it.
+    for (path, file, _) in files {
         struct Definitions<'a>(&'a mut BTreeMap<(String, usize), usize>);
         impl<'ast> Visit<'ast> for Definitions<'_> {
             fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
@@ -1477,64 +1949,6 @@ fn read_the_other_direction(
             }
         }
         Definitions(&mut found.definitions).visit_file(file);
-
-        struct Calls<'a> {
-            path: &'a str,
-            manifest_dir: &'a str,
-            wanted: &'a BTreeSet<String>,
-            owners: Vec<String>,
-            found: Vec<(String, Call)>,
-        }
-        impl Calls<'_> {
-            fn owner(&self) -> String {
-                if self.owners.is_empty() {
-                    "<file>".to_string()
-                } else {
-                    self.owners.join("::")
-                }
-            }
-        }
-        impl<'ast> Visit<'ast> for Calls<'_> {
-            fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
-                self.owners.push(item.sig.ident.to_string());
-                syn::visit::visit_item_fn(self, item);
-                self.owners.pop();
-            }
-            fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
-                self.owners.push(item.sig.ident.to_string());
-                syn::visit::visit_impl_item_fn(self, item);
-                self.owners.pop();
-            }
-            fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
-                if let Some(name) = called_name(call) {
-                    if self.wanted.contains(&name) {
-                        let at: LineColumn = call.span().start();
-                        self.found.push((
-                            name,
-                            Call {
-                                source: self.path.to_string(),
-                                line: at.line,
-                                owner: self.owner(),
-                                manifest_dir: self.manifest_dir.to_string(),
-                                arguments: call.args.iter().cloned().collect(),
-                            },
-                        ));
-                    }
-                }
-                syn::visit::visit_expr_call(self, call);
-            }
-        }
-        let mut calls = Calls {
-            path,
-            manifest_dir,
-            wanted,
-            owners: Vec::new(),
-            found: Vec::new(),
-        };
-        calls.visit_file(file);
-        for (name, call) in calls.found {
-            found.calls.entry(name).or_default().push(call);
-        }
 
         struct InMacros<'a> {
             wanted: &'a BTreeSet<String>,
@@ -1733,10 +2147,7 @@ fn follow_back(site: &mut RustSpawn, other: &TheOtherDirection) {
             source: call.source.clone(),
             line: call.line,
             owner: call.owner.clone(),
-            words: call
-                .arguments
-                .get(at)
-                .and_then(|argument| word_list(&call.manifest_dir, argument)),
+            words: call.arguments.get(at).cloned().flatten(),
         })
         .chain(in_a_macro.iter().map(|(source, line)| CallerWords {
             source: source.clone(),
@@ -2069,6 +2480,29 @@ fn through_the_shapes_that_keep_a_list(expression: &syn::Expr) -> &syn::Expr {
 fn compile_time_text(manifest_dir: &str, expression: &syn::Expr) -> Option<String> {
     if let Some(literal) = string_literal(expression) {
         return Some(literal);
+    }
+    // A CONVERSION IS NOT A COMPUTATION, and this is the spelling every
+    // `Vec<String>` argument list in this repository is written with:
+    // `vec!["metadata".to_string(), …]`. Read as a runtime value it renders as
+    // `$"metadata".to_string()`, which is not a word cargo has ever been handed
+    // — and the law that asks which subcommands have been measured caught
+    // exactly that (R1266). `.display().to_string()` is NOT one of these: its
+    // receiver is not compile-time text, so it falls through as it should.
+    if let syn::Expr::MethodCall(call) = unwrap(expression) {
+        if call.args.is_empty()
+            && matches!(
+                call.method.to_string().as_str(),
+                "to_string" | "to_owned" | "into"
+            )
+        {
+            return compile_time_text(manifest_dir, &call.receiver);
+        }
+    }
+    // `String::from("x")` is the same word by another route.
+    if let syn::Expr::Call(call) = unwrap(expression) {
+        if ends_with(call, &["String", "from"]) && call.args.len() == 1 {
+            return compile_time_text(manifest_dir, call.args.first()?);
+        }
     }
     let syn::Expr::Macro(macro_call) = unwrap(expression) else {
         return None;

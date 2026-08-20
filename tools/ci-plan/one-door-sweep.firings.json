@@ -37,12 +37,27 @@
         "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
       ]
     },
+    "a-hole-a-caller-hands-over-loses-the-words-beside-it": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        filled.splice(hole.at..=hole.at, handed.iter().cloned());\n        Some(filled)",
+          "to": "        filled.splice(hole.at..=hole.at, handed.iter().cloned());\n        without_a_hole(&filled).map(|_| filled)"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ],
+      "tests": [
+        "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ]
+    },
     "a-wrappers-words-are-left-at-the-wrapper": {
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "    let other = read_the_other_direction(walked, &wanted);",
-          "to": "    let other = TheOtherDirection::default();\n    let _ = read_the_other_direction;"
+          "from": "    let other = read_the_other_direction(walked, &wanted, calls);",
+          "to": "    let other = TheOtherDirection::default();\n    let _ = (read_the_other_direction, calls);"
         }
       ],
       "expect_red": [

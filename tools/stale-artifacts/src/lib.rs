@@ -153,6 +153,7 @@ pub fn plan(at: &Path, command: &[String]) -> Plan {
         // The wrapped command's own words, read as written — this is not a site
         // declaring anything about a tree.
         declared: None,
+        uncounted: 0,
     };
     let manifest = read
         .value(&["--manifest-path"])
@@ -222,9 +223,11 @@ pub fn apply(at: &Path, freshen: &Freshen) -> Result<Vec<String>, String> {
     let mut ran = Vec::new();
     for package in &freshen.packages {
         let arguments = clean_arguments(freshen, package);
-        let out = issue::cargo(Tree::WhereverTheCallerPoints(
+        let out = issue::cargo(Tree::PinnedWhenItIsOurs(
             "the pass cleans the workspace of the command it was handed, and \
-             `clean_arguments` copies that command's own `--locked`",
+             `clean_arguments` copies that command's own `--locked` — which the \
+             side gate set from the ownership it prints, so the flag is here \
+             exactly where the lockfile is this repository's",
         ))
         .args(&arguments)
         .current_dir(at)
@@ -377,9 +380,11 @@ fn members(at: &Path, manifest: &Path, root: &Path, locked: bool) -> Result<Vec<
     if locked {
         arguments.push("--locked".to_string());
     }
-    let out = issue::cargo(Tree::WhereverTheCallerPoints(
+    let out = issue::cargo(Tree::PinnedWhenItIsOurs(
         "the workspace is the one the wrapped command names, and this resolve \
-         copies that command's own `--locked` rather than choosing one",
+         copies that command's own `--locked` — which the side gate set from the \
+         ownership it prints, so the flag is here exactly where the lockfile is \
+         this repository's",
     ))
     .args(&arguments)
     .current_dir(at)

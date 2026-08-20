@@ -84,6 +84,23 @@
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     },
+    "a-runtime-subcommand-is-read-as-one-a-table-knows": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        !self.uncounted.iter().any(|hole| *hole <= first) && !self.unspelled.contains(&first)",
+          "to": "        !self.uncounted.iter().any(|hole| *hole <= first)"
+        }
+      ],
+      "expect_red": [
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ]
+    },
     "a-script-resolves-freely": {
       "edits": [
         {

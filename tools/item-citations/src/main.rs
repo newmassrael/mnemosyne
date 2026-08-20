@@ -15,6 +15,7 @@
 //! [`item_citations::Answer`].
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
@@ -521,8 +522,12 @@ fn list_harness(
         "[item-citations] asking the harness of {} for the names rustdoc cannot see",
         target.label()
     );
-    let borrowed: Vec<&str> = argv.iter().map(String::as_str).collect();
-    let output = cargo(root, &borrowed, None)?;
+    // HANDED OVER AS IT WAS BUILT. A `Vec<&str>` copy of it existed only to
+    // satisfy a narrower signature, and it cost the reader the whole list: a
+    // binding derived from another by `.iter().map(..).collect()` is a reshape
+    // this walk refuses to follow, so `--locked` three lines up went unread by
+    // every law (R1266).
+    let output = cargo(root, &argv, None)?;
     if !output.status.success() {
         return Err(format!(
             "could not ask the test harness of {} for its names, so no citation in it can be \
@@ -534,7 +539,11 @@ fn list_harness(
     Ok(harness_names(&String::from_utf8_lossy(&output.stdout)))
 }
 
-fn cargo(root: &Path, argv: &[&str], rustdoc_flags: Option<&str>) -> Result<Output, String> {
+fn cargo<S: AsRef<OsStr>>(
+    root: &Path,
+    argv: &[S],
+    rustdoc_flags: Option<&str>,
+) -> Result<Output, String> {
     let mut command = issue::cargo(Tree::PinnedWhereverItPoints(
         "the gate documents the workspace it was pointed at — this repository \
          under the side gate, a fixture under its own cases — and every \
@@ -549,9 +558,13 @@ fn cargo(root: &Path, argv: &[&str], rustdoc_flags: Option<&str>) -> Result<Outp
         // different lint set than the one this gate is.
         None => command.env_remove("RUSTDOCFLAGS"),
     };
-    command
-        .output()
-        .map_err(|e| format!("could not run cargo {}: {e}", argv.join(" ")))
+    command.output().map_err(|e| {
+        let said: Vec<String> = argv
+            .iter()
+            .map(|word| word.as_ref().to_string_lossy().into_owned())
+            .collect();
+        format!("could not run cargo {}: {e}", said.join(" "))
+    })
 }
 
 fn report_verdicts(

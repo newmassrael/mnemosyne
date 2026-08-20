@@ -78,17 +78,19 @@
         "two_functions_holding_a_command_each_do_not_share_one",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_inside_a_loop_is_one_the_command_may_not_carry",
         "a_word_inside_two_branches_needs_both_of_them",
         "an_if_with_an_else_never_takes_neither_arm",
         "two_arms_of_one_match_never_appear_in_the_same_command",
-        "words_one_branch_adds_together_are_never_separated"
+        "words_one_branch_adds_together_are_never_separated",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand"
       ],
       "tests": [
         "a_command_built_over_several_statements_is_one_command",
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
         "a_word_inside_a_loop_is_one_the_command_may_not_carry",
@@ -97,35 +99,6 @@
         "an_if_with_an_else_never_takes_neither_arm",
         "two_arms_of_one_match_never_appear_in_the_same_command",
         "two_functions_holding_a_command_each_do_not_share_one",
-        "words_one_branch_adds_together_are_never_separated"
-      ]
-    },
-    "a-conditional-argument-is-read-as-a-certain-one": {
-      "edits": [
-        {
-          "file": "tools/ci-plan/src/rust.rs",
-          "from": "        let certain = self.depth <= opened_at;",
-          "to": "        let certain = true;"
-        }
-      ],
-      "expect_red": [
-        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
-        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
-        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
-        "a_word_inside_two_branches_needs_both_of_them",
-        "an_if_with_an_else_never_takes_neither_arm",
-        "two_arms_of_one_match_never_appear_in_the_same_command",
-        "words_one_branch_adds_together_are_never_separated"
-      ],
-      "tests": [
-        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
-        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
-        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
-        "a_word_inside_two_branches_needs_both_of_them",
-        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "an_if_with_an_else_never_takes_neither_arm",
-        "two_arms_of_one_match_never_appear_in_the_same_command",
         "words_one_branch_adds_together_are_never_separated"
       ]
     },
@@ -144,10 +117,14 @@
         "a_word_inside_two_branches_needs_both_of_them",
         "an_if_with_an_else_never_takes_neither_arm",
         "two_arms_of_one_match_never_appear_in_the_same_command",
-        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
       ],
       "tests": [
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
         "a_word_inside_a_loop_is_one_the_command_may_not_carry",
         "a_word_inside_two_branches_needs_both_of_them",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
@@ -210,25 +187,46 @@
         }
       ],
       "expect_red": [
-        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported",
+        "a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent"
       ],
       "tests": [
+        "a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent",
         "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
       ]
     },
-    "a-hole-is-enumerated-as-though-it-were-a-choice": {
+    "a-hole-among-the-words-is-not-counted": {
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "                    Word::Unknown(_) => return None,",
-          "to": "                    Word::Unknown(text) => words.push(text.clone()),"
+          "from": "                        way.uncounted.push(way.words.len());",
+          "to": ""
         }
       ],
       "expect_red": [
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole"
       ],
       "tests": [
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole"
+      ]
+    },
+    "a-hole-lets-the-law-claim-a-flag-is-absent": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        (_, false) if command.uncounted > 0 => LockVerdict::Unreadable(format!(",
+          "to": "        (_, false) if command.uncounted > usize::MAX => LockVerdict::Unreadable(format!("
+        }
+      ],
+      "expect_red": [
+        "a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent"
+      ],
+      "tests": [
+        "a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent"
       ]
     },
     "a-jobs-budget-is-read-from-nowhere": {
@@ -259,6 +257,56 @@
       ],
       "tests": [
         "every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"
+      ]
+    },
+    "a-list-a-binding-holds-is-not-read-at-all": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    match self.list_named(first) {",
+          "to": "                    match None::<Result<Vec<Word>, String>> {"
+        }
+      ],
+      "expect_red": [
+        "a_list_a_binding_holds_is_read_where_the_binding_is",
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_string_literal_converted_to_a_string_is_still_that_word",
+        "a_second_let_of_the_same_name_is_a_different_list",
+        "a_binding_read_without_being_changed_stays_readable",
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
+        "a_list_lent_out_mutably_is_a_hole",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ],
+      "tests": [
+        "a_binding_read_without_being_changed_stays_readable",
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
+        "a_list_a_binding_holds_is_read_where_the_binding_is",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_list_lent_out_mutably_is_a_hole",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_second_let_of_the_same_name_is_a_different_list",
+        "a_string_literal_converted_to_a_string_is_still_that_word",
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it"
+      ]
+    },
+    "a-list-lent-out-mutably-is-read-as-though-nothing-happened": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if reference.mutability.is_none() {",
+          "to": "        if reference.mutability.is_some() {"
+        }
+      ],
+      "expect_red": [
+        "a_list_lent_out_mutably_is_a_hole"
+      ],
+      "tests": [
+        "a_list_lent_out_mutably_is_a_hole"
       ]
     },
     "a-match-is-read-as-something-it-can-decline": {
@@ -321,6 +369,21 @@
         "a_parameter_a_local_has_taken_over_is_not_followed_back"
       ]
     },
+    "a-push-is-read-against-the-functions-top-level-not-the-bindings-depth": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let path: Vec<Branch> = self.branches.iter().skip(*declared_at).cloned().collect();",
+          "to": "        let path: Vec<Branch> = self.branches.iter().cloned().collect();"
+        }
+      ],
+      "expect_red": [
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ],
+      "tests": [
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ]
+    },
     "a-runner-is-resolved-for-every-job-not-every-caching-job": {
       "edits": [
         {
@@ -334,6 +397,21 @@
       ],
       "tests": [
         "a_job_with_no_cache_is_never_asked_for_a_runner_this_reader_must_refuse"
+      ]
+    },
+    "a-spelling-that-can-take-a-word-away-is-ignored": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            other => {\n                self.lists.insert(",
+          "to": "            \"clear\" | \"retain\" | \"truncate\" => {}\n            other => {\n                self.lists.insert("
+        }
+      ],
+      "expect_red": [
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling"
+      ],
+      "tests": [
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling"
       ]
     },
     "a-steps-bound-is-taken-for-its-jobs": {
@@ -366,6 +444,21 @@
         "a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none"
       ]
     },
+    "a-string-conversion-is-read-as-a-runtime-value": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                \"to_string\" | \"to_owned\" | \"into\"",
+          "to": "                \"to_string_never\" | \"to_owned\" | \"into\""
+        }
+      ],
+      "expect_red": [
+        "a_string_literal_converted_to_a_string_is_still_that_word"
+      ],
+      "tests": [
+        "a_string_literal_converted_to_a_string_is_still_that_word"
+      ]
+    },
     "a-tail-under-a-variable-need-not-be-qualified": {
       "edits": [
         {
@@ -394,6 +487,23 @@
       ],
       "tests": [
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
+      ]
+    },
+    "a-word-pushed-after-the-binding-is-not-read": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            \"push\" => {\n                let word = call.args.first().map(|first| self.read_word_here(first));",
+          "to": "            \"push\" => {\n                let word = call.args.first().map(|first| self.read_word_here(first)).filter(|_| false);"
+        }
+      ],
+      "expect_red": [
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ],
+      "tests": [
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_word_pushed_after_the_binding_is_in_the_command"
       ]
     },
     "a-workflow-that-uploads-nothing-still-collects": {
@@ -445,12 +555,18 @@
         "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
         "a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir",
         "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
-        "the_words_a_caller_writes_keep_their_place_among_the_sites_own"
+        "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
+        "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole"
       ],
       "tests": [
         "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
         "a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir",
+        "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
         "a_command_built_over_several_statements_is_one_command",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
         "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
         "an_array_of_words_keeps_the_flags_a_runtime_value_sits_between",
         "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
@@ -484,11 +600,15 @@
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
         "a_word_inside_two_branches_needs_both_of_them",
         "words_one_branch_adds_together_are_never_separated",
-        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_word_pushed_after_the_binding_is_in_the_command"
       ],
       "tests": [
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_inside_two_branches_needs_both_of_them",
+        "a_word_pushed_after_the_binding_is_in_the_command",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
         "words_one_branch_adds_together_are_never_separated"
       ]
@@ -801,31 +921,57 @@
         "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name",
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
         "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters",
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_inside_a_loop_is_one_the_command_may_not_carry",
         "a_word_inside_two_branches_needs_both_of_them",
         "an_if_with_an_else_never_takes_neither_arm",
         "two_arms_of_one_match_never_appear_in_the_same_command",
-        "words_one_branch_adds_together_are_never_separated"
+        "words_one_branch_adds_together_are_never_separated",
+        "a_binding_read_without_being_changed_stays_readable",
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
+        "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand",
+        "a_list_a_binding_holds_is_read_where_the_binding_is",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_list_lent_out_mutably_is_a_hole",
+        "a_second_let_of_the_same_name_is_a_different_list",
+        "a_string_literal_converted_to_a_string_is_still_that_word",
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
       ],
       "tests": [
+        "a_binding_read_without_being_changed_stays_readable",
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
         "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
         "a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir",
         "a_call_site_writing_its_list_as_a_vec_is_read_like_one_writing_an_array",
         "a_call_written_inside_a_macro_is_listed_rather_than_missed",
+        "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
         "a_command_built_over_several_statements_is_one_command",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand",
         "a_hole_that_is_not_a_parameter_is_not_followed_back",
+        "a_list_a_binding_holds_is_read_where_the_binding_is",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_list_lent_out_mutably_is_a_hole",
         "a_method_call_inside_a_macro_is_not_read_as_a_call_of_a_free_function",
         "a_method_hands_over_no_parameter_this_reader_follows",
         "a_name_that_means_two_functions_is_not_followed_back",
         "a_parameter_a_closure_has_taken_over_is_not_followed_back",
         "a_parameter_a_local_has_taken_over_is_not_followed_back",
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_second_let_of_the_same_name_is_a_different_list",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_string_literal_converted_to_a_string_is_still_that_word",
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
         "a_word_inside_a_loop_is_one_the_command_may_not_carry",
         "a_word_inside_two_branches_needs_both_of_them",
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
         "a_wrapper_nothing_calls_says_that_rather_than_reading_as_clean",
         "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
@@ -1023,5 +1169,24 @@
       ]
     }
   },
-  "forgotten": {}
+  "forgotten": {
+    "a-hole-is-enumerated-as-though-it-were-a-choice": {
+      "because": "R1266 replaced its subject rather than renaming it: it proved that a hole made a site refuse to enumerate at all, and a hole is now kept and counted because it cannot take a word away. What has teeth in its place is the hole POSITION, which a-hole-among-the-words-is-not-counted proves",
+      "was": {
+        "edits": [
+          {
+            "file": "tools/ci-plan/src/rust.rs",
+            "from": "                    Word::Unknown(_) => return None,",
+            "to": "                    Word::Unknown(text) => words.push(text.clone()),"
+          }
+        ],
+        "expect_red": [
+          "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+        ],
+        "tests": [
+          "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+        ]
+      }
+    }
+  }
 }

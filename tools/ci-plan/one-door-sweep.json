@@ -110,8 +110,22 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "    let other = read_the_other_direction(walked, &wanted);",
-          "to": "    let other = TheOtherDirection::default();\n    let _ = read_the_other_direction;"
+          "from": "    let other = read_the_other_direction(walked, &wanted, calls);",
+          "to": "    let other = TheOtherDirection::default();\n    let _ = (read_the_other_direction, calls);"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ]
+    },
+    {
+      "name": "a-hole-a-caller-hands-over-loses-the-words-beside-it",
+      "why": "R1266 broke the conservation law while building this: a caller's list may hold a hole of its own, and reading that as nothing at all left two sites in NO answer — every call site read, so not carried, and no command produced either. They left every bucket and every number in the same moment, which is what a silent drop looks like from the outside",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        filled.splice(hole.at..=hole.at, handed.iter().cloned());\n        Some(filled)",
+          "to": "        filled.splice(hole.at..=hole.at, handed.iter().cloned());\n        without_a_hole(&filled).map(|_| filled)"
         }
       ],
       "expect_red": [

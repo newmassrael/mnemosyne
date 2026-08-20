@@ -216,7 +216,10 @@
           "to": "        (true, false) => LockVerdict::Pinned,"
         }
       ],
-      "expect_red": ["a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"]
+      "expect_red": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported",
+        "a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent"
+      ]
     },
     {
       "name": "the-flag-is-demanded-of-a-workspace-nobody-here-owns",
@@ -462,27 +465,6 @@
       "expect_red": ["every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"]
     },
     {
-      "name": "a-conditional-argument-is-read-as-a-certain-one",
-      "why": "R1262 — a flag added inside an `if` is neither present nor absent, and reading it as present is how a gate comes to say a command pins its lockfile when it pins it on some paths only. The reader answers `Sometimes`, and that answer is what keeps a `--locked` nobody can rely on out of the judged population",
-      "edits": [
-        {
-          "file": "tools/ci-plan/src/rust.rs",
-          "from": "        let certain = self.depth <= opened_at;",
-          "to": "        let certain = true;"
-        }
-      ],
-      "expect_red": [
-        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
-        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
-        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
-        "a_word_inside_a_loop_is_one_the_command_may_not_carry",
-        "a_word_inside_two_branches_needs_both_of_them",
-        "an_if_with_an_else_never_takes_neither_arm",
-        "two_arms_of_one_match_never_appear_in_the_same_command",
-        "words_one_branch_adds_together_are_never_separated"
-      ]
-    },
-    {
       "name": "a-bare-name-is-resolved-through-a-function-of-that-name",
       "why": "R1262 — the first run's own defect. `Command::new(program)` inside a function TAKING `program` resolved through `fn program()` in the same file, and the one site that IS the door read as a second one. A call names a function; a bare name is a local or a parameter, and the two cannot share a map",
       "edits": [
@@ -528,7 +510,10 @@
         "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
         "a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir",
         "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
-        "the_words_a_caller_writes_keep_their_place_among_the_sites_own"
+        "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
+        "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole"
       ]
     },
     {
@@ -546,13 +531,14 @@
         "two_functions_holding_a_command_each_do_not_share_one",
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
         "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_inside_a_loop_is_one_the_command_may_not_carry",
         "a_word_inside_two_branches_needs_both_of_them",
         "an_if_with_an_else_never_takes_neither_arm",
         "two_arms_of_one_match_never_appear_in_the_same_command",
-        "words_one_branch_adds_together_are_never_separated"
+        "words_one_branch_adds_together_are_never_separated",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand"
       ]
     },
     {
@@ -602,13 +588,135 @@
         "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name",
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
         "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters",
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_word_inside_a_loop_is_one_the_command_may_not_carry",
         "a_word_inside_two_branches_needs_both_of_them",
         "an_if_with_an_else_never_takes_neither_arm",
         "two_arms_of_one_match_never_appear_in_the_same_command",
-        "words_one_branch_adds_together_are_never_separated"
+        "words_one_branch_adds_together_are_never_separated",
+        "a_binding_read_without_being_changed_stays_readable",
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
+        "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand",
+        "a_list_a_binding_holds_is_read_where_the_binding_is",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_list_lent_out_mutably_is_a_hole",
+        "a_second_let_of_the_same_name_is_a_different_list",
+        "a_string_literal_converted_to_a_string_is_still_that_word",
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ]
+    },
+    {
+      "name": "a-list-a-binding-holds-is-not-read-at-all",
+      "why": "`.args(&arguments)` where `arguments` is a list built two lines up is the commonest way a cargo command is written here; unread, it is a hole and no law asks the command anything",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    match self.list_named(first) {",
+          "to": "                    match None::<Result<Vec<Word>, String>> {"
+        }
+      ],
+      "expect_red": [
+        "a_list_a_binding_holds_is_read_where_the_binding_is",
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
+        "a_list_extended_with_a_literal_carries_those_words",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_string_literal_converted_to_a_string_is_still_that_word",
+        "a_second_let_of_the_same_name_is_a_different_list",
+        "a_binding_read_without_being_changed_stays_readable",
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
+        "a_list_lent_out_mutably_is_a_hole",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ]
+    },
+    {
+      "name": "a-word-pushed-after-the-binding-is-not-read",
+      "why": "READING THE `vec![..]` AND STOPPING IS THE FALSE GREEN this mechanism exists to refuse: a `push` below it adds a word, and a command reported as missing a flag it does add is a red nobody can act on",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            \"push\" => {\n                let word = call.args.first().map(|first| self.read_word_here(first));",
+          "to": "            \"push\" => {\n                let word = call.args.first().map(|first| self.read_word_here(first)).filter(|_| false);"
+        }
+      ],
+      "expect_red": [
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ]
+    },
+    {
+      "name": "a-spelling-that-can-take-a-word-away-is-ignored",
+      "why": "`clear`, `retain`, `truncate` can REMOVE words; ignoring them leaves this reader answering about a list the code no longer holds, which is the direction where being wrong is silent",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            other => {\n                self.lists.insert(",
+          "to": "            \"clear\" | \"retain\" | \"truncate\" => {}\n            other => {\n                self.lists.insert("
+        }
+      ],
+      "expect_red": [
+        "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling"
+      ]
+    },
+    {
+      "name": "a-list-lent-out-mutably-is-read-as-though-nothing-happened",
+      "why": "Rust says what may be written through, and a callee that appends is invisible to this walk — so `&mut arguments` has to poison the binding while `&arguments` stays readable",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if reference.mutability.is_none() {",
+          "to": "        if reference.mutability.is_some() {"
+        }
+      ],
+      "expect_red": [
+        "a_list_lent_out_mutably_is_a_hole"
+      ]
+    },
+    {
+      "name": "a-string-conversion-is-read-as-a-runtime-value",
+      "why": "`vec![\"metadata\".to_string(), ..]` is how every `Vec<String>` argument list here is spelled; read as a runtime value it renders `$\"metadata\".to_string()`, a word cargo has never been handed — the law asking which subcommands were measured caught exactly this on the first run",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                \"to_string\" | \"to_owned\" | \"into\"",
+          "to": "                \"to_string_never\" | \"to_owned\" | \"into\""
+        }
+      ],
+      "expect_red": [
+        "a_string_literal_converted_to_a_string_is_still_that_word"
+      ]
+    },
+    {
+      "name": "a-push-is-read-against-the-functions-top-level-not-the-bindings-depth",
+      "why": "a list declared inside an `if` and pushed to inside the same `if` always carries that word when it carries anything at all; read against the function's top level the command splits in two, and one of them is a command nothing issues — a verdict about it is noise the law cannot tell from a finding",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let path: Vec<Branch> = self.branches.iter().skip(*declared_at).cloned().collect();",
+          "to": "        let path: Vec<Branch> = self.branches.iter().cloned().collect();"
+        }
+      ],
+      "expect_red": [
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+      ]
+    },
+    {
+      "name": "a-hole-lets-the-law-claim-a-flag-is-absent",
+      "why": "a hole cannot take a word away, so a flag beside one is definitely there — and it may HOLD a flag nobody wrote down, so absence is a claim about words this reader could not count. PINNED AGAINST A FIXTURE and not against the tree, because every hole-bearing command here also spells `--locked`: aimed at the tree this comes back green and says nothing, which is what the first attempt did",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        (_, false) if command.uncounted > 0 => LockVerdict::Unreadable(format!(",
+          "to": "        (_, false) if command.uncounted > usize::MAX => LockVerdict::Unreadable(format!("
+        }
+      ],
+      "expect_red": [
+        "a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent"
       ]
     },
     {
@@ -628,7 +736,9 @@
         "a_word_inside_two_branches_needs_both_of_them",
         "an_if_with_an_else_never_takes_neither_arm",
         "two_arms_of_one_match_never_appear_in_the_same_command",
-        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
       ]
     },
     {
@@ -687,21 +797,25 @@
         "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
         "a_word_inside_two_branches_needs_both_of_them",
         "words_one_branch_adds_together_are_never_separated",
-        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list"
+        "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_word_pushed_after_the_binding_is_in_the_command"
       ]
     },
     {
-      "name": "a-hole-is-enumerated-as-though-it-were-a-choice",
-      "why": "a hole admits any NUMBER of words, so the paths of the words BESIDE it are a command list that leaves out whatever the hole holds — a flag among them, judged absent",
+      "name": "a-hole-among-the-words-is-not-counted",
+      "why": "R1266 REPLACED THIS INJECTION'S SUBJECT. It used to prove that a hole made a site refuse to enumerate at all; the reading changed, because a hole cannot take a word away and refusing threw away the flags spelled beside it. What has teeth now is the POSITION: unrecorded, a hole is a word like any other, so nothing can tell a subcommand from a hole in front of one and nothing can refuse to claim a flag's absence",
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "                    Word::Unknown(_) => return None,",
-          "to": "                    Word::Unknown(text) => words.push(text.clone()),"
+          "from": "                        way.uncounted.push(way.words.len());",
+          "to": ""
         }
       ],
       "expect_red": [
-        "a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate"
+        "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
+        "a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand",
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole"
       ]
     },
     {

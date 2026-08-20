@@ -119,8 +119,13 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
     }
     println!(
         "[locked-resolution] {} site(s) written with a conditional word issue \
-         {ways} command(s) between them, and every one of them is judged below",
-        issued.rust.conditional.len()
+         {ways} command(s) between them, and every one of them is judged below; \
+         across every site, {} way(s) are dropped because no table can be keyed \
+         on a subcommand behind a hole or decided while the program runs, and {} \
+         site(s) have more ways than a report can hold",
+        issued.rust.conditional.len(),
+        issued.rust.ways_no_table_can_key_on,
+        issued.rust.ways_beyond_a_report
     );
     let mut all = issued.commands;
     all.extend(every_path);

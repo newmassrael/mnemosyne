@@ -5,6 +5,38 @@
   ],
   "complete": true,
   "fired": {
+    "a-build-without-a-run-is-read-as-a-test-run": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    command.subcommand() == Some(\"test\")\n        && !command.has(\"--no-run\")",
+          "to": "    command.subcommand() == Some(\"test\")"
+        }
+      ],
+      "expect_red": [
+        "judged_test_runs::a_command_that_builds_the_binaries_without_running_them_is_not_a_run"
+      ],
+      "tests": [
+        "judged_test_runs::a_command_that_builds_the_binaries_without_running_them_is_not_a_run"
+      ]
+    },
+    "a-listing-is-read-as-a-test-run": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        && !command.harness_args.iter().any(|word| word == \"--list\")",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "judged_test_runs::every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it",
+        "judged_test_runs::a_command_that_builds_the_binaries_without_running_them_is_not_a_run"
+      ],
+      "tests": [
+        "judged_test_runs::a_command_that_builds_the_binaries_without_running_them_is_not_a_run",
+        "judged_test_runs::every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it"
+      ]
+    },
     "a-sweep-resolves-freely-again": {
       "edits": [
         {
@@ -50,5 +82,6 @@
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     }
-  }
+  },
+  "forgotten": {}
 }

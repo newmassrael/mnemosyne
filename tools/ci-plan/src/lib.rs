@@ -1315,6 +1315,19 @@ pub struct CargoCommand {
     /// `None` is not "unknown" — it is "read it off the manifest", which is the
     /// right answer for every source whose words are written down.
     pub declared: Option<rust::Declared>,
+    /// How many of this command's words stand for a list of UNKNOWN LENGTH.
+    ///
+    /// R1266, and it exists because of what a hole can and cannot do: a hole
+    /// cannot take a word away, so a flag spelled beside one is definitely
+    /// there — and it may hold a word nobody wrote down, so a flag's ABSENCE
+    /// cannot be claimed. Zero for every command written as data, where the words
+    /// are all there is.
+    ///
+    /// `--locked` in `item-citations`' assembled argv is the case: the flag is a
+    /// literal one statement above the spawn and the `extend` beside it is a
+    /// runtime list, so [`lock_verdict`] can say the command pins and could never
+    /// have said it did not.
+    pub uncounted: usize,
 }
 
 impl CargoCommand {
@@ -1523,6 +1536,30 @@ pub fn resolves_the_lockfile_of(command: &CargoCommand) -> Option<bool> {
     resolves_the_lockfile(subcommand)
 }
 
+/// Does this command RUN tests, rather than merely ask cargo about them?
+///
+/// R1266, and it is the same shape as [`resolves_the_lockfile_of`] one function
+/// up: THE SUBCOMMAND IS NOT THE WHOLE QUESTION. `cargo test` with `--list`
+/// after the bare `--` prints the names a harness knows and runs nothing;
+/// `--no-run` builds the binaries and runs nothing. Both are `cargo test` to a
+/// reader keyed on the subcommand alone, and the law that every test RUN goes
+/// through the coverage wrapper has no business with either — a listing has no
+/// coverage to hold a log against.
+///
+/// WHY IT IS HERE AND NOT IN THE LAW. Two programs already assemble a
+/// `cargo test … -- --list` for exactly this reason (`unrun-tests` to enumerate
+/// what a suite holds, `item-citations` to ask a harness for the names rustdoc
+/// cannot see), so the distinction is a fact about the command and this crate is
+/// where facts about commands live. It surfaced when R1266 made the second of
+/// those readable: it walked into the wrapper law's population, which had never
+/// met a listing, and the law was right to refuse a command it could not place.
+#[must_use]
+pub fn runs_tests(command: &CargoCommand) -> bool {
+    command.subcommand() == Some("test")
+        && !command.has("--no-run")
+        && !command.harness_args.iter().any(|word| word == "--list")
+}
+
 /// Every `Cargo.toml` this repository tracks, sorted.
 pub fn tracked_manifests(root: &Path) -> Vec<String> {
     let mut found = tracked_files(root, &["ls-files", "*Cargo.toml"]);
@@ -1682,9 +1719,20 @@ pub fn lock_verdict(
     };
     match (ours, command.has("--locked")) {
         (true, true) => LockVerdict::Pinned,
+        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,
+        // A HOLE CANNOT TAKE A WORD AWAY, WHICH IS WHY THE TWO ARMS ABOVE ARE
+        // SAFE AND THESE TWO ARE NOT (R1266). The flag being THERE is a fact the
+        // words carry whatever else the command holds; the flag being ABSENT is
+        // a claim about words this reader could not count, and a list of unknown
+        // length may hold it. So the verdict is refused rather than guessed —
+        // `Unreadable` is this repository's "not a pass", and it stays that.
+        (_, false) if command.uncounted > 0 => LockVerdict::Unreadable(format!(
+            "`--locked` is not among the words this reader can name, and {} of \
+             them stand for a list of unknown length that may hold it",
+            command.uncounted
+        )),
         (true, false) => LockVerdict::RepairsWhatItShouldReport,
         (false, false) => LockVerdict::NotOursToPin,
-        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,
     }
 }
 
@@ -1702,6 +1750,7 @@ pub fn script_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
                 declared: None,
+                uncounted: 0,
             });
         }
     }
@@ -1754,6 +1803,7 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
                 declared: None,
+                uncounted: 0,
             });
         }
     }
@@ -1821,6 +1871,7 @@ pub fn sweep_cargo_commands(root: &Path) -> Vec<CargoCommand> {
             harness_args: found.harness_args,
             env: BTreeMap::new(),
             declared: None,
+            uncounted: 0,
         });
     }
     out
@@ -1963,6 +2014,7 @@ pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                     harness_args: found.harness_args,
                     env: step.env.clone(),
                     declared: None,
+                    uncounted: 0,
                 });
             }
         }
@@ -2397,6 +2449,7 @@ pub fn lister_declared_commands(listed: &Workspaces) -> Vec<CargoCommand> {
                 harness_args,
                 env: BTreeMap::new(),
                 declared: None,
+                uncounted: 0,
             }
         })
         .collect()

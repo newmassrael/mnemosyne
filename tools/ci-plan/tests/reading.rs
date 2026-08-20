@@ -1159,6 +1159,7 @@ fn issued(line: &str) -> CargoCommand {
         env: Default::default(),
         // Written down, so the manifest path is what says whose lockfile it is.
         declared: None,
+        uncounted: 0,
     }
 }
 
@@ -1231,6 +1232,65 @@ fn a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported() {
         LockVerdict::ResolvesNothing,
         "`cargo fmt` cannot rewrite a lockfile and REJECTS `--locked`, so a law \
          that demanded the flag of everything would be unsatisfiable"
+    );
+}
+
+/// A HOLE CAN HIDE A FLAG AND CAN NEVER REMOVE ONE, and both halves are here.
+///
+/// PINNED AGAINST STRINGS BECAUSE THE TREE DOES NOT HOLD THE INTERESTING HALF.
+/// Every command in this repository whose words hold a hole also spells
+/// `--locked`, so an injection aimed at the guard comes back green and says
+/// nothing — which one did, and this fixture is the answer. The guard is a
+/// soundness clause for a state the tree may reach tomorrow: deleting it because
+/// today is clean is how a false red ships.
+#[test]
+fn a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent() {
+    let tracked = tracked_pair();
+    let nothing_foreign = BTreeSet::new();
+
+    let with_a_hole = |words: &str, holes: usize| {
+        let mut command = issued(words);
+        command.uncounted = holes;
+        command
+    };
+
+    // PRESENCE SURVIVES A HOLE. The flag is in the words; whatever the hole
+    // turns out to hold, it cannot take that away.
+    assert_eq!(
+        lock_verdict(
+            &with_a_hole(
+                "cargo check --locked --manifest-path bench/Cargo.toml $selectors",
+                1
+            ),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::Pinned,
+        "a flag spelled beside a hole is spelled"
+    );
+
+    // ABSENCE DOES NOT. The same command without the flag is not a defect this
+    // reader can name — the hole may hold it — and `Unreadable` is this
+    // repository's "not a pass", which the law rejects rather than passes.
+    let refused = lock_verdict(
+        &with_a_hole("cargo check --manifest-path bench/Cargo.toml $selectors", 1),
+        &tracked,
+        &nothing_foreign,
+    );
+    assert!(
+        matches!(&refused, LockVerdict::Unreadable(why) if why.contains("unknown length")),
+        "{refused:?}"
+    );
+
+    // AND WITHOUT A HOLE THE SAME WORDS ARE THE DEFECT, which is what says the
+    // clause above is about the hole and not about the words.
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo check --manifest-path bench/Cargo.toml"),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::RepairsWhatItShouldReport,
     );
 }
 
@@ -1327,6 +1387,7 @@ fn a_shell_line_is_split_where_cargo_stops_and_the_harness_starts() {
                 harness_args: found.harness_args,
                 env: Default::default(),
                 declared: None,
+                uncounted: 0,
             })
             .collect::<Vec<_>>()
     };
@@ -1888,12 +1949,18 @@ fn an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent() 
     );
     // AND THE TWO COMMANDS IT ISSUES ARE BOTH ANSWERED. Reading it as one is
     // what forced the choice above; reading it as the set it is dissolves it.
+    let ways: Vec<Vec<String>> = site
+        .variants()
+        .expect("the paths can be enumerated")
+        .into_iter()
+        .map(|way| way.words)
+        .collect();
     assert_eq!(
-        site.variants(),
-        Some(vec![
+        ways,
+        vec![
             vec!["build".to_string()],
             vec!["build".to_string(), "--locked".to_string()],
-        ]),
+        ],
         "{site:#?}"
     );
 
@@ -2019,9 +2086,266 @@ fn two_functions_holding_a_command_each_do_not_share_one() {
     assert_eq!(found[1].words, vec![Word::Spelled("test".to_string())]);
 }
 
+// --- a list built two lines earlier -----------------------------------------
+
+#[test]
+fn a_list_a_binding_holds_is_read_where_the_binding_is() {
+    // The commonest way a cargo command is written in this repository, and the
+    // one `.args($arguments)` used to report as a hole.
+    assert_eq!(
+        paths_of(
+            r#"fn f(manifest: &str) {
+                   let arguments = vec!["metadata", "--no-deps", manifest];
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+               }"#,
+        ),
+        vec![vec![
+            "metadata".to_string(),
+            "--no-deps".to_string(),
+            "$manifest".to_string(),
+        ]],
+    );
+}
+
+#[test]
+fn a_word_pushed_after_the_binding_is_in_the_command() {
+    // READING THE `vec![..]` AND STOPPING IS THE FALSE GREEN. A `push` below it
+    // adds a word, and a command reported as missing a flag it does add is a red
+    // nobody can act on — so the words accumulate as the walk passes the
+    // statements, and the conditional one is conditional.
+    assert_eq!(
+        paths_of(
+            r#"fn f(locked: bool) {
+                   let mut arguments = vec!["metadata"];
+                   if locked { arguments.push("--locked"); }
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+               }"#,
+        ),
+        vec![
+            vec!["metadata".to_string()],
+            vec!["metadata".to_string(), "--locked".to_string()],
+        ],
+    );
+}
+
+#[test]
+fn a_push_inside_the_branch_the_binding_lives_in_is_not_conditional() {
+    // THE BASELINE IS THE BINDING'S OWN DEPTH. A list declared inside an `if`
+    // and pushed to inside the same `if` always carries that word when it
+    // carries anything at all — read against the function's top level instead,
+    // the command splits into two and one of them is a command nothing issues.
+    assert_eq!(
+        paths_of(
+            r#"fn f(c: bool) {
+                   if c {
+                       let mut v = vec!["metadata"];
+                       v.push("--locked");
+                       issue::cargo(Tree::ThisRepository).args(&v);
+                   }
+               }"#,
+        ),
+        vec![vec!["metadata".to_string(), "--locked".to_string()]],
+    );
+}
+
+#[test]
+fn a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it() {
+    // `Command::args` copies the slice it is handed, so a `push` BELOW that
+    // statement is not in the command — and reading it as though it were would
+    // report a flag on a command that does not carry one.
+    assert_eq!(
+        paths_of(
+            r#"fn f() {
+                   let mut arguments = vec!["metadata"];
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+                   arguments.push("--locked");
+               }"#,
+        ),
+        vec![vec!["metadata".to_string()]],
+    );
+}
+
+#[test]
+fn a_list_extended_with_a_literal_carries_those_words() {
+    assert_eq!(
+        paths_of(
+            r#"fn f() {
+                   let mut argv = vec!["rustdoc"];
+                   argv.extend(["--keep-going", "--message-format=json"]);
+                   issue::cargo(Tree::ThisRepository).args(&argv);
+               }"#,
+        ),
+        vec![vec![
+            "rustdoc".to_string(),
+            "--keep-going".to_string(),
+            "--message-format=json".to_string(),
+        ]],
+    );
+}
+
+#[test]
+fn a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole() {
+    // The `item-citations` shape. The hole cannot take `--locked` away, so the
+    // flag spelled beside it is read — which is the whole reason this mechanism
+    // was built.
+    let ways = ways_of(
+        r#"fn f(selectors: &[String], package: &str) {
+               let mut argv = vec!["rustdoc", "--locked", "-p", package];
+               argv.extend(selectors.iter().map(String::as_str));
+               argv.extend(["--keep-going"]);
+               issue::cargo(Tree::ThisRepository).args(&argv);
+           }"#,
+    );
+    assert_eq!(ways.len(), 1, "{ways:#?}");
+    assert_eq!(
+        ways[0].words,
+        vec![
+            "rustdoc".to_string(),
+            "--locked".to_string(),
+            "-p".to_string(),
+            "$package".to_string(),
+            "$selectors.iter().map(String::as_str)".to_string(),
+            "--keep-going".to_string(),
+        ],
+        "{ways:#?}"
+    );
+    assert_eq!(ways[0].uncounted, vec![4], "{ways:#?}");
+}
+
+#[test]
+fn a_string_literal_converted_to_a_string_is_still_that_word() {
+    // `vec!["metadata".to_string(), ..]` is how every `Vec<String>` argument
+    // list in this repository is spelled. Read as a runtime value it renders as
+    // `$"metadata".to_string()` — a word cargo has never been handed, which the
+    // law that asks which subcommands were measured caught on the first run.
+    assert_eq!(
+        paths_of(
+            r#"fn f() {
+                   let arguments = vec!["metadata".to_string(), String::from("--no-deps")];
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+               }"#,
+        ),
+        vec![vec!["metadata".to_string(), "--no-deps".to_string()]],
+    );
+}
+
+#[test]
+fn a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling() {
+    // `clear`, `retain`, `remove`, `insert`, `truncate`: spellings that can take
+    // a word AWAY. Reading the `vec![..]` afterwards would answer about a list
+    // the code no longer holds, so the whole binding becomes a hole and the
+    // refusal names the method for whoever comes to teach it.
+    for spelling in ["clear()", "retain(|w| w.len() > 2)", "truncate(1)"] {
+        let site = only(&format!(
+            r#"fn f() {{
+                   let mut arguments = vec!["metadata", "--locked"];
+                   arguments.{spelling};
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+               }}"#,
+        ));
+        assert!(
+            site.reach().contains("this reader does not model"),
+            "{spelling}: {}",
+            site.reach()
+        );
+    }
+}
+
+#[test]
+fn a_list_lent_out_mutably_is_a_hole() {
+    // Rust says what may be written through, and a callee that appends is
+    // invisible to this walk. `&arguments` is a READ and stays readable — which
+    // is how `.args(&arguments)` works at all.
+    let site = only(
+        r#"fn f() {
+               let mut arguments = vec!["metadata"];
+               decorate(&mut arguments);
+               issue::cargo(Tree::ThisRepository).args(&arguments);
+           }"#,
+    );
+    assert!(site.reach().contains("can write to it"), "{}", site.reach());
+}
+
+#[test]
+fn a_second_let_of_the_same_name_is_a_different_list() {
+    // A binding is declared once and read afterwards; a second `let` starts a
+    // new list rather than adding to the old one.
+    assert_eq!(
+        paths_of(
+            r#"fn f() {
+                   let arguments = vec!["metadata", "--locked"];
+                   let arguments = vec!["check"];
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+               }"#,
+        ),
+        vec![vec!["check".to_string()]],
+    );
+}
+
+#[test]
+fn a_binding_read_without_being_changed_stays_readable() {
+    // `arguments.join(" ")` in an error message is not a change to the command,
+    // and poisoning on it would leave this reader unable to read the very shape
+    // it was written for — `stale-artifacts` writes exactly this.
+    assert_eq!(
+        paths_of(
+            r#"fn f() {
+                   let arguments = vec!["metadata"];
+                   println!("{}", arguments.join(" "));
+                   let _ = arguments.len();
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+               }"#,
+        ),
+        vec![vec!["metadata".to_string()]],
+    );
+}
+
+#[test]
+fn a_caller_handing_over_a_list_it_built_is_read_at_that_call_site() {
+    // The hop backwards meeting the hop forwards: the wrapper's words are its
+    // caller's, and the caller built them two statements above the call.
+    let found = ci_plan::rust::spawns_across(&[(
+        "tools/gate/src/main.rs",
+        r#"fn run(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }
+               fn caller(package: &str) {
+                   let mut argv = vec!["check", "--locked", "-p", package];
+                   argv.extend(["--message-format=json"]);
+                   let _ = run(&argv);
+               }"#,
+        "tools/gate",
+    )]);
+    let site = found
+        .iter()
+        .find(|site| site.owner == "run")
+        .expect("the wrapper");
+    let words: Vec<Vec<String>> = site
+        .from_callers
+        .iter()
+        .filter_map(|caller| site.words_with(caller))
+        .filter_map(|words| ci_plan::rust::ways_of(&words))
+        .flatten()
+        .map(|way| way.words)
+        .collect();
+    assert_eq!(
+        words,
+        vec![vec![
+            "check".to_string(),
+            "--locked".to_string(),
+            "-p".to_string(),
+            "$package".to_string(),
+            "--message-format=json".to_string(),
+        ]],
+        "{site:#?}"
+    );
+}
+
 // --- a site with a conditional word is a set of commands ---------------------
 
 fn paths_of(text: &str) -> Vec<Vec<String>> {
+    ways_of(text).into_iter().map(|way| way.words).collect()
+}
+
+fn ways_of(text: &str) -> Vec<ci_plan::rust::Way> {
     only(text).variants().expect("the paths can be enumerated")
 }
 
@@ -2146,18 +2470,59 @@ fn a_word_inside_two_branches_needs_both_of_them() {
 }
 
 #[test]
-fn a_site_handing_over_a_list_nobody_can_count_has_no_paths_to_enumerate() {
-    // A hole admits any NUMBER of words, so there is nothing to enumerate — and
-    // answering with the paths of the words beside it would be a command list
-    // that leaves out the flag the hole may hold.
-    let site = only(
+fn a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site() {
+    // R1266 CHANGED THIS PROPERTY, and the reason is what a hole can do rather
+    // than what it is. A hole admits any NUMBER of words, so it can HIDE a flag
+    // — and it can never REMOVE one. Refusing the whole site (the R1265 reading)
+    // threw away the flags spelled beside it, which left `item-citations`'
+    // `--locked` unread by every law while it sat in a literal one statement up.
+    let ways = ways_of(
         r#"fn f(argv: &[&str], pin: bool) {
                let mut c = issue::cargo(Tree::ThisRepository);
+               c.arg("check");
                c.args(argv);
                if pin { c.arg("--locked"); }
            }"#,
     );
-    assert_eq!(site.variants(), None, "{site:#?}");
+    assert_eq!(
+        ways.iter().map(|way| way.words.clone()).collect::<Vec<_>>(),
+        vec![
+            vec!["check".to_string(), "$argv".to_string()],
+            vec![
+                "check".to_string(),
+                "$argv".to_string(),
+                "--locked".to_string()
+            ],
+        ],
+        "{ways:#?}"
+    );
+    // AND THE HOLE SAYS WHERE IT IS, which is the only thing that makes the
+    // reading above safe to judge: the subcommand was read before it.
+    assert!(ways.iter().all(|way| way.uncounted == vec![1]), "{ways:#?}");
+    assert!(
+        ways.iter().all(ci_plan::rust::Way::subcommand_was_read),
+        "{ways:#?}"
+    );
+}
+
+#[test]
+fn a_hole_in_front_of_the_subcommand_is_not_read_as_the_subcommand() {
+    // The one thing a hole ruins outright. It renders without a leading `-`, so
+    // a reader looking for the first word that is not a flag would take the hole
+    // FOR the subcommand and every reading after it would be about a command
+    // nobody wrote.
+    let ways = ways_of(
+        r#"fn f(argv: &[&str]) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.args(argv);
+               c.arg("--locked");
+           }"#,
+    );
+    assert_eq!(ways.len(), 1, "{ways:#?}");
+    assert!(
+        !ci_plan::rust::Way::subcommand_was_read(&ways[0]),
+        "{ways:#?}"
+    );
 }
 
 #[test]
@@ -2492,7 +2857,10 @@ fn the_words_a_caller_writes_keep_their_place_among_the_sites_own() {
     let whole: Vec<Vec<String>> = site
         .from_callers
         .iter()
-        .filter_map(|caller| site.words_from(caller))
+        .filter_map(|caller| site.words_with(caller))
+        .filter_map(|words| ci_plan::rust::ways_of(&words))
+        .flatten()
+        .map(|way| way.words)
         .collect();
     assert_eq!(
         whole,
