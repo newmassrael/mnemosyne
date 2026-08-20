@@ -11,18 +11,27 @@
 use std::fs;
 use std::path::Path;
 
-use ci_state::history::{keep, kept_in, movements, trend_report, Kept, Movement, RECORDS};
+use ci_state::history::{
+    keep, kept_in, kept_report, movements, never_completed, trend_report, Kept, Movement, RECORDS,
+};
 use ci_state::{Check, Output, Spent};
 
 use tempfile::TempDir;
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 
+/// A job that ran all of its steps — the population a movement is drawn over.
 fn spent(check: &str, took: u64, budget_minutes: u64) -> Spent {
+    concluded(check, took, budget_minutes, "success")
+}
+
+/// A job that ran and stopped, in GitHub's own word for how.
+fn concluded(check: &str, took: u64, budget_minutes: u64, conclusion: &str) -> Spent {
     Spent {
         check: check.to_string(),
         took,
         budget_minutes,
+        conclusion: conclusion.to_string(),
     }
 }
 
@@ -411,7 +420,7 @@ fn the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget(
     );
     assert!(
         said.contains(
-            "`validate` 41% → 44% (+3 points over 2 commit(s) that ran it; 41–44% \
+            "`validate` 41% → 44% (+3 points over 2 commit(s) it completed; 41–44% \
                        across them)"
         ),
         "the job the level line named is followed through the record: {said}"
@@ -529,6 +538,172 @@ fn a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper() {
         !said.contains("no job's share of its budget is above where it was first recorded"),
         "and a fall produced by a moved denominator is not reported as good news: \
          {said}"
+    );
+}
+
+/// A run that did not complete is no point on a cost curve — and is not dropped.
+///
+/// THE NUMBERS ARE THIS REPOSITORY'S OWN. `validate` took 331 s on `d412b06e`,
+/// where it FAILED, against some 2400 s on the commits either side; and 5415 s on
+/// `cabcd5cf`, where its own ninety-minute budget ended it. The first is a
+/// time-to-failure and the second is a censored measurement, and a curve through
+/// either is a curve through a quantity that is not cost. The second is also the
+/// most important number in the record, so the sentence carries how far it got
+/// rather than letting the exclusion take it away.
+#[test]
+fn a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped() {
+    let kept = [
+        record(
+            "aaaaaaa",
+            "2026-08-17T18:26:06Z",
+            &[spent("validate", 2424, 90)],
+        ),
+        record(
+            "bbbbbbb",
+            "2026-08-18T02:40:24Z",
+            &[concluded("validate", 5415, 90, "cancelled")],
+        ),
+        record(
+            "ccccccc",
+            "2026-08-19T05:10:13Z",
+            &[concluded("validate", 331, 90, "failure")],
+        ),
+        record(
+            "ddddddd",
+            "2026-08-19T23:50:46Z",
+            &[spent("validate", 2347, 90)],
+        ),
+    ];
+    let movement = movements(&kept)
+        .into_iter()
+        .find(|one| one.check == "validate")
+        .expect("the job");
+    assert_eq!(
+        (movement.commits, movement.set_aside),
+        (2, 2),
+        "two runs completed and two did not: {movement:?}"
+    );
+    assert_eq!(
+        (movement.first.took, movement.last.took),
+        (2424, 2347),
+        "the ends are the completed ones, and the failure is NOT the newest \
+         point — which is the shape that would have printed a collapse: \
+         {movement:?}"
+    );
+    assert_eq!(
+        (movement.low, movement.high),
+        (43, 44),
+        "and the range is over the comparable runs, so the 6% failure does not \
+         widen it: {movement:?}"
+    );
+    assert_eq!(
+        movement.reached, 100,
+        "while the run its own budget ended is carried as how far it got: \
+         {movement:?}"
+    );
+
+    let said = trend_report(&kept, Some("validate")).join("\n");
+    assert!(
+        said.contains(
+            "`validate` 44% → 43% (-1 points over 2 commit(s) it completed; 43–44% \
+                       across them"
+        ),
+        "{said}"
+    );
+    assert!(
+        said.contains("2 more did not complete, the longest reaching 100%"),
+        "the exclusion is a sentence and the ceiling survives it — a reader who \
+         saw only the movement would not know this job has hit its budget: {said}"
+    );
+}
+
+/// A job that has never completed is named rather than absent.
+///
+/// `movements` PRODUCES NOTHING FOR IT, which is right — there is no cost curve —
+/// and would therefore take it silently out of a block that reads as covering
+/// every job in the record. Where the level line has just named that job, "no
+/// trend" is itself the news.
+#[test]
+fn a_job_with_no_completed_run_is_named_rather_than_left_out() {
+    let kept = [
+        record(
+            "aaaaaaa",
+            "2026-08-17T18:26:06Z",
+            &[
+                spent("healthy", 600, 90),
+                concluded("broken", 100, 90, "failure"),
+                concluded("also-broken", 100, 90, "failure"),
+            ],
+        ),
+        record(
+            "bbbbbbb",
+            "2026-08-19T23:50:46Z",
+            &[
+                spent("healthy", 900, 90),
+                concluded("broken", 120, 90, "failure"),
+                concluded("also-broken", 120, 90, "failure"),
+            ],
+        ),
+    ];
+    assert_eq!(
+        never_completed(&kept),
+        ["also-broken".to_string(), "broken".to_string()]
+            .into_iter()
+            .collect()
+    );
+
+    let said = trend_report(&kept, Some("broken")).join("\n");
+    assert!(
+        said.contains("`broken` has no completed run in this record"),
+        "the job the level line named is answered rather than passed over: {said}"
+    );
+    assert!(
+        said.contains("1 further job(s) in this record have no completed run"),
+        "and the ones it did not name are counted, so the block never reads as \
+         covering every job in the record: {said}"
+    );
+    assert!(
+        said.contains("`healthy` 11% → 16%"),
+        "while the job that does complete still has its curve: {said}"
+    );
+}
+
+/// A whole directory that stops reading at once is one fact, not thirty.
+///
+/// MEASURED ON THIS MACHINE while R1261 was written: the shape of a record is a
+/// type, so adding one field made every record in the directory unreadable in the
+/// same instant — 32 of them, each producing the identical sentence. A block of
+/// thirty-two identical lines is one a reader learns to skip, which is the
+/// blindness this whole reporter exists to end, arrived at from the other side.
+/// The cap is the annotation block's rule one file over: name a few, count the
+/// rest, never drop in silence.
+#[test]
+fn a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty() {
+    let tree = TempDir::new().expect("a tree");
+    let directory = tree.path().join(RECORDS);
+    fs::create_dir_all(&directory).expect("the record directory");
+    for name in ["aaaaaaa", "bbbbbbb", "ccccccc", "ddddddd", "eeeeeee"] {
+        fs::write(
+            directory.join(format!("{name}.json")),
+            r#"{"commit":"x","ran_at":"2026-08-18T13:40:00Z","jobs":[],"from":"another shape"}"#,
+        )
+        .expect("a record of a shape this reader does not know");
+    }
+    let said = kept_report(tree.path(), SHA, &[], &[]).join("\n");
+    assert_eq!(
+        said.matches("NOTE").count(),
+        4,
+        "three named and one line counting the rest, not five: {said}"
+    );
+    assert!(
+        said.contains("(+2 more record(s)"),
+        "and the count says how many were left out, so the block never reads as \
+         though that was all of them: {said}"
+    );
+    assert!(
+        said.contains("a record shape that changed"),
+        "the sentence also says what a whole directory failing at once MEANS, \
+         because the reader's next move depends on it: {said}"
     );
 }
 

@@ -378,6 +378,7 @@ fn what_this_push_measured_is_kept_and_read_back_through_this_binary() {
                 check: "validate".to_string(),
                 took: 540,
                 budget_minutes: 90,
+                conclusion: "success".to_string(),
             }],
         },
     )
@@ -399,7 +400,7 @@ fn what_this_push_measured_is_kept_and_read_back_through_this_binary() {
     );
     assert!(
         printed.contains(
-            "`validate` 10% → 22% (+12 points over 2 commit(s) that ran it; \
+            "`validate` 10% → 22% (+12 points over 2 commit(s) it completed; \
                           10–22% across them)"
         ),
         "the job the level line named, followed through the record — 9m00s then \

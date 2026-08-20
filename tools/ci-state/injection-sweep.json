@@ -497,8 +497,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "            Unmeasured::NotFinished { .. } | Unmeasured::Retired { .. }",
-          "to": "            Unmeasured::Retired { .. }"
+          "from": "            Unmeasured::NotFinished { .. }\n                | Unmeasured::Retired { .. }\n                | Unmeasured::Skipped { .. }",
+          "to": "            Unmeasured::Retired { .. } | Unmeasured::Skipped { .. }"
         }
       ],
       "expect_red": ["a_job_near_its_budget_is_named_and_the_unfinished_are_counted"]
@@ -599,7 +599,8 @@
       ],
       "expect_red": [
         "a_record_that_will_not_read_is_named_and_the_others_are_still_read",
-        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused"
+        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused",
+        "a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty"
       ]
     },
     {
@@ -676,6 +677,96 @@
         }
       ],
       "expect_red": ["what_this_push_measured_is_kept_and_read_back_through_this_binary"]
+    },
+    {
+      "name": "a-job-that-never-ran-is-a-job-that-cost-nothing",
+      "why": "the most ordinary case in this repository, and the one R1260's record made matter. The workflow skips a job whose inputs did not change, GitHub stamps such a job's start and completion at the SAME INSTANT, and subtracting them gives zero seconds — which is not a cost, it is the absence of a measurement. Measured on the first full record: 9 of the 23 rows for `every compilation is one job's` and 8 of 23 for `every cache declared is one CI keeps` were skips, so a curve endpoint landing on one was a matter of time",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if check.conclusion.as_deref() == Some(DID_NOT_RUN) {",
+          "to": "        if check.conclusion.as_deref() == Some(\"a word GitHub does not write\") {"
+        }
+      ],
+      "expect_red": ["a_skipped_job_is_not_a_job_that_cost_nothing"]
+    },
+    {
+      "name": "the-jobs-that-never-ran-vanish-from-the-count",
+      "why": "a block that silently shrinks is how a reader comes to believe every job was measured. Counted rather than named one line each, because this repository skips two jobs on the ordinary green push and nothing at all is wrong",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if skipped > 0 {",
+          "to": "    if skipped > 99 {"
+        }
+      ],
+      "expect_red": ["a_skipped_job_is_not_a_job_that_cost_nothing"]
+    },
+    {
+      "name": "a-time-to-failure-is-a-point-on-a-cost-curve",
+      "why": "a duration is a fact about every job that RAN; a cost is a fact only about one that ran all of its steps. `validate` took 331 s on `d412b06e` where it failed, against some 2400 s on the commits either side, and 5415 s on `cabcd5cf` where its own ninety-minute budget ended it. A curve through either is a curve through a quantity that is not cost — and the failure landing on the newest end prints a collapse",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                .partition(|(_, one)| one.conclusion == RAN_TO_COMPLETION);",
+          "to": "                .partition(|(_, one)| !one.conclusion.is_empty());"
+        }
+      ],
+      "expect_red": [
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_with_no_completed_run_is_named_rather_than_left_out"
+      ]
+    },
+    {
+      "name": "the-runs-set-aside-from-a-curve-are-set-aside-in-silence",
+      "why": "a curve over eleven of a job's twenty recorded runs is a curve over a population the reader did not choose, and the ceiling is what the exclusion takes with it: `validate` at 100% of its budget on `cabcd5cf` is the most important number in this record and no part of any cost curve. The clause is what keeps both true at once",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if movement.set_aside == 0 {",
+          "to": "    if movement.set_aside < 99 {"
+        }
+      ],
+      "expect_red": ["a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"]
+    },
+    {
+      "name": "a-job-with-no-curve-at-all-is-left-out-of-the-block",
+      "why": "`movements` produces nothing for a job that has never completed, which is right — there is no cost curve — and would therefore take it silently out of a block that reads as covering every job in the record. Where the level line has just named that job, `no trend` is itself the news",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let uncurved = unfinished\n        .iter()\n        .filter(|name| Some(name.as_str()) != closest)\n        .count();",
+          "to": "    let uncurved = 0;"
+        }
+      ],
+      "expect_red": ["a_job_with_no_completed_run_is_named_rather_than_left_out"]
+    },
+    {
+      "name": "how-a-job-ended-is-thrown-away-with-what-it-took",
+      "why": "the level line wants every job that ran — the one its budget ended is the one it most needs to name — and a trend wants only the comparable ones. The record serves both, so it keeps GitHub's own word rather than a flag one of the two readers decided on",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            conclusion: outcome(check).to_string(),",
+          "to": "            conclusion: String::new(),"
+        }
+      ],
+      "expect_red": [
+        "what_a_job_took_is_kept_beside_how_it_ended",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ]
+    },
+    {
+      "name": "a-record-shape-that-changed-prints-one-line-per-file",
+      "why": "the shape of a record is a type, so the day it changes EVERY record in the directory stops reading at once — thirty-two of them when R1261 added the conclusion, measured on this machine. One unreadable record is a fact worth a line; thirty are one fact, and a hundred lines of the same sentence is a block a reader learns to skip",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "            .take(NAMED_TROUBLE)",
+          "to": "            .take(usize::MAX)"
+        }
+      ],
+      "expect_red": ["a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty"]
     }
   ]
 }

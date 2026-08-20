@@ -112,6 +112,36 @@
         "a_gh_that_is_not_installed_is_reported_and_the_reporter_still_exits_zero"
       ]
     },
+    "a-job-that-never-ran-is-a-job-that-cost-nothing": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if check.conclusion.as_deref() == Some(DID_NOT_RUN) {",
+          "to": "        if check.conclusion.as_deref() == Some(\"a word GitHub does not write\") {"
+        }
+      ],
+      "expect_red": [
+        "a_skipped_job_is_not_a_job_that_cost_nothing"
+      ],
+      "tests": [
+        "a_skipped_job_is_not_a_job_that_cost_nothing"
+      ]
+    },
+    "a-job-with-no-curve-at-all-is-left-out-of-the-block": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let uncurved = unfinished\n        .iter()\n        .filter(|name| Some(name.as_str()) != closest)\n        .count();",
+          "to": "    let uncurved = 0;"
+        }
+      ],
+      "expect_red": [
+        "a_job_with_no_completed_run_is_named_rather_than_left_out"
+      ],
+      "tests": [
+        "a_job_with_no_completed_run_is_named_rather_than_left_out"
+      ]
+    },
     "a-message-is-cut-by-bytes-instead-of-characters": {
       "edits": [
         {
@@ -174,6 +204,21 @@
         "a_record_that_describes_another_commit_than_it_is_named_for_is_refused"
       ]
     },
+    "a-record-shape-that-changed-prints-one-line-per-file": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "            .take(NAMED_TROUBLE)",
+          "to": "            .take(usize::MAX)"
+        }
+      ],
+      "expect_red": [
+        "a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty"
+      ],
+      "tests": [
+        "a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty"
+      ]
+    },
     "a-record-that-will-not-read-is-dropped-in-silence": {
       "edits": [
         {
@@ -184,9 +229,11 @@
       ],
       "expect_red": [
         "a_record_that_will_not_read_is_named_and_the_others_are_still_read",
-        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused"
+        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused",
+        "a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty"
       ],
       "tests": [
+        "a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty",
         "a_record_that_describes_another_commit_than_it_is_named_for_is_refused",
         "a_record_that_will_not_read_is_named_and_the_others_are_still_read"
       ]
@@ -344,6 +391,23 @@
         "a_step_field_this_reporter_cannot_find_is_a_refusal"
       ]
     },
+    "a-time-to-failure-is-a-point-on-a-cost-curve": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                .partition(|(_, one)| one.conclusion == RAN_TO_COMPLETION);",
+          "to": "                .partition(|(_, one)| !one.conclusion.is_empty());"
+        }
+      ],
+      "expect_red": [
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_with_no_completed_run_is_named_rather_than_left_out"
+      ],
+      "tests": [
+        "a_job_with_no_completed_run_is_named_rather_than_left_out",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"
+      ]
+    },
     "a-well-formed-answer-about-another-commit-is-printed-as-this-ones": {
       "edits": [
         {
@@ -389,6 +453,23 @@
       ],
       "tests": [
         "a_pair_of_stamps_is_a_duration_and_an_inverted_pair_is_a_refusal"
+      ]
+    },
+    "how-a-job-ended-is-thrown-away-with-what-it-took": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            conclusion: outcome(check).to_string(),",
+          "to": "            conclusion: String::new(),"
+        }
+      ],
+      "expect_red": [
+        "what_a_job_took_is_kept_beside_how_it_ended",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ],
+      "tests": [
+        "what_a_job_took_is_kept_beside_how_it_ended",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "no-failing-check-is-asked-what-step-ended-it": {
@@ -640,8 +721,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "            Unmeasured::NotFinished { .. } | Unmeasured::Retired { .. }",
-          "to": "            Unmeasured::Retired { .. }"
+          "from": "            Unmeasured::NotFinished { .. }\n                | Unmeasured::Retired { .. }\n                | Unmeasured::Skipped { .. }",
+          "to": "            Unmeasured::Retired { .. } | Unmeasured::Skipped { .. }"
         }
       ],
       "expect_red": [
@@ -649,6 +730,21 @@
       ],
       "tests": [
         "a_job_near_its_budget_is_named_and_the_unfinished_are_counted"
+      ]
+    },
+    "the-jobs-that-never-ran-vanish-from-the-count": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if skipped > 0 {",
+          "to": "    if skipped > 99 {"
+        }
+      ],
+      "expect_red": [
+        "a_skipped_job_is_not_a_job_that_cost_nothing"
+      ],
+      "tests": [
+        "a_skipped_job_is_not_a_job_that_cost_nothing"
       ]
     },
     "the-last-failing-step-is-named-instead-of-the-first": {
@@ -728,6 +824,21 @@
       "tests": [
         "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
         "the_run_is_the_run_segment_and_not_the_job"
+      ]
+    },
+    "the-runs-set-aside-from-a-curve-are-set-aside-in-silence": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if movement.set_aside == 0 {",
+          "to": "    if movement.set_aside < 99 {"
+        }
+      ],
+      "expect_red": [
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"
+      ],
+      "tests": [
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"
       ]
     },
     "the-same-annotation-from-nine-jobs-is-printed-nine-times": {

@@ -434,6 +434,69 @@ fn a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget() {
     );
 }
 
+/// A skipped job is not a job that cost nothing.
+///
+/// THE MOST ORDINARY CASE IN THIS REPOSITORY, and the one R1260's record made
+/// matter. The workflow skips a job whose inputs did not change, GitHub stamps
+/// such a job's start and completion at the SAME INSTANT, and a reader that
+/// subtracted them got zero seconds — which is not a cost, it is the absence of a
+/// measurement. Measured on the first full record: 9 of the 23 rows for `every
+/// compilation is one job's` were skips, so an endpoint of that job's curve
+/// landing on one was a matter of time, and a movement from or to zero is what it
+/// would then have printed.
+#[test]
+fn a_skipped_job_is_not_a_job_that_cost_nothing() {
+    let budgets = [job(
+        "compile",
+        Some("every compilation is one job's"),
+        Some("60"),
+    )];
+    let mut skipped = ran(
+        "every compilation is one job's",
+        "2026-08-19T05:32:26Z",
+        Some("2026-08-19T05:32:26Z"),
+    );
+    skipped.conclusion = Some("skipped".to_string());
+
+    let (spent, unread) = ci_state::spent_against_budgets(&[skipped], &budgets, &nothing_retired());
+    assert!(
+        spent.is_empty(),
+        "a job that never ran has no duration to hold against a budget: {spent:?}"
+    );
+    let said = ci_state::budget_report(&spent, &unread).join("\n");
+    assert!(
+        said.contains("1 job(s) were skipped"),
+        "counted, because a green push routinely has two of these: {said}"
+    );
+    assert!(
+        !said.contains("0%"),
+        "and the zero is nowhere on the page: {said}"
+    );
+}
+
+/// What a job took is recorded with GitHub's own word for how it ended.
+///
+/// THE TWO READERS NEED DIFFERENT POPULATIONS and the record serves both, so the
+/// word that tells them apart is kept rather than a flag one of them decided on.
+#[test]
+fn what_a_job_took_is_kept_beside_how_it_ended() {
+    let budgets = [job("validate", None, Some("90"))];
+    let mut failed = ran(
+        "validate",
+        "2026-08-19T05:10:14Z",
+        Some("2026-08-19T05:15:45Z"),
+    );
+    failed.conclusion = Some("failure".to_string());
+    let (spent, _) = ci_state::spent_against_budgets(&[failed], &budgets, &nothing_retired());
+    assert_eq!(spent.len(), 1, "a job that RAN is measured: {spent:?}");
+    assert_eq!(spent[0].took, 331, "the real 331s of `d412b06e`");
+    assert_eq!(
+        spent[0].conclusion, "failure",
+        "and the level line is still entitled to it — what it is not is a point \
+         on a cost curve: {spent:?}"
+    );
+}
+
 /// A check name two workflows both declare is refused rather than joined.
 ///
 /// `ci-plan`'s law makes a name unique WITHIN a workflow and can say nothing
@@ -483,11 +546,13 @@ fn the_closest_job_to_its_budget_is_printed_even_when_every_job_is_fine() {
             check: "quick".to_string(),
             took: 60,
             budget_minutes: 90,
+            conclusion: "success".to_string(),
         },
         ci_state::Spent {
             check: "validate".to_string(),
             took: 2_003,
             budget_minutes: 90,
+            conclusion: "success".to_string(),
         },
     ];
     let said = ci_state::budget_report(&spent, &[]).join("\n");
@@ -510,6 +575,7 @@ fn a_job_near_its_budget_is_named_and_the_unfinished_are_counted() {
         check: "validate".to_string(),
         took: 4_500,
         budget_minutes: 90,
+        conclusion: "success".to_string(),
     }];
     let unread = [
         ci_state::Unmeasured::NotFinished {

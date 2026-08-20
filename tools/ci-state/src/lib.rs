@@ -53,6 +53,33 @@ pub mod history;
 /// would be ignored within a day.
 pub const FAILING: [&str; 4] = ["failure", "cancelled", "timed_out", "startup_failure"];
 
+/// What GitHub calls a job that never ran.
+///
+/// NOT RED, AND NOT A DURATION EITHER (R1261). The comment above says why this
+/// word is absent from `FAILING`; what R1260's record then found is that it is
+/// absent from the other question too. This repository's workflow skips a job
+/// whose inputs did not change, GitHub stamps such a job's start and completion
+/// at the same instant, and the block that reads cost therefore recorded it as
+/// ZERO SECONDS — which is not a cost of nothing, it is the absence of a
+/// measurement. Measured on the first full record: 9 of the 23 rows for `every
+/// compilation is one job's` and 8 of 23 for `every cache declared is one CI
+/// keeps` were skips.
+pub const DID_NOT_RUN: &str = "skipped";
+
+/// What GitHub calls a job that ran all of its steps.
+///
+/// THE POPULATION OF A TREND, and only of a trend (R1261). A job that FAILED ran
+/// and stopped where it broke, so its duration is a time-to-failure — `validate`
+/// took 331 s on `d412b06e` against some 2400 s on the commits around it, and
+/// nothing about that is the work getting cheaper. A job its own budget ended is
+/// a CENSORED measurement: `validate` on `cabcd5cf` is 90m02s of the 90 minutes
+/// it declares, which is the most important number in the whole record and still
+/// not a point on a cost curve. Both stay in the record and in the level line,
+/// where they are true; neither is a point in a movement, and the sentence that
+/// prints a movement says how many it set aside and how far the longest of them
+/// got.
+pub const RAN_TO_COMPLETION: &str = "success";
+
 /// One check run on a commit, as GitHub answers for it.
 ///
 /// NAMED FIELDS AND NOT A PROJECTION, which is what `Deserialize` here buys: a
@@ -617,6 +644,16 @@ pub struct Spent {
     pub took: u64,
     /// The declared budget, in minutes.
     pub budget_minutes: u64,
+    /// GitHub's own word for how the job ended, verbatim.
+    ///
+    /// KEPT BECAUSE A DURATION IS NOT THE SAME FACT AS A COST (R1261). What a job
+    /// took is true of every job that ran; what a job COSTS is true only of one
+    /// that ran all of its steps, and the difference is invisible in a number.
+    /// The level line wants every row — the job its budget ended is the one it
+    /// most needs to name — and a trend wants only the comparable ones, so the
+    /// record carries the word that tells them apart rather than a flag one of
+    /// the two readers decided on.
+    pub conclusion: String,
 }
 
 impl Spent {
@@ -678,6 +715,10 @@ pub enum Unmeasured {
     /// A later push ended the run this job was in, so the wall clock between its
     /// two stamps is not what the job cost. A state, not a defect.
     Retired { check: String },
+    /// The job never ran, so its two identical stamps are not a duration at all.
+    /// A state, not a defect — this repository skips a job whose inputs did not
+    /// change on every green push.
+    Skipped { check: String },
     /// Two stamps this reader cannot turn into a duration.
     Unreadable {
         check: String,
@@ -715,6 +756,11 @@ impl std::fmt::Display for Unmeasured {
                 formatter,
                 "`{check}` was ended by a LATER PUSH, so the time between its two \
                  stamps is how long it waited to be cancelled and not what it cost"
+            ),
+            Self::Skipped { check } => write!(
+                formatter,
+                "`{check}` was skipped, so its two identical stamps are the absence \
+                 of a measurement and not a job that cost nothing"
             ),
             Self::Unreadable {
                 check,
@@ -801,6 +847,15 @@ pub fn spent_against_budgets(
             });
             continue;
         }
+        // BEFORE THE BUDGET IS EVEN LOOKED UP (R1261), because the question this
+        // answers comes first: a job that did not run has nothing to hold against
+        // anything, whichever workflow declares it and whatever it declares.
+        if check.conclusion.as_deref() == Some(DID_NOT_RUN) {
+            unread.push(Unmeasured::Skipped {
+                check: check.name.clone(),
+            });
+            continue;
+        }
         let declaring: Vec<&(String, ci_plan::JobBudget)> = budgets
             .iter()
             .filter(|(_, job)| job.check_name() == check.name)
@@ -855,6 +910,7 @@ pub fn spent_against_budgets(
             check: check.name.clone(),
             took,
             budget_minutes,
+            conclusion: outcome(check).to_string(),
         });
     }
     (spent, unread)
@@ -922,10 +978,25 @@ pub fn budget_report(spent: &[Spent], unread: &[Unmeasured]) -> Vec<String> {
              stamps is how long they waited to be cancelled and not what they cost"
         ));
     }
+    // AND COUNTED FOR THE THIRD TIME, for the most ordinary case of all (R1261):
+    // this repository skips a job whose inputs did not change, so a green push
+    // routinely has two of these and nothing at all is wrong.
+    let skipped = unread
+        .iter()
+        .filter(|why| matches!(why, Unmeasured::Skipped { .. }))
+        .count();
+    if skipped > 0 {
+        lines.push(format!(
+            "  {skipped} job(s) were skipped, so their two identical stamps are the \
+             absence of a measurement rather than a job that cost nothing"
+        ));
+    }
     for why in unread.iter().filter(|why| {
         !matches!(
             why,
-            Unmeasured::NotFinished { .. } | Unmeasured::Retired { .. }
+            Unmeasured::NotFinished { .. }
+                | Unmeasured::Retired { .. }
+                | Unmeasured::Skipped { .. }
         )
     }) {
         lines.push(format!("  NOT MEASURED {why}"));

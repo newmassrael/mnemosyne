@@ -43,7 +43,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{clock, epoch_seconds, share_of, short, Check, Spent};
+use crate::{clock, epoch_seconds, share_of, short, Check, Spent, RAN_TO_COMPLETION};
 
 /// Where this reporter keeps what it measured, relative to the tree it reports
 /// on.
@@ -286,6 +286,23 @@ pub struct Movement {
     pub since: String,
     /// Every distinct budget this job has declared across the window.
     pub budgets: BTreeSet<u64>,
+    /// How many recorded runs of this job did NOT run all their steps, and are
+    /// therefore no part of the movement above (R1261).
+    ///
+    /// COUNTED RATHER THAN DROPPED, and the sentence prints it. A job that fails
+    /// on half the commits it runs on has a movement drawn over the other half,
+    /// and a reader who is not told that is reading a curve over a population
+    /// they did not choose.
+    pub set_aside: usize,
+    /// The furthest any of those set-aside runs got, as a share of the budget the
+    /// job declares now.
+    ///
+    /// THE CEILING SURVIVES ITS EXCLUSION. `validate` on `cabcd5cf` is 90m02s of
+    /// its 90 minutes — its own budget ending it — and that is the single most
+    /// important row in this repository's record while being no part of any cost
+    /// curve. Dropping it silently would take the one number a reader most needs
+    /// out of the only sentence that looks back.
+    pub reached: u64,
 }
 
 impl Movement {
@@ -347,6 +364,13 @@ impl Movement {
 /// THE INPUT IS ALREADY IN ORDER — [`kept_in`] sorts by the run's own stamp — and
 /// this walks it once, so "first" and "last" here mean oldest-run and newest-run
 /// rather than whatever order a directory listing came back in.
+///
+/// AND THE POPULATION IS THE RUNS THAT COMPLETED (R1261). A duration is a fact
+/// about every job that ran; a COST is a fact only about one that ran all of its
+/// steps, and a curve drawn through both is a curve through two different
+/// quantities. What is set aside is counted and its furthest reach is carried, so
+/// the exclusion is a sentence rather than a shorter list — see
+/// [`Movement::set_aside`] and [`Movement::reached`].
 #[must_use]
 pub fn movements(kept: &[Kept]) -> Vec<Movement> {
     let mut series: BTreeMap<&str, Vec<(&str, &Spent)>> = BTreeMap::new();
@@ -360,11 +384,19 @@ pub fn movements(kept: &[Kept]) -> Vec<Movement> {
     }
     series
         .into_iter()
-        .filter_map(|(check, ran)| {
+        .filter_map(|(check, rows)| {
+            // THE BUDGET COMES OFF THE NEWEST ROW OF ALL, completed or not: it is
+            // what the job DECLARES now, which a run that failed declares just as
+            // well as one that passed. Reading it off the newest completed run
+            // instead would hold today's durations against a budget the workflow
+            // may have changed since.
+            let (_, newest) = *rows.last()?;
+            let against = newest.budget_minutes;
+            let (ran, stopped): (Vec<_>, Vec<_>) = rows
+                .iter()
+                .partition(|(_, one)| one.conclusion == RAN_TO_COMPLETION);
             let (since, first) = *ran.first()?;
             let (_, last) = *ran.last()?;
-            // AGAINST TODAY'S BUDGET, every one of them — see `Movement::points`.
-            let against = last.budget_minutes;
             let shares = ran.iter().map(|(_, one)| share_of(one.took, against));
             Some(Movement {
                 check: check.to_string(),
@@ -375,18 +407,42 @@ pub fn movements(kept: &[Kept]) -> Vec<Movement> {
                 commits: ran.len(),
                 since: since.to_string(),
                 budgets: ran.iter().map(|(_, one)| one.budget_minutes).collect(),
+                set_aside: stopped.len(),
+                reached: stopped
+                    .iter()
+                    .map(|(_, one)| share_of(one.took, against))
+                    .max()
+                    .unwrap_or(0),
             })
         })
         .collect()
+}
+
+/// What a movement leaves out, as the clause that follows it.
+///
+/// EMPTY WHEN NOTHING WAS LEFT OUT, and a sentence the moment anything was. A
+/// curve drawn over eleven of a job's twenty recorded runs is a curve over a
+/// population the reader did not choose, and the number that says so has to sit
+/// beside the number it qualifies rather than in a block below it.
+fn set_aside_clause(movement: &Movement) -> String {
+    if movement.set_aside == 0 {
+        return String::new();
+    }
+    format!(
+        "; {} more did not complete, the longest reaching {}%",
+        movement.set_aside, movement.reached
+    )
 }
 
 /// How one job's history reads as a sentence.
 #[must_use]
 pub fn movement_line(movement: &Movement) -> String {
     let commits = movement.commits;
+    let aside = set_aside_clause(movement);
     if movement.budget_steady() {
         return format!(
-            "`{}` {}% → {}% ({:+} points over {commits} commit(s) that ran it; {}–{}% across them)",
+            "`{}` {}% → {}% ({:+} points over {commits} commit(s) it completed; {}–{}% \
+             across them{aside})",
             movement.check,
             movement.first_share(),
             movement.last_share(),
@@ -396,9 +452,9 @@ pub fn movement_line(movement: &Movement) -> String {
         );
     }
     format!(
-        "`{}` {} → {} over {commits} commit(s) that ran it, against {} distinct budget(s) \
+        "`{}` {} → {} over {commits} commit(s) it completed, against {} distinct budget(s) \
          ({}m → {}m) — held against the {}m it declares now that is {}% → {}% ({:+} points), \
-         where the shares printed at the time were {}% and {}%",
+         where the shares printed at the time were {}% and {}%{aside}",
         movement.check,
         clock(movement.first.took),
         clock(movement.last.took),
@@ -412,6 +468,28 @@ pub fn movement_line(movement: &Movement) -> String {
         movement.first.percent(),
         movement.last.percent()
     )
+}
+
+/// Every job in the record with no completed run at all, by name.
+///
+/// A JOB THAT HAS ONLY EVER FAILED HAS NO COST CURVE, and [`movements`] therefore
+/// produces nothing for it — which would make it vanish from this block without a
+/// word. It is the one case where "no trend" is itself the news.
+#[must_use]
+pub fn never_completed(kept: &[Kept]) -> BTreeSet<String> {
+    let mut all: BTreeSet<&str> = BTreeSet::new();
+    let mut completed: BTreeSet<&str> = BTreeSet::new();
+    for one in kept {
+        for job in &one.jobs {
+            all.insert(job.check.as_str());
+            if job.conclusion == RAN_TO_COMPLETION {
+                completed.insert(job.check.as_str());
+            }
+        }
+    }
+    all.difference(&completed)
+        .map(|check| (*check).to_string())
+        .collect()
 }
 
 /// What the record says, beside the level [`crate::budget_report`] just printed.
@@ -448,14 +526,26 @@ pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
         kept.len(),
         oldest.ran_at
     )];
+    let unfinished = never_completed(kept);
     match closest.and_then(|name| movements.iter().find(|one| one.check == name)) {
         Some(one) if one.commits > 1 => lines.push(format!("  {}", movement_line(one))),
         Some(one) => lines.push(format!(
-            "  `{}` is recorded on 1 commit only, so the job closest to its budget has no \
+            "  `{}` has completed on 1 commit only, so the job closest to its budget has no \
              trend yet",
             one.check
         )),
-        None => {}
+        // NOT SILENCE WHEN THE JOB IS ONE THAT HAS NEVER COMPLETED (R1261): the
+        // level line has just named it, and a block that then says nothing about
+        // it reads as a job with an unremarkable history rather than one with no
+        // history at all.
+        None => {
+            if let Some(name) = closest.filter(|name| unfinished.contains(*name)) {
+                lines.push(format!(
+                    "  `{name}` has no completed run in this record, so there is nothing to \
+                     compare what it cost against"
+                ));
+            }
+        }
     }
     let steepest = movements
         .iter()
@@ -475,6 +565,20 @@ pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
             "  no job's share of its budget is above where it was first recorded".to_string(),
         ),
     }
+    // AND THE JOBS WITH NO CURVE AT ALL ARE COUNTED (R1261). One of them may
+    // already have been named above, because the level line pointed at it; the
+    // rest would otherwise be absent from a block that reads as covering every
+    // job in the record.
+    let uncurved = unfinished
+        .iter()
+        .filter(|name| Some(name.as_str()) != closest)
+        .count();
+    if uncurved > 0 {
+        lines.push(format!(
+            "  {uncurved} further job(s) in this record have no completed run, so no \
+             movement is drawn for them"
+        ));
+    }
     lines
 }
 
@@ -489,6 +593,15 @@ pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
 /// reporter is, and a push that quietly failed to keep its number would be
 /// indistinguishable from one that kept it — until the trend it was building
 /// turned out to be one point long.
+///
+/// AND THE UNREADABLE ONES ARE NAMED UP TO A CAP THAT SAYS WHAT IT LEFT OUT
+/// (R1261), which is the rule the annotation block one file over already follows.
+/// The shape of a record is a type, so the day it changes EVERY record in the
+/// directory becomes unreadable at once — thirty-three of them here — and a
+/// hundred lines of the same sentence is a block a reader learns to skip. One
+/// unreadable record is a fact worth a line; thirty are one fact.
+const NAMED_TROUBLE: usize = 3;
+
 #[must_use]
 pub fn kept_report(tree: &Path, commit: &str, checks: &[Check], spent: &[Spent]) -> Vec<String> {
     let mut lines = Vec::new();
@@ -501,7 +614,20 @@ pub fn kept_report(tree: &Path, commit: &str, checks: &[Check], spent: &[Spent])
         }
     }
     let (kept, trouble) = kept_in(tree);
-    lines.extend(trouble.into_iter().map(|why| format!("NOTE {why}")));
+    lines.extend(
+        trouble
+            .iter()
+            .take(NAMED_TROUBLE)
+            .map(|why| format!("NOTE {why}")),
+    );
+    if trouble.len() > NAMED_TROUBLE {
+        lines.push(format!(
+            "NOTE (+{} more record(s) in {RECORDS} would not read — a whole directory that \
+             stopped reading at once is a record shape that changed, and reporting on those \
+             commits again rewrites them)",
+            trouble.len() - NAMED_TROUBLE
+        ));
+    }
     lines.extend(trend_report(
         &kept,
         crate::closest_to_budget(spent).map(|one| one.check.as_str()),
