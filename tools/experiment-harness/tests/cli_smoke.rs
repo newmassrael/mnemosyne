@@ -7,6 +7,19 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_experiment-harness");
 
+/// The binary, with its environment said rather than inherited.
+///
+/// WHICH CARGO, ABSENT ON PURPOSE (R1262). This crate links `ci-plan`, whose one
+/// door to a cargo command reads `CARGO` to pin the cargo that built the process
+/// — so the binary this test drives now READS a variable these cases do not use,
+/// and R1211's law is right to ask them to say which. Removed rather than set:
+/// no case here reaches `open-kit`, which is the one verb that runs cargo.
+fn harness() -> Command {
+    let mut command = Command::new(BIN);
+    command.env_remove("CARGO");
+    command
+}
+
 const STORY: &str = "\
 # Belvoir
 
@@ -56,7 +69,7 @@ fn assemble_then_shuffle_then_verify_roundtrip() {
     fs::write(&pt, PLAYTHROUGH).unwrap();
 
     // assemble to stdout
-    let out = Command::new(BIN)
+    let out = harness()
         .args([
             "assemble",
             "--story",
@@ -78,7 +91,7 @@ fn assemble_then_shuffle_then_verify_roundtrip() {
     assert!(manuscript.find("Confrontation").unwrap() > manuscript.find("Locked Room").unwrap());
 
     // shuffle -> the seal is the sole stdout line
-    let out = Command::new(BIN)
+    let out = harness()
         .args([
             "shuffle",
             "--experiment",
@@ -97,7 +110,7 @@ fn assemble_then_shuffle_then_verify_roundtrip() {
     assert_eq!(seal.len(), 64);
 
     // verify-seal with the right hash -> MATCH, exit 0
-    let ok = Command::new(BIN)
+    let ok = harness()
         .args([
             "verify-seal",
             "--map",
@@ -111,7 +124,7 @@ fn assemble_then_shuffle_then_verify_roundtrip() {
     assert!(String::from_utf8(ok.stdout).unwrap().starts_with("MATCH"));
 
     // verify-seal with a wrong hash -> MISMATCH, exit 1
-    let bad = Command::new(BIN)
+    let bad = harness()
         .args([
             "verify-seal",
             "--map",
@@ -138,7 +151,7 @@ fn missing_scene_in_order_exits_loud() {
     )
     .unwrap();
 
-    let out = Command::new(BIN)
+    let out = harness()
         .args([
             "assemble",
             "--story",
@@ -160,7 +173,7 @@ fn missing_scene_in_order_exits_loud() {
 fn unexpected_flag_exits_loud() {
     // All required flags present plus a stray one: the stray is caught at
     // finish() before any file is touched.
-    let out = Command::new(BIN)
+    let out = harness()
         .args([
             "assemble",
             "--story",
@@ -182,7 +195,7 @@ fn unexpected_flag_exits_loud() {
 
 #[test]
 fn missing_required_flag_exits_loud() {
-    let out = Command::new(BIN).args(["assemble"]).output().unwrap();
+    let out = harness().args(["assemble"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8(out.stderr)
         .unwrap()

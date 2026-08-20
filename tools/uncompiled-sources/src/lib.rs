@@ -69,6 +69,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
 use ci_plan::CargoCommand;
 use serde::Deserialize;
 
@@ -282,10 +283,6 @@ pub fn tracked_sources(root: &Path) -> Result<BTreeSet<PathBuf>, String> {
 
 // --- the compiled side --------------------------------------------------------
 
-fn cargo() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
-}
-
 /// The compilation that decides what "cargo compiles this file" means.
 ///
 /// `--all-targets` is load-bearing and pinned by a test: without it cargo builds
@@ -318,6 +315,10 @@ pub fn check_command(manifest: &str, all_features: bool) -> CargoCommand {
         cargo_args,
         harness_args: Vec::new(),
         env: Default::default(),
+        // The manifest is a literal in the words, so the manifest is what says
+        // whose lockfile this resolves — the reading every command written as
+        // data gets.
+        declared: None,
     }
 }
 
@@ -359,13 +360,16 @@ struct MetaTarget {
 /// Ask cargo where this workspace keeps its things and which packages are its
 /// own. `--no-deps`, because the registry's packages are nobody's to judge here.
 fn metadata(root: &Path, manifest: &str) -> Result<Metadata, String> {
-    let output = Command::new(cargo())
-        .args(["metadata", "--format-version", "1", "--no-deps"])
-        .arg("--manifest-path")
-        .arg(manifest)
-        .current_dir(root)
-        .output()
-        .map_err(|e| format!("could not run cargo metadata: {e}"))?;
+    let output = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the gate is pointed at a manifest by whoever runs it, this repository's \
+         or a fixture's",
+    ))
+    .args(["metadata", "--format-version", "1", "--no-deps"])
+    .arg("--manifest-path")
+    .arg(manifest)
+    .current_dir(root)
+    .output()
+    .map_err(|e| format!("could not run cargo metadata: {e}"))?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
@@ -526,11 +530,15 @@ pub fn probe(root: &Path, command: &CargoCommand, refusals: &mut Vec<Refusal>) -
         }
     };
 
-    let output = Command::new(cargo())
-        .args(command.cargo_args.iter().skip(1))
-        .arg("--message-format=json")
-        .current_dir(root)
-        .output();
+    let output = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the words are a command judged where it is WRITTEN — this re-issues \
+         them, and whose lockfile they resolve is decided by the manifest they \
+         already name",
+    ))
+    .args(command.cargo_args.iter().skip(1))
+    .arg("--message-format=json")
+    .current_dir(root)
+    .output();
     let output = match output {
         Ok(output) => output,
         Err(e) => {

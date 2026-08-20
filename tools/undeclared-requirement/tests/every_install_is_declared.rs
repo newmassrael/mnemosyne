@@ -301,6 +301,12 @@ fn gate(repository: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_undeclared-requirement"))
         .arg("--repo")
         .arg(repository)
+        // WHICH CARGO, ABSENT ON PURPOSE (R1262). This gate links `ci-plan`,
+        // whose one door to a cargo command reads `CARGO` to pin the cargo that
+        // built the process — so the gate now READS a variable these cases do not
+        // decide, and R1211's law is right to ask them to say which. Removed
+        // rather than set: this gate reads a repository and runs no cargo.
+        .env_remove("CARGO")
         .output()
         .expect("run the gate")
 }

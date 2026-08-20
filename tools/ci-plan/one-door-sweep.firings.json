@@ -1,0 +1,89 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-bare-name-is-resolved-through-a-function-of-that-name": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let landings = if named.called {",
+          "to": "        let landings = if true {"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door",
+        "the_door_is_not_a_site_this_law_has_to_excuse"
+      ],
+      "tests": [
+        "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door",
+        "one_door_for_cargo::the_door_is_not_a_site_this_law_has_to_excuse"
+      ]
+    },
+    "a-cargo-spawn-goes-round-the-door": {
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    let status = issue::cargo(Tree::ThisRepository)",
+          "to": "    let status = Command::new(\"cargo\")"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ],
+      "tests": [
+        "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ]
+    },
+    "the-declaration-is-a-value-nobody-can-read": {
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    let status = issue::cargo(Tree::ThisRepository)",
+          "to": "    let status = issue::cargo(whichever_tree)"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ],
+      "tests": [
+        "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ]
+    },
+    "the-spelling-cargo-checks-stops-being-read": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if let Some((_, after)) = rendered_text.split_once(\"CARGO_BIN_EXE_\") {",
+          "to": "    if let Some((_, after)) = rendered_text.split_once(\"CARGO_BIN_EXE_NEVER_\") {"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ],
+      "tests": [
+        "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door"
+      ]
+    },
+    "the-walk-stops-reading-rust-at-all": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    let mut sources = tracked_files(root, &[\"ls-files\", \"*.rs\"]);",
+          "to": "    let mut sources = tracked_files(root, &[\"ls-files\", \"*.rs.nothing\"]);"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door",
+        "the_door_is_not_a_site_this_law_has_to_excuse"
+      ],
+      "tests": [
+        "one_door_for_cargo::every_cargo_command_a_rust_program_issues_comes_through_the_one_door",
+        "one_door_for_cargo::the_door_is_not_a_site_this_law_has_to_excuse"
+      ]
+    }
+  },
+  "forgotten": {}
+}

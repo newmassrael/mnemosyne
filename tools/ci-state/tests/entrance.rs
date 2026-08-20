@@ -168,6 +168,13 @@ impl Stub {
             // names and about no other.
             .env("GH_STUB_JOB", job)
             .env("GH_STUB_JOB_BODY", body)
+            // WHICH CARGO, ABSENT ON PURPOSE (R1262). This reporter links
+            // `ci-plan`, whose one door to a cargo command reads `CARGO` to pin
+            // the cargo that built the process — so the reporter and the stub it
+            // reaches now READ a variable neither uses, and R1211's law is right
+            // to ask this test to say which. Removed rather than set: nothing
+            // under this test runs cargo.
+            .env_remove("CARGO")
             .output()
             .expect("the reporter runs");
         let asked_wrongly = fs::read_to_string(self.log()).unwrap_or_default();

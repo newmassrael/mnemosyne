@@ -23,6 +23,14 @@ yaml-rust2 = { workspace = true }
 # `test_command` of every tracked injection-sweep manifest. See
 # `sweep_cargo_commands`.
 serde_json = { workspace = true }
+# Round 1262 — the SIXTH place is a Rust program's own `.arg()` chain, and there
+# the words are computed rather than written down. `syn` answers off the same
+# tree the compiler reads, which is the only thing that can tell a spawn from a
+# comment naming one; `quote` renders what a site hands over at runtime;
+# `proc-macro2` carries the line. See `rust`.
+syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
 
 [lints]
 workspace = true

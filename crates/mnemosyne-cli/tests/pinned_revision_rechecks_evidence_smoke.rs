@@ -31,6 +31,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use ci_plan::issue::{self, Tree};
 use tempfile::TempDir;
 
 /// The kit under test: the OLDEST tracked manifest that today's binary rejects
@@ -97,11 +99,14 @@ fn authoring_revision(manifest: &str) -> String {
 /// R880 used" is the only reason two kits' measurements are comparable — and a
 /// datum whose value is being one thing had three spellings free to drift.
 fn seed_workspace(ws: &Path) {
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let out = Command::new(&cargo)
+    // `--locked` AND THE DECLARATION (R1262): the manifest is one this
+    // repository tracks and `cargo run` resolves, so a free resolve here would
+    // rewrite `tools/experiment-harness/Cargo.lock` instead of reporting it.
+    let out = issue::cargo(Tree::ThisRepository)
         .args([
             "run",
             "-q",
+            "--locked",
             "--manifest-path",
             "tools/experiment-harness/Cargo.toml",
             "--",
@@ -135,6 +140,11 @@ fn import(binary: &Path, ws: &Path, verb: &str, manifest: &Path) -> std::process
         .env("HOME", ws)
         .env_remove("MNEMOSYNE_PIN_EXEC")
         .env_remove("MNEMOSYNE_PIN_SKIP")
+        // AND `CARGO` SINCE R1262: this crate dev-depends on `ci-plan`, whose one
+        // door to a cargo command reads it, so the law reads it as a variable the
+        // spawned CLI can. Removed — the CLI this imports with runs no cargo, and
+        // the build that DOES run one is `open-kit`, handed its cargo by name.
+        .env_remove("CARGO")
         .output()
         .expect("cli exec")
 }
@@ -162,11 +172,12 @@ fn an_old_revision_still_builds_and_still_reads_its_own_evidence() {
     // the REVISION, so a machine whose PATH cargo is a different channel would
     // have that sentence printed about this repository.
     let into = TempDir::new().expect("tempdir");
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let opened = Command::new(&cargo)
+    let cargo = issue::program();
+    let opened = issue::cargo(Tree::ThisRepository)
         .args([
             "run",
             "-q",
+            "--locked",
             "--manifest-path",
             "tools/experiment-harness/Cargo.toml",
             "--",

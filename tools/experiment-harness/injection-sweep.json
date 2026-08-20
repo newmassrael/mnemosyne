@@ -95,8 +95,8 @@
       "edits": [
         {
           "file": "tools/experiment-harness/src/open.rs",
-          "from": "    let build = Command::new(cargo)",
-          "to": "    let build = Command::new(\"cargo\")"
+          "from": "    let build = issue::named_cargo(\n        cargo,",
+          "to": "    let build = issue::named_cargo(\n        \"cargo\","
         }
       ],
       "expect_red": ["the_cargo_the_caller_named_is_the_one_that_builds"]

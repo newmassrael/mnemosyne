@@ -1,0 +1,108 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE ONE-DOOR LAW IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml \\",
+    "        -- sweep tools/ci-plan/one-door-sweep.json",
+    "",
+    "A THIRD SWEEP BESIDE `injection-sweep.json` AND `locked-resolution-sweep.json`,",
+    "for the reason the second gives for existing beside the first: a manifest names",
+    "ONE test command, and cargo takes ONE test name. So the split follows the",
+    "suites — the reader's own rules are injected where `ci-plan`'s tests run, the",
+    "lockfile verdicts where that law runs, and the door itself here.",
+    "",
+    "WHAT IS BEING PROVED. R1262 made every cargo command a Rust program issues",
+    "come through one door, so that the one fact no reading of the syntax can",
+    "recover — whose lockfile the command resolves — is declared where it is known.",
+    "These injections put back the shapes the tree had before that round, and break",
+    "the reader in the direction that reads as compliance.",
+    "",
+    "MOST ANCHORS ARE IN `tools/twice-compiled`, WHICH THIS SUITE DOES NOT COMPILE.",
+    "That is deliberate: the law READS the file, so an injection there is a change",
+    "to the text under the walk and not to the program under test, and one file can",
+    "carry several without any of them needing the others to compile."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--locked",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "one_door_for_cargo::"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "red_set": "exhaustive",
+  "injections": [
+    {
+      "name": "a-cargo-spawn-goes-round-the-door",
+      "why": "this is the shape the law was written for: a `Command::new` naming cargo is a site with no declaration for any law to read, and every cargo spawn in this repository was one until R1262",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    let status = issue::cargo(Tree::ThisRepository)",
+          "to": "    let status = Command::new(\"cargo\")"
+        }
+      ],
+      "expect_red": ["every_cargo_command_a_rust_program_issues_comes_through_the_one_door"]
+    },
+    {
+      "name": "the-declaration-is-a-value-nobody-can-read",
+      "why": "a `Tree` decided at runtime is a declaration in name only — the reader cannot say which arm it is, and reporting it as declared would put a command over an unknown workspace into the judged population",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    let status = issue::cargo(Tree::ThisRepository)",
+          "to": "    let status = issue::cargo(whichever_tree)"
+        }
+      ],
+      "expect_red": ["every_cargo_command_a_rust_program_issues_comes_through_the_one_door"]
+    },
+    {
+      "name": "the-walk-stops-reading-rust-at-all",
+      "why": "an empty population holds every command it found to the law, which is also what a walk that read nothing does — and the direction it fails in reads as a clean repository",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    let mut sources = tracked_files(root, &[\"ls-files\", \"*.rs\"]);",
+          "to": "    let mut sources = tracked_files(root, &[\"ls-files\", \"*.rs.nothing\"]);"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door",
+        "the_door_is_not_a_site_this_law_has_to_excuse"
+      ]
+    },
+    {
+      "name": "a-bare-name-is-resolved-through-a-function-of-that-name",
+      "why": "the first draft's own defect, and the reason the door needs no excuse: `Command::new(program)` inside a function TAKING `program` resolved through `fn program()` in the same file, so the one site that IS the door read as a second one. Both halves are asserted — the door leaves the unplaceable pile and arrives in the finding list",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let landings = if named.called {",
+          "to": "        let landings = if true {"
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_a_rust_program_issues_comes_through_the_one_door",
+        "the_door_is_not_a_site_this_law_has_to_excuse"
+      ]
+    },
+    {
+      "name": "the-spelling-cargo-checks-stops-being-read",
+      "why": "`env!(\"CARGO_BIN_EXE_…\")` names most of the spawns in this repository, and losing it moves a hundred sites into the pile this law says nothing about — WITHOUT any of them becoming a second door, so the finding list stays empty while the reader has gone blind. That is why the placed spawns have a floor of their own",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if let Some((_, after)) = rendered_text.split_once(\"CARGO_BIN_EXE_\") {",
+          "to": "    if let Some((_, after)) = rendered_text.split_once(\"CARGO_BIN_EXE_NEVER_\") {"
+        }
+      ],
+      "expect_red": ["every_cargo_command_a_rust_program_issues_comes_through_the_one_door"]
+    }
+  ]
+}

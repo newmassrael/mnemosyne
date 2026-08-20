@@ -72,8 +72,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
 use serde::Deserialize;
 
 /// One variable a spawned program reads that its test does not decide.
@@ -390,12 +390,15 @@ struct Target {
 /// which local packages a binary can read through — is read instead from the
 /// `path` of each DECLARED dependency, followed manifest by manifest.
 fn metadata(manifest: &Path) -> Result<Metadata, String> {
-    let output = Command::new(cargo())
-        .args(["metadata", "--format-version", "1", "--no-deps"])
-        .arg("--manifest-path")
-        .arg(manifest)
-        .output()
-        .map_err(|e| format!("could not run cargo metadata: {e}"))?;
+    let output = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the side gate points this at this repository and the hook tests point \
+         it at the fixture trees they build",
+    ))
+    .args(["metadata", "--format-version", "1", "--no-deps"])
+    .arg("--manifest-path")
+    .arg(manifest)
+    .output()
+    .map_err(|e| format!("could not run cargo metadata: {e}"))?;
     if !output.status.success() {
         return Err(format!(
             "cargo metadata failed for {}: {}",
@@ -405,10 +408,6 @@ fn metadata(manifest: &Path) -> Result<Metadata, String> {
     }
     serde_json::from_slice(&output.stdout)
         .map_err(|e| format!("cargo metadata is not the JSON this expects: {e}"))
-}
-
-fn cargo() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
 }
 
 // --- the walk ---------------------------------------------------------------

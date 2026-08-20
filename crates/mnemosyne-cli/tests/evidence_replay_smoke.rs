@@ -45,6 +45,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
+
 // The corpus recipe, shared with the consolidated target rather than copied
 // (Round 1176). The sweep below asks whether a corpus today's raw substrate
 // refuses is one the CARRIAGE still opens, and that question has to be asked
@@ -300,7 +302,11 @@ fn cli() -> Command {
         .env("MN_ROOT", env!("CARGO_MANIFEST_DIR"))
         .env("HOME", env!("CARGO_MANIFEST_DIR"))
         .env_remove("MNEMOSYNE_PIN_EXEC")
-        .env_remove("MNEMOSYNE_PIN_SKIP");
+        .env_remove("MNEMOSYNE_PIN_SKIP")
+        // AND `CARGO` SINCE R1262: this crate dev-depends on `ci-plan`, whose one
+        // door to a cargo command reads it, so the law reads it as a variable the
+        // spawned CLI can. Removed — no case here has the CLI run cargo.
+        .env_remove("CARGO");
     command
 }
 
@@ -2242,11 +2248,16 @@ use tempfile::TempDir;
 /// The returned `TempDir` owns both directories; the paths point inside it.
 fn build_revision(root: &Path, rev: &str) -> (TempDir, PathBuf, PathBuf) {
     let into = TempDir::new().expect("tempdir");
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let out = Command::new(&cargo)
+    let cargo = issue::program();
+    // `--locked` AND THE DECLARATION (R1262). The manifest is one this
+    // repository tracks, and `cargo run` resolves: without the flag a
+    // `tools/experiment-harness/Cargo.lock` that disagreed with its manifests
+    // would be REWRITTEN by this test, in the tree the same suite then checks.
+    let out = issue::cargo(Tree::ThisRepository)
         .args([
             "run",
             "-q",
+            "--locked",
             "--manifest-path",
             "tools/experiment-harness/Cargo.toml",
             "--",
@@ -2305,11 +2316,11 @@ fn run_replay(
     r: &Replay,
 ) -> Result<(String, TempDir), String> {
     let ws = TempDir::new().expect("ws tempdir");
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let out = Command::new(&cargo)
+    let out = issue::cargo(Tree::ThisRepository)
         .args([
             "run",
             "-q",
+            "--locked",
             "--manifest-path",
             "tools/experiment-harness/Cargo.toml",
             "--",

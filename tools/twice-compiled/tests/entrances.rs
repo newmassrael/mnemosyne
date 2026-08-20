@@ -402,7 +402,13 @@ fn gate(root: &Path, scratch: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_twice-compiled"));
     command
         .current_dir(root)
-        .env(rustc_log::LOG_VARIABLE, scratch.join("escaped.log"));
+        .env(rustc_log::LOG_VARIABLE, scratch.join("escaped.log"))
+        // WHICH CARGO, ABSENT ON PURPOSE (R1262). This gate builds the recorder
+        // through `ci-plan`'s one door, which reads `CARGO` to pin the cargo that
+        // built the process — so the gate now READS a variable these cases do not
+        // decide, and R1211's law is right to ask them to say which. Removed
+        // rather than set: no case here lets the gate reach that build.
+        .env_remove("CARGO");
     command
 }
 
@@ -462,10 +468,22 @@ fn write(path: &Path, text: &str) {
 /// The count is asserted: a copy that moved nothing leaves a fixture whose
 /// instrument cannot be built, and the replay would then fail for a reason that
 /// has nothing to do with what is being tested.
+/// Copy one instrument crate into the fixture, LOCKFILE INCLUDED.
+///
+/// A REPOSITORY HAS A LOCKFILE (R1115, and R1262 met it here). The gate builds
+/// the recorder with `--locked`, because the tree it is pointed at is this
+/// repository's under every real run and a free resolve there REWRITES a
+/// lockfile that disagrees with its manifests. A fixture without one is then a
+/// tree cargo correctly refuses — `cannot create the lock file … because
+/// --locked was passed` — and seven cases here said so the moment the flag went
+/// on. The instrument's OWN lockfile is copied rather than generated, so the
+/// fixture resolves exactly as this checkout does and needs no network.
 fn copy_instrument(from: &Path, into: &Path) {
     std::fs::create_dir_all(into.join("src")).expect("an instrument directory");
     std::fs::copy(from.join("Cargo.toml"), into.join("Cargo.toml"))
         .expect("the instrument's manifest");
+    std::fs::copy(from.join("Cargo.lock"), into.join("Cargo.lock"))
+        .expect("the instrument's lockfile");
     let mut copied = 0;
     for entry in std::fs::read_dir(from.join("src")).expect("the instrument's sources") {
         let path = entry.expect("a source file").path();

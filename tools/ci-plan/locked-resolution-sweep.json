@@ -124,6 +124,69 @@
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
+    },
+    {
+      "name": "the-sixth-sources-flag-goes-away",
+      "why": "R1262 — the defect this population exists to catch, in the source that had never been in it: a free resolve over a tracked manifest REWRITES a lockfile that disagrees with it instead of failing on it, and this one is issued by a gate whose whole job is to report on the tree",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "        .args([\"build\", \"--release\", \"-q\", \"--locked\", \"--manifest-path\"])",
+          "to": "        .args([\"build\", \"--release\", \"-q\", \"--manifest-path\"])"
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "a-resolving-command-declines-to-name-its-tree",
+      "why": "R1262 — THE THIRD ARM'S OBLIGATION. `WhereverTheCallerPoints` is the arm that does not name a tree, and what it owes in exchange is a command that cannot touch a lockfile; a `cargo build` declared there is a resolve over a workspace nobody named, which is the arm being used as an exemption",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    let status = issue::cargo(Tree::ThisRepository)",
+          "to": "    let status = issue::cargo(Tree::WhereverTheCallerPoints(\"whoever ran it\"))"
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "a-command-with-a-hole-in-it-is-judged-as-if-whole",
+      "why": "R1262 — an `.args(expr)` hands over an unknown NUMBER of words, so a flag may be inside it; judging such a command answers about words nobody read, and the answer arrives with the same confidence as every other one in the tally",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                Word::Unknown(_) | Word::Sometimes(_) => None,",
+          "to": "                Word::Unknown(text) | Word::Sometimes(text) => Some(text.clone()),"
+        }
+      ],
+      "expect_red": [
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ]
+    },
+    {
+      "name": "a-metadata-census-is-treated-as-a-resolution",
+      "why": "R1262 — `cargo metadata --no-deps` resolves nothing, which THIS SUITE has measured since the round that wrote it and the verdict function did not know. A judge without that fact demands `--locked` of commands the flag can do nothing for, which is a law satisfied by a word with no effect",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    if subcommand == \"metadata\" && command.has(\"--no-deps\") {",
+          "to": "    if subcommand == \"metadata\" && command.has(\"--no-deps-never\") {"
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "a-measurement-that-could-not-run-answers-anyway",
+      "why": "R1262 — a command that fails for its own reasons leaves the lockfile alone, and reading that as `this subcommand does not resolve` produced a WRONG entry rather than a missing one: `cargo rustdoc` refused to pick a target, touched nothing, and was recorded as a subcommand `--locked` has no work to do for",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "        \"rustdoc\" => vec![\"-p\", \"a\", \"--lib\"],",
+          "to": "        \"rustdoc\" => vec![],"
+        }
+      ],
+      "expect_red": ["what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"]
     }
   ]
 }

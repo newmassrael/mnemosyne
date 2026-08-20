@@ -23,7 +23,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use ci_plan::issue::{self, Tree};
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -499,12 +500,6 @@ fn a_sweep_that_runs_the_whole_workspace_runs_its_features_too() {
     );
 }
 
-/// Which cargo — named rather than inherited, this repository's own law about
-/// what a spawned program is allowed to read from the machine (R1182).
-fn cargo() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
-}
-
 /// Every flag `cargo test` accepts that NAMES a single target, and the kind of
 /// target the name has to be.
 ///
@@ -527,12 +522,15 @@ const NAMES_A_TARGET: [(&str, &str); 4] = [
 /// network and no lockfile, and the separate in-repo workspaces this walks have
 /// their own of each.
 fn targets_of(tree: &Path) -> BTreeMap<String, BTreeSet<(String, String)>> {
-    let out = Command::new(cargo())
-        .args(["metadata", "--format-version", "1", "--no-deps"])
-        .arg("--manifest-path")
-        .arg(tree)
-        .output()
-        .expect("cargo metadata runs");
+    let out = issue::cargo(Tree::WhereverTheCallerPoints(
+        "every separate workspace this walks in turn — and `--no-deps` is why \
+         none of their lockfiles is touched",
+    ))
+    .args(["metadata", "--format-version", "1", "--no-deps"])
+    .arg("--manifest-path")
+    .arg(tree)
+    .output()
+    .expect("cargo metadata runs");
     assert!(
         out.status.success(),
         "cargo metadata failed for {}: {}",

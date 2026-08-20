@@ -1157,6 +1157,8 @@ fn issued(line: &str) -> CargoCommand {
         cargo_args: words,
         harness_args,
         env: Default::default(),
+        // Written down, so the manifest path is what says whose lockfile it is.
+        declared: None,
     }
 }
 
@@ -1324,6 +1326,7 @@ fn a_shell_line_is_split_where_cargo_stops_and_the_harness_starts() {
                 cargo_args: found.cargo_args,
                 harness_args: found.harness_args,
                 env: Default::default(),
+                declared: None,
             })
             .collect::<Vec<_>>()
     };
@@ -1745,5 +1748,319 @@ fn every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own(
          commit's answer cannot say which job a row is:\n  {}",
         clashing.len(),
         clashing.join("\n  ")
+    );
+}
+
+// --- the sixth source, pinned against strings -------------------------------
+
+use ci_plan::rust::{spawns_in, Declared, Program, RustSpawn, Word};
+
+fn spawns(text: &str) -> Vec<RustSpawn> {
+    spawns_in("a/fixture.rs", text, "a")
+}
+
+fn only(text: &str) -> RustSpawn {
+    let found = spawns(text);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    found.into_iter().next().expect("one")
+}
+
+#[test]
+fn a_cargo_spawn_beside_the_door_is_seen_however_it_names_cargo() {
+    // Four spellings, and every one of them was in this tree before R1262.
+    for text in [
+        r#"fn f() { Command::new("cargo").arg("build"); }"#,
+        r#"fn f() { Command::new(cargo()).arg("build"); }
+           fn cargo() -> String { std::env::var("CARGO").unwrap() }"#,
+        r#"fn f() { Command::new(std::env::var("CARGO").unwrap()).arg("build"); }"#,
+        r#"fn f() { let c = the_cargo_running_this(); Command::new(&c).arg("build"); }
+           fn the_cargo_running_this() -> String { std::env::var("CARGO").unwrap() }"#,
+    ] {
+        let site = only(text);
+        assert!(
+            matches!(site.program, Program::CargoBesideTheDoor(_)),
+            "{text}\n{site:#?}"
+        );
+    }
+}
+
+#[test]
+fn a_binary_this_workspace_builds_is_not_mistaken_for_cargo() {
+    // `CARGO_BIN_EXE_…` holds the letters a reader hunting for `CARGO` matches,
+    // and there are more than a hundred of these spawns in this repository: one
+    // filed under the wrong program is a law asking a binary about lockfiles.
+    let site = only(r#"fn f() { Command::new(env!("CARGO_BIN_EXE_mn")).arg("x"); }"#);
+    assert!(matches!(site.program, Program::OurBinary(_)), "{site:#?}");
+    // And one hop away, which is how nearly all of them are written.
+    let site = only(
+        r#"fn f() { Command::new(cli()).arg("x"); }
+           fn cli() -> String { env!("CARGO_BIN_EXE_mn").to_string() }"#,
+    );
+    assert!(matches!(site.program, Program::OurBinary(_)), "{site:#?}");
+}
+
+#[test]
+fn a_program_named_by_a_parameter_is_not_resolved_through_a_function_of_the_same_name() {
+    // THE FIRST RUN'S OWN DEFECT. `Command::new(program)` inside a function
+    // taking `program` resolved through `fn program()` in the same file, and the
+    // one site that IS the door read as a second one. A bare name is a local or a
+    // parameter; only a CALL names a function.
+    let site = only(
+        r#"fn spawn(program: String) { Command::new(program).arg("x"); }
+           fn program() -> String { std::env::var("CARGO").unwrap() }"#,
+    );
+    assert!(matches!(site.program, Program::Unplaceable(_)), "{site:#?}");
+}
+
+#[test]
+fn the_declaration_is_read_beside_the_words_and_a_variant_nobody_knows_is_refused() {
+    let site = only(r#"fn f() { issue::cargo(Tree::ThisRepository).arg("build"); }"#);
+    assert_eq!(site.program, Program::Cargo(Declared::ThisRepository));
+
+    let site = only(r#"fn f() { issue::cargo(Tree::MadeByThisRun("a fixture")).arg("build"); }"#);
+    assert_eq!(
+        site.program,
+        Program::Cargo(Declared::MadeByThisRun("a fixture".to_string()))
+    );
+
+    // `named_cargo` takes the declaration SECOND, which is why the reader finds
+    // it by what it is rather than by where it sits.
+    let site = only(
+        r#"fn f() { issue::named_cargo(chosen, Tree::MadeByThisRun("a pin")).arg("build"); }"#,
+    );
+    assert_eq!(
+        site.program,
+        Program::Cargo(Declared::MadeByThisRun("a pin".to_string()))
+    );
+
+    // A variant this reader does not know, and a declaration decided at runtime,
+    // are both `Unreadable` — the direction a new `Tree` arm has to fail in.
+    for text in [
+        r#"fn f() { issue::cargo(Tree::SomethingNew).arg("build"); }"#,
+        r#"fn f() { issue::cargo(whichever).arg("build"); }"#,
+    ] {
+        let site = only(text);
+        assert!(
+            matches!(site.program, Program::Cargo(Declared::Unreadable(_))),
+            "{text}\n{site:#?}"
+        );
+    }
+}
+
+#[test]
+fn the_door_is_the_door_however_its_module_is_spelled() {
+    // `use ci_plan::issue::cargo;` and then `cargo(Tree::ThisRepository)` is the
+    // same door with one word less. Reading only the qualified path makes that
+    // command INVISIBLE rather than refused, which is the one direction this
+    // reader exists to rule out — and no site in the tree is written that way
+    // today, so only a fixture can hold the case.
+    let site = only(r#"fn f() { cargo(Tree::ThisRepository).arg("build"); }"#);
+    assert_eq!(site.program, Program::Cargo(Declared::ThisRepository));
+
+    // AND WHAT TELLS IT FROM THE HELPER THIS REPOSITORY USED TO CARRY: that one
+    // took no argument. A bare `cargo()` is a program name, not a door.
+    let site = only(
+        r#"fn f() { Command::new(cargo()).arg("build"); }
+           fn cargo() -> String { std::env::var("CARGO").unwrap() }"#,
+    );
+    assert!(
+        matches!(site.program, Program::CargoBesideTheDoor(_)),
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent() {
+    // The reading that decides whether this reader can be trusted with a flag.
+    // Present would let a command that pins every other Tuesday read as pinned;
+    // absent would raise a false alarm on a command that is fine.
+    let site = only(
+        r#"fn f(locked: bool) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.arg("build");
+               if locked { c.arg("--locked"); }
+           }"#,
+    );
+    assert_eq!(
+        site.words,
+        vec![
+            Word::Spelled("build".to_string()),
+            Word::Sometimes("--locked".to_string())
+        ],
+        "{site:#?}"
+    );
+
+    // A COMMAND WHOLLY INSIDE ONE BRANCH IS NOT CONDITIONAL IN ITS OWN TERMS.
+    // Depth is compared against where the site was opened, so this reads exactly
+    // as it would at the top of the function.
+    let site = only(
+        r#"fn f(yes: bool) {
+               if yes { issue::cargo(Tree::ThisRepository).arg("build").arg("--locked"); }
+           }"#,
+    );
+    assert_eq!(
+        site.words,
+        vec![
+            Word::Spelled("build".to_string()),
+            Word::Spelled("--locked".to_string())
+        ],
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn an_array_of_words_keeps_the_flags_a_runtime_value_sits_between() {
+    // An `.args([..])` has a KNOWN LENGTH even when its elements do not, and
+    // reading it as a hole would throw away every flag written right there.
+    let site = only(
+        r#"fn f(path: &str) {
+               issue::cargo(Tree::ThisRepository)
+                   .args(["run", "--locked", "--manifest-path", path]);
+           }"#,
+    );
+    assert_eq!(
+        site.words,
+        vec![
+            Word::Spelled("run".to_string()),
+            Word::Spelled("--locked".to_string()),
+            Word::Spelled("--manifest-path".to_string()),
+            Word::Runtime("$path".to_string()),
+        ],
+        "{site:#?}"
+    );
+
+    // `.args(expr)` is the hole, and it is a hole in the COUNT: a flag may be
+    // inside it, so nothing downstream may say the flag list is complete.
+    let site =
+        only(r#"fn f(words: Vec<String>) { issue::cargo(Tree::ThisRepository).args(&words); }"#);
+    assert!(
+        matches!(site.words.first(), Some(Word::Unknown(_))),
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in() {
+    // `env!("CARGO_MANIFEST_DIR")` is not a runtime value to a reader that knows
+    // which crate the file belongs to, and three sites in this repository write
+    // their manifest path this way. Left unresolved they name no manifest, and a
+    // law about lockfiles cannot say whose they resolve.
+    let site = spawns_in(
+        "crates/mn/tests/case.rs",
+        r#"fn f() {
+               issue::cargo(Tree::ThisRepository).args([
+                   "run",
+                   "--manifest-path",
+                   concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
+               ]);
+           }"#,
+        "crates/mn",
+    );
+    assert_eq!(
+        site[0].words.last(),
+        Some(&Word::Spelled("crates/mn/Cargo.toml".to_string())),
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn a_helper_that_names_itself_is_answered_rather_than_walked_forever() {
+    // A cycle is a hop that never lands, and a walk that met one would hang
+    // instead of reporting.
+    let site = only(
+        r#"fn f() { Command::new(cargo()).arg("build"); }
+           fn cargo() -> String { cargo() }"#,
+    );
+    assert!(
+        matches!(site.program, Program::CargoBesideTheDoor(_)),
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn a_command_built_over_several_statements_is_one_command() {
+    // The tidier spelling of the same words. A reader that only followed chains
+    // would report this site as argument-free, which is how a law comes to say a
+    // command with no `--locked` in it pins nothing to worry about.
+    let site = only(
+        r#"fn f() {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.args(["metadata", "--no-deps"]);
+               c.arg("--manifest-path").arg("x/Cargo.toml");
+           }"#,
+    );
+    assert_eq!(
+        site.words,
+        vec![
+            Word::Spelled("metadata".to_string()),
+            Word::Spelled("--no-deps".to_string()),
+            Word::Spelled("--manifest-path".to_string()),
+            Word::Spelled("x/Cargo.toml".to_string()),
+        ],
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn two_functions_holding_a_command_each_do_not_share_one() {
+    let found = spawns(
+        r#"fn a() { let mut c = issue::cargo(Tree::ThisRepository); c.arg("build"); }
+           fn b() { let mut c = issue::cargo(Tree::ThisRepository); c.arg("test"); }"#,
+    );
+    assert_eq!(found.len(), 2, "{found:#?}");
+    assert_eq!(found[0].words, vec![Word::Spelled("build".to_string())]);
+    assert_eq!(found[1].words, vec![Word::Spelled("test".to_string())]);
+}
+
+/// The sixth place a cargo command is written, read where it is written.
+///
+/// A CENSUS BESIDE THE LAW, and the numbers are half of it: the walk answers
+/// with its own reach — files parsed, spawns seen — beside its findings, because
+/// a finding list alone cannot tell a repository that spawns nothing from a walk
+/// that read nothing.
+#[test]
+fn every_cargo_spawn_in_tracked_rust_is_placed() {
+    let root = repository_root();
+    let found = ci_plan::rust::cargo_commands(&root);
+    println!(
+        "[rust-spawns] {} file(s), {} spawn(s): {} read, {} carried, \
+         {} beside the door, {} unplaceable",
+        found.files,
+        found.spawns,
+        found.commands.len(),
+        found.carried.len(),
+        found.beside_the_door.len(),
+        found.unplaceable.len()
+    );
+    for command in &found.commands {
+        println!(
+            "  READ        {} — {} [{}]",
+            command.origin(),
+            command.rendered(),
+            match &command.declared {
+                Some(ci_plan::rust::Declared::ThisRepository) => "this repository".to_string(),
+                Some(
+                    ci_plan::rust::Declared::MadeByThisRun(why)
+                    | ci_plan::rust::Declared::WhereverTheCallerPoints(why)
+                    | ci_plan::rust::Declared::Unreadable(why),
+                ) => why.clone(),
+                None => "undeclared".to_string(),
+            }
+        );
+    }
+    for site in &found.carried {
+        println!("  CARRIED     {} — {}", site.origin(), site.rendered());
+    }
+    for site in &found.beside_the_door {
+        println!("  SECOND DOOR {} — {}", site.origin(), site.rendered());
+    }
+    for site in &found.unplaceable {
+        println!("  UNPLACEABLE {} — {}", site.origin(), site.rendered());
+    }
+    assert!(
+        found.files > 100,
+        "this repository tracks more than a hundred Rust files, so a walk that \
+         parsed {} stopped reading",
+        found.files
     );
 }

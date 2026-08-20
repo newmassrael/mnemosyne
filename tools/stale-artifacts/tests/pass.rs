@@ -19,6 +19,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use ci_plan::issue;
 use tempfile::TempDir;
 
 use stale_artifacts::{clean_arguments, plan, Plan};
@@ -151,17 +152,22 @@ impl Tree {
     /// dependency and a resolve that reached for one would be measuring this
     /// machine's network.
     fn resolve(&self, manifest: &str) {
-        let out = Command::new(env!("CARGO"))
-            .args([
-                "generate-lockfile",
-                "--offline",
-                "--manifest-path",
-                manifest,
-            ])
-            .current_dir(self.at())
-            .env("CARGO_TARGET_DIR", self.at().join(BUILD_DIRECTORY))
-            .output()
-            .expect("cargo resolves the fixture");
+        // `issue::Tree` spelled in full: this file has a `Tree` of its own, and
+        // importing a second one would make the shorter name mean two things.
+        let out = issue::cargo(issue::Tree::MadeByThisRun(
+            "the fixture workspace this case wrote, whose lockfile is being \
+             created here",
+        ))
+        .args([
+            "generate-lockfile",
+            "--offline",
+            "--manifest-path",
+            manifest,
+        ])
+        .current_dir(self.at())
+        .env("CARGO_TARGET_DIR", self.at().join(BUILD_DIRECTORY))
+        .output()
+        .expect("cargo resolves the fixture");
         assert!(
             out.status.success(),
             "the fixture workspace {manifest} did not resolve: {}",
@@ -626,12 +632,15 @@ fn the_pass_removes_the_artifact_and_not_merely_the_line_about_it() {
     // a working one in the only place anybody looks, and what it leaves behind
     // is the stale artifact this whole mechanism exists to remove.
     let tree = Tree::new();
-    let built = Command::new(env!("CARGO"))
-        .args(["build", "--manifest-path", "side/Cargo.toml"])
-        .current_dir(tree.at())
-        .env("CARGO_TARGET_DIR", tree.at().join(BUILD_DIRECTORY))
-        .output()
-        .expect("cargo builds the fixture");
+    let built = issue::cargo(issue::Tree::MadeByThisRun(
+        "the fixture workspace this case wrote, whose lockfile `resolve` made a \
+         moment ago",
+    ))
+    .args(["build", "--manifest-path", "side/Cargo.toml"])
+    .current_dir(tree.at())
+    .env("CARGO_TARGET_DIR", tree.at().join(BUILD_DIRECTORY))
+    .output()
+    .expect("cargo builds the fixture");
     assert!(
         built.status.success(),
         "the fixture has to compile before an artifact of it can be removed: {}",

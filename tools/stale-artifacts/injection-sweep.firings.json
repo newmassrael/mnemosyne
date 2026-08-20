@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": true,
+  "complete": false,
   "fired": {
     "a-workspace-cargo-cannot-read-becomes-a-pass-with-nothing-to-do": {
       "edits": [
@@ -41,8 +41,8 @@
       "edits": [
         {
           "file": "tools/stale-artifacts/src/lib.rs",
-          "from": "        let out = Command::new(cargo())\n            .args(&arguments)\n            .current_dir(at)",
-          "to": "        let out = Command::new(cargo())\n            .args([\"--version\"])\n            .current_dir(at)"
+          "from": "        .args(&arguments)\n        .current_dir(at)",
+          "to": "        .args([\"--version\"])\n        .current_dir(at)"
         }
       ],
       "expect_red": [
@@ -170,5 +170,6 @@
         "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
       ]
     }
-  }
+  },
+  "forgotten": {}
 }

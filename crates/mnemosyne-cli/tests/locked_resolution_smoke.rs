@@ -26,6 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
 use ci_plan::{
     commands_this_repository_issues, lock_verdict, resolves_the_lockfile, tracked_manifests,
     workspaces, CargoCommand, LockVerdict, Ownership, BUILD_DECLARATION,
@@ -64,10 +65,27 @@ fn repository_root() -> PathBuf {
 /// The per-source floors below survive that — they are floors — but a reader of
 /// one run could not tell the two machines apart, and this law's whole subject
 /// is a command nobody looked at.
+/// AND THE SIXTH SOURCE SAYS WHAT IT COULD NOT FINISH READING (R1262). A Rust
+/// program's words are computed, so some of them are a hole this walk cannot
+/// close — and the hole's SIZE is printed here for the reason R1190 gave one
+/// directory over: a limit stated without its size is a limit nobody can weigh.
 fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
     let issued = commands_this_repository_issues(root);
     for skipped in &issued.skipped {
         println!("[locked-resolution] {}", skipped.was_not("judged"));
+    }
+    println!(
+        "[locked-resolution] the sixth source: {} spawn(s) in {} tracked Rust \
+         file(s) — {} cargo command(s) read, {} carried (an `.args(..)` this \
+         reader cannot count), {} spawn(s) whose program it cannot name",
+        issued.rust.spawns,
+        issued.rust.files,
+        issued.rust.commands.len(),
+        issued.rust.carried.len(),
+        issued.rust.unplaceable.len()
+    );
+    for site in &issued.rust.carried {
+        println!("[locked-resolution]   carried: {}", site.origin());
     }
     issued.commands
 }
@@ -134,6 +152,8 @@ fn every_command_this_repository_issues_pins_the_lockfiles_it_can() {
             "the build-machine declaration"
         } else if command.source.ends_with("sweep.json") {
             "an injection sweep"
+        } else if command.source.ends_with(".rs") {
+            "a Rust program's own words"
         } else {
             "a tracked script"
         };
@@ -156,11 +176,15 @@ fn every_command_this_repository_issues_pins_the_lockfiles_it_can() {
     // manifests: a walk that stopped reading them would take it toward zero,
     // and every one it stopped reading is a suite that could rewrite a lockfile
     // the sweep will not restore.
+    // ROUND 1262 — AND THE SIXTH SOURCE HAS ITS OWN FLOOR. Its population is a
+    // syntax walk over every tracked `.rs`, so a walk that stopped reading takes
+    // this toward zero while the other five stay exactly as they were.
     for kind in [
         "a workflow",
         "the workspace lister",
         "a tracked script",
         "an injection sweep",
+        "a Rust program's own words",
     ] {
         assert!(
             per_source.get(kind).copied().unwrap_or(0) >= 5,
@@ -311,7 +335,14 @@ fn run_in_fixture(
 ) -> Option<bool> {
     let lockfile = fixture.join("Cargo.lock");
     std::fs::write(&lockfile, stale).expect("plant the disagreement");
-    let mut cargo = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
+    // THE ONE PLACE A DISAGREEING LOCKFILE IS DELIBERATE. The fixture is built
+    // three functions up, its lockfile is planted on the line above, and both
+    // arms — free and `--locked` — are run on purpose, which is what makes this
+    // a measurement rather than a check.
+    let mut cargo = issue::cargo(Tree::MadeByThisRun(
+        "the one-package fixture this measurement builds, whose lockfile is \
+         planted disagreeing on purpose",
+    ));
     cargo
         .arg(subcommand)
         .args(arguments)
@@ -340,6 +371,23 @@ fn run_in_fixture(
         }
         return Some(said.contains("cannot update the lock file"));
     }
+    // A COMMAND THAT DID NOT RUN LEFT THE LOCKFILE ALONE, and reading that as
+    // "this subcommand does not resolve" is how this measurement produced a
+    // WRONG answer rather than no answer (R1262). `cargo rustdoc` with no target
+    // named refuses to pick between the fixture's library and its binary, exits
+    // non-zero, touches nothing — and was recorded as a subcommand `--locked`
+    // has nothing to do for. The repair is loud: what a subcommand needs in
+    // order to run belongs in `arguments_for`, and until it is there this cannot
+    // answer.
+    assert!(
+        out.status.success(),
+        "`cargo {subcommand} {}` did not run in the fixture ({}), so what it \
+         does to a disagreeing lockfile was not measured — an unchanged file \
+         here says nothing at all. Give it what it needs in `arguments_for`:\n{}",
+        arguments.join(" "),
+        out.status,
+        said.trim()
+    );
     Some(std::fs::read_to_string(&lockfile).expect("read back") != stale)
 }
 
@@ -347,6 +395,18 @@ fn run_in_fixture(
 fn arguments_for(subcommand: &str) -> Vec<&'static str> {
     match subcommand {
         "metadata" => vec!["--format-version", "1"],
+        // R1262 — the sixth source brought these two in. `generate-lockfile`
+        // comes from the fixtures that CREATE a lockfile, with `--offline` for
+        // the reason those fixtures pass it: a resolve that reached for a
+        // registry would be measuring the network.
+        "generate-lockfile" => vec!["--offline"],
+        // AND `rustdoc` NEEDS A PACKAGE AND A TARGET NAMED. The fixture root is a
+        // virtual manifest and its one package has both a library and a binary,
+        // so `cargo rustdoc` alone refuses twice over — and each refusal left the
+        // lockfile untouched, which this test read as "the subcommand does not
+        // resolve". Measured directly against cargo (R1262): it does. Both words
+        // came from the assertion below naming the exact refusal.
+        "rustdoc" => vec!["-p", "a", "--lib"],
         "test" | "bench" => vec!["--no-run"],
         "run" => vec!["--bin", "a"],
         "doc" => vec!["--no-deps"],

@@ -63,18 +63,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
 use ci_plan::{cargo_invocation, CargoCommand};
-
-/// The cargo this process should run, pinned to the one that built it when
-/// there is one.
-///
-/// `Command::new("cargo")` lets PATH decide, and PATH is a fact about the
-/// machine rather than about this repository — the R1190 correction, and the
-/// same line every other program under `tools/` carries.
-#[must_use]
-pub fn cargo() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
-}
 
 /// What one run of the freshness pass decided.
 ///
@@ -160,6 +150,9 @@ pub fn plan(at: &Path, command: &[String]) -> Plan {
         cargo_args: invocation.cargo_args,
         harness_args: invocation.harness_args,
         env: BTreeMap::new(),
+        // The wrapped command's own words, read as written — this is not a site
+        // declaring anything about a tree.
+        declared: None,
     };
     let manifest = read
         .value(&["--manifest-path"])
@@ -229,11 +222,14 @@ pub fn apply(at: &Path, freshen: &Freshen) -> Result<Vec<String>, String> {
     let mut ran = Vec::new();
     for package in &freshen.packages {
         let arguments = clean_arguments(freshen, package);
-        let out = Command::new(cargo())
-            .args(&arguments)
-            .current_dir(at)
-            .output()
-            .map_err(|error| format!("`{}` could not be run: {error}", cargo()))?;
+        let out = issue::cargo(Tree::WhereverTheCallerPoints(
+            "the pass cleans the workspace of the command it was handed, and \
+             `clean_arguments` copies that command's own `--locked`",
+        ))
+        .args(&arguments)
+        .current_dir(at)
+        .output()
+        .map_err(|error| format!("`{}` could not be run: {error}", issue::program()))?;
         let rendered = format!("cargo {}", arguments.join(" "));
         if !out.status.success() {
             return Err(format!(
@@ -381,11 +377,14 @@ fn members(at: &Path, manifest: &Path, root: &Path, locked: bool) -> Result<Vec<
     if locked {
         arguments.push("--locked".to_string());
     }
-    let out = Command::new(cargo())
-        .args(&arguments)
-        .current_dir(at)
-        .output()
-        .map_err(|error| format!("`{}` could not be run: {error}", cargo()))?;
+    let out = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the workspace is the one the wrapped command names, and this resolve \
+         copies that command's own `--locked` rather than choosing one",
+    ))
+    .args(&arguments)
+    .current_dir(at)
+    .output()
+    .map_err(|error| format!("`{}` could not be run: {error}", issue::program()))?;
     if !out.status.success() {
         return Err(format!(
             "`cargo {}` failed ({}), so which packages that workspace has is \

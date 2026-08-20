@@ -148,8 +148,8 @@
       "edits": [
         {
           "file": "tools/stale-artifacts/src/lib.rs",
-          "from": "        let out = Command::new(cargo())\n            .args(&arguments)\n            .current_dir(at)",
-          "to": "        let out = Command::new(cargo())\n            .args([\"--version\"])\n            .current_dir(at)"
+          "from": "        .args(&arguments)\n        .current_dir(at)",
+          "to": "        .args([\"--version\"])\n        .current_dir(at)"
         }
       ],
       "expect_red": ["the_pass_removes_the_artifact_and_not_merely_the_line_about_it"]

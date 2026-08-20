@@ -15,6 +15,11 @@ description = "Mnemosyne — every test target a run compiled is one that run re
 
 [dependencies]
 serde_json = "1"
+# Round 1262 — the one door a cargo command is issued through. This gate
+# RE-ISSUES the command it was asked about, so the door is where it says whose
+# lockfile that command resolves. A path dependency reaching INTO the root
+# workspace, the shape the sibling gates carry.
+ci-plan = { path = "../ci-plan" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -464,6 +464,14 @@ fn environment(at: &Path, run: Option<&str>) -> Vec<(String, Option<String>)> {
             run.map(|_| BRANCH.to_string()),
         ),
         ("GITHUB_BASE_REF".to_string(), None),
+        // WHICH CARGO, ABSENT ON PURPOSE (R1262). This gate links `ci-plan`, and
+        // that crate's one door to a cargo command reads `CARGO` to pin the cargo
+        // that built the process — so from this fixture's point of view the gate
+        // and its stub now READ a variable neither of them uses, and R1211's law
+        // is right to ask for it. Removed rather than set: nothing under this test
+        // runs cargo, and a value here would be a claim about a program that is
+        // never started.
+        ("CARGO".to_string(), None),
     ]
 }
 

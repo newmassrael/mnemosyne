@@ -87,12 +87,22 @@ pub fn run(workspace: &Path, args: &[&str]) -> std::process::Output {
 ///
 /// So all four variables that decide it are named here: the two roots at this
 /// test's own workspace, where no install exists, and the two knobs removed.
+///
+/// AND `CARGO` SINCE R1262, which is a fifth for a different reason. This crate
+/// DEV-depends on `ci-plan`, whose one door to a cargo command reads `CARGO` to
+/// pin the cargo that built the process — so `named-environment` reads that as a
+/// variable the spawned `mnemosyne-cli` can read. A binary does not link a
+/// dev-dependency, so the shipped program cannot in fact read it; naming it is
+/// still not wrong, because what this says is true of the child either way and
+/// mention is a necessary condition the law is right to want. Removed rather than
+/// set: no case here has the CLI run cargo.
 pub fn without_a_pinned_build<'a>(command: &'a mut Command, at: &Path) -> &'a mut Command {
     command
         .env("MN_ROOT", at)
         .env("HOME", at)
         .env_remove("MNEMOSYNE_PIN_EXEC")
         .env_remove("MNEMOSYNE_PIN_SKIP")
+        .env_remove("CARGO")
 }
 
 pub fn run_ok(workspace: &Path, args: &[&str]) -> String {

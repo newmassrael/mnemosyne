@@ -77,6 +77,9 @@ fn command(manifest: &Path, extra: &[&str], harness: &[&str]) -> CargoCommand {
         cargo_args,
         harness_args: harness.iter().map(|word| (*word).to_string()).collect(),
         env: Default::default(),
+        // A fixture written as words, so the manifest path is what says whose
+        // lockfile it resolves — the reading every command written as data gets.
+        declared: None,
     }
 }
 

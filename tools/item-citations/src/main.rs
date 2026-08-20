@@ -16,7 +16,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
+
+use ci_plan::issue::{self, Tree};
 
 use item_citations::{
     answer, census, coherence, harness_names, judge, read_stream, Answer, BrokenLink, Census,
@@ -517,7 +519,10 @@ fn list_harness(
 }
 
 fn cargo(root: &Path, argv: &[&str], rustdoc_flags: Option<&str>) -> Result<Output, String> {
-    let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()));
+    let mut command = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the gate documents the workspace it was pointed at — this repository \
+         under the side gate, a fixture under its own cases",
+    ));
     command.current_dir(root).args(argv);
     match rustdoc_flags {
         Some(flags) => command.env("RUSTDOCFLAGS", flags),

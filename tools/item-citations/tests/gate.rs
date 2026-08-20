@@ -15,6 +15,7 @@
 use std::path::Path;
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
 use item_citations::Answer;
 use tempfile::TempDir;
 
@@ -67,17 +68,6 @@ fn fixture(files: &[(&str, &str)]) -> TempDir {
     dir
 }
 
-/// The cargo running THIS test, which is the one the gate must be handed.
-///
-/// R1211 — one resolver for a value three spawns here need. The gate binary
-/// resolves its own cargo from `CARGO`, and until this round the fixture let the
-/// MACHINE answer that: a shell with a different cargo on `PATH`, or a
-/// `~/.cargo/bin` shared with another checkout, ran a different program than the
-/// one this test compiled against, and nothing in the case said so.
-fn the_cargo_running_this() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
-}
-
 fn gate(workspace: &Path) -> Run {
     let output = Command::new(env!("CARGO_BIN_EXE_item-citations"))
         .args(["--workspace", &workspace.display().to_string()])
@@ -86,7 +76,9 @@ fn gate(workspace: &Path) -> Run {
         // by handing it a hostile one and expecting its own to win.
         .env("RUSTDOCFLAGS", "--this-flag-does-not-exist")
         // THE CARGO THIS TEST RUNS UNDER, decided here rather than inherited.
-        .env("CARGO", the_cargo_running_this())
+        // R1211 wanted one resolver for a value three spawns here need; R1262
+        // made that resolver the repository's one home for it.
+        .env("CARGO", issue::program())
         .output()
         .expect("the gate binary runs");
     Run {
@@ -99,21 +91,23 @@ fn gate(workspace: &Path) -> Run {
 /// `cargo doc --workspace`, which is the gate this one replaces, run over the
 /// same fixture so that what it misses is measured rather than asserted.
 fn cargo_doc(workspace: &Path) -> bool {
-    Command::new(the_cargo_running_this())
-        .current_dir(workspace)
-        .args([
-            "doc",
-            "--workspace",
-            "--no-deps",
-            "--document-private-items",
-            "-q",
-        ])
-        .env("CARGO_TARGET_DIR", workspace.join("target-doc"))
-        .env("RUSTDOCFLAGS", "-D rustdoc::broken_intra_doc_links")
-        .output()
-        .expect("cargo doc runs")
-        .status
-        .success()
+    issue::cargo(Tree::MadeByThisRun(
+        "the fixture workspace this case wrote, whose lockfile is its own",
+    ))
+    .current_dir(workspace)
+    .args([
+        "doc",
+        "--workspace",
+        "--no-deps",
+        "--document-private-items",
+        "-q",
+    ])
+    .env("CARGO_TARGET_DIR", workspace.join("target-doc"))
+    .env("RUSTDOCFLAGS", "-D rustdoc::broken_intra_doc_links")
+    .output()
+    .expect("cargo doc runs")
+    .status
+    .success()
 }
 
 const MANIFEST: &str = r#"
@@ -440,12 +434,14 @@ helper = { path = "helper" }
     ]);
 
     let rustdoc_lines = |selector: &str| -> String {
-        let output = Command::new(the_cargo_running_this())
-            .current_dir(dir.path())
-            .args(["rustdoc", "-v", "-p", "fixture", selector, "--keep-going"])
-            .env("CARGO_TARGET_DIR", dir.path().join(format!("t{selector}")))
-            .output()
-            .expect("cargo runs");
+        let output = issue::cargo(Tree::MadeByThisRun(
+            "the one-package fixture this case wrote, whose lockfile is its own",
+        ))
+        .current_dir(dir.path())
+        .args(["rustdoc", "-v", "-p", "fixture", selector, "--keep-going"])
+        .env("CARGO_TARGET_DIR", dir.path().join(format!("t{selector}")))
+        .output()
+        .expect("cargo runs");
         let all = format!(
             "{}{}",
             String::from_utf8_lossy(&output.stdout),

@@ -70,3 +70,7 @@ syn = { version = "3", features = ["full", "visit"] }
 # have that test" and "no walk of the syntax can see it". R1186 paid two true
 # expectations to learn that those are not the same sentence.
 proc-macro2 = "1"
+# Round 1262 — the one door a cargo command is issued through, and with it the
+# declaration of whose lockfile a census resolves. A path dependency reaching
+# INTO the root workspace, the shape the gates under `tools/` carry.
+ci-plan = { path = "../ci-plan" }

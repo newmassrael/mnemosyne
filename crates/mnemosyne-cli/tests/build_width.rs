@@ -52,6 +52,8 @@ fn issued(line: &str) -> CargoCommand {
         cargo_args: words,
         harness_args,
         env: Default::default(),
+        // A line, so whose lockfile it resolves is the manifest path's to say.
+        declared: None,
     }
 }
 

@@ -41,6 +41,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+use ci_plan::issue::{self, Tree};
 use tempfile::TempDir;
 
 use crate::common::link_stub;
@@ -195,17 +196,20 @@ impl Fixture {
     /// for a third reason that is again about the fixture. `--offline` because
     /// these trees have no dependencies and a test must not need a network.
     fn generate_lockfile(&self, manifest: &str) {
-        let out = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
-            .args([
-                "generate-lockfile",
-                "--offline",
-                "--manifest-path",
-                manifest,
-            ])
-            .current_dir(self.path())
-            .env("CARGO_TARGET_DIR", self.path().join("target"))
-            .output()
-            .expect("cargo exec");
+        let out = issue::cargo(Tree::MadeByThisRun(
+            "a fixture repository this test wrote a moment ago, whose lockfile \
+             is being created here for the first time",
+        ))
+        .args([
+            "generate-lockfile",
+            "--offline",
+            "--manifest-path",
+            manifest,
+        ])
+        .current_dir(self.path())
+        .env("CARGO_TARGET_DIR", self.path().join("target"))
+        .output()
+        .expect("cargo exec");
         assert!(
             out.status.success(),
             "cargo generate-lockfile for {manifest} failed: {}",

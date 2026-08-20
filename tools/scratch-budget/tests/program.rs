@@ -20,7 +20,14 @@ use std::process::Command;
 const MIB: usize = 1024 * 1024;
 
 fn collector() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_scratch-budget"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_scratch-budget"));
+    // WHICH CARGO, ABSENT ON PURPOSE (R1262). This collector reaches `ci-plan`,
+    // whose one door to a cargo command reads `CARGO` to pin the cargo that built
+    // the process — so the program these cases drive now READS a variable none of
+    // them uses, and R1211's law is right to ask them to say which. Removed
+    // rather than set: this collector sweeps directories and runs no cargo.
+    command.env_remove("CARGO");
+    command
 }
 
 /// A tree with a record directory in it, OUTSIDE this repository and named for

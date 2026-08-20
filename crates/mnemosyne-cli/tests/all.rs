@@ -197,6 +197,9 @@ mod map_frontier_smoke;
 #[path = "mutate_error_output_smoke.rs"]
 mod mutate_error_output_smoke;
 
+#[path = "one_door_for_cargo.rs"]
+mod one_door_for_cargo;
+
 #[path = "parameter_economy_smoke.rs"]
 mod parameter_economy_smoke;
 

@@ -47,6 +47,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
+
 /// What this gate answers about one completed run.
 ///
 /// THREE, and the third one is the point — the contract the gates in this
@@ -250,18 +252,6 @@ pub fn report_lines(report: &Report) -> Vec<String> {
         }
     }
     out
-}
-
-/// The cargo this process should run, pinned to the one that built it when
-/// there is one.
-///
-/// `Command::new("cargo")` lets PATH decide, and PATH is a fact about the
-/// machine rather than about this repository — R1190 found two tests in this
-/// tree asserting things about a pinned revision through whichever cargo the
-/// machine happened to offer.
-#[must_use]
-pub fn cargo() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
 }
 
 /// Turn the command that produced a log into the command that answers what it
@@ -519,12 +509,18 @@ pub fn run(log: &Path, argv: &[String], at: &Path) -> Result<Report, String> {
         Population::Ask(words) => words,
     };
 
-    let program = if asked[0] == "cargo" {
-        cargo()
+    // THE PROGRAM IS THE ASKED COMMAND'S, and when that word is `cargo` the
+    // command goes through the one door so the declaration is made where every
+    // other cargo spawn in this repository makes it (R1262).
+    let mut spawn = if asked[0] == "cargo" {
+        issue::cargo(Tree::WhereverTheCallerPoints(
+            "the words are the command being asked about, judged where it is \
+             WRITTEN — this re-issues them over whichever manifest they name",
+        ))
     } else {
-        asked[0].clone()
+        Command::new(&asked[0])
     };
-    let output = Command::new(&program)
+    let output = spawn
         .args(&asked[1..])
         .current_dir(at)
         .output()

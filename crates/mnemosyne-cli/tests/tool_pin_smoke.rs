@@ -24,7 +24,8 @@
 //! `~/.local/mn`, which is a suite that passes for reasons outside itself.
 
 use std::path::Path;
-use std::process::Command;
+
+use ci_plan::issue::{self, Tree};
 
 use crate::common::link_stub;
 
@@ -53,17 +54,20 @@ const NOT_WORKSPACE_BINARIES: &[(&str, &str)] = &[
 /// Every binary this workspace builds, minus the declared non-workspace ones —
 /// asked of cargo so a new binary is covered the day it exists.
 fn pinned_binaries() -> Vec<String> {
-    let out = Command::new(env!("CARGO"))
-        .args([
-            "metadata",
-            "--format-version",
-            "1",
-            "--no-deps",
-            "--manifest-path",
-            concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
-        ])
-        .output()
-        .expect("cargo metadata");
+    let out = issue::cargo(Tree::WhereverTheCallerPoints(
+        "`--no-deps` makes this a census rather than a resolution, so there is \
+         no lockfile for it to touch",
+    ))
+    .args([
+        "metadata",
+        "--format-version",
+        "1",
+        "--no-deps",
+        "--manifest-path",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
+    ])
+    .output()
+    .expect("cargo metadata");
     assert!(out.status.success(), "cargo metadata failed");
     let meta: serde_json::Value = serde_json::from_slice(&out.stdout).expect("metadata json");
     let mut all: Vec<String> = Vec::new();
@@ -115,7 +119,10 @@ fn workspace_with(toml: &str) -> tempfile::TempDir {
 /// reason `scripts/mn` asks cargo rather than comparing mtimes: freshness is
 /// cargo's question, and a second answer to it is free to be wrong.
 fn run_in(bin: &str, workspace: &Path, skip: bool, mn_root: &Path) -> std::process::Output {
-    let mut cmd = Command::new(env!("CARGO"));
+    // `--locked` because the manifest is this repository's and `cargo run`
+    // resolves (R1262): a free resolve here rewrites the root lockfile rather
+    // than reporting that it disagreed.
+    let mut cmd = issue::cargo(Tree::ThisRepository);
     // `--manifest-path` so cargo builds HERE while the child runs THERE: the
     // CLI discovers its workspace by walking up from its own directory, so
     // running it from the repo would have it find this repo's config instead of
@@ -123,6 +130,7 @@ fn run_in(bin: &str, workspace: &Path, skip: bool, mn_root: &Path) -> std::proce
     cmd.args([
         "run",
         "--quiet",
+        "--locked",
         "--manifest-path",
         concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
         "-p",
@@ -513,10 +521,11 @@ fn a_pinned_path_holding_a_build_that_names_no_revision_is_refused() {
 #[test]
 fn every_shipped_binary_answers_which_revision_it_is() {
     for bin in &pinned_binaries() {
-        let out = Command::new(env!("CARGO"))
+        let out = issue::cargo(Tree::ThisRepository)
             .args([
                 "run",
                 "--quiet",
+                "--locked",
                 "--manifest-path",
                 concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
                 "-p",

@@ -19,6 +19,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
 use ci_plan::RunStep;
 use twice_compiled::{
     judge, load, unresolvable, Declared, Entrance, JOB_VARIABLE, WRAPPER_VARIABLE,
@@ -279,8 +280,14 @@ fn build_wrapper(root: &Path) -> PathBuf {
     // the tool's own workspace instead. A path assumed either way is a guess
     // about somebody else's tree; saying it makes the answer the same in both.
     let build = root.join("target");
-    let status = Command::new("cargo")
-        .args(["build", "--release", "-q", "--manifest-path"])
+    // `--locked` AND THE DECLARATION THAT MAKES IT REQUIRED (R1262). This builds
+    // a crate of THIS repository — the program refuses to start anywhere else —
+    // so the lockfile it resolves is one this repository tracks, and a free
+    // resolve would REWRITE `tools/rustc-log/Cargo.lock` rather than report that
+    // it disagreed. A census that repairs the tree it is about to measure is
+    // measuring a tree nobody committed.
+    let status = issue::cargo(Tree::ThisRepository)
+        .args(["build", "--release", "-q", "--locked", "--manifest-path"])
         .arg(&manifest)
         .env("CARGO_TARGET_DIR", &build)
         // The recorder cannot record its own build: it does not exist yet.

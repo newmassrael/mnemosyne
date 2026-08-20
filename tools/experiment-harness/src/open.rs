@@ -27,6 +27,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use ci_plan::issue::{self, Tree};
+
 use crate::declare::git;
 use crate::util::{read_file, HResult};
 
@@ -230,12 +232,23 @@ pub fn materialise(root: &Path, revision: &str, into: &Path, cargo: &str) -> HRe
         return Err(format!("tar could not extract revision {revision}"));
     }
 
-    let build = Command::new(cargo)
-        .args(["build", "--bin", "mnemosyne-cli"])
-        .current_dir(&tree)
-        .env("CARGO_TARGET_DIR", &target)
-        .output()
-        .map_err(|e| format!("{cargo} build: {e}"))?;
+    // THE CARGO IS THE REPLAY'S TO NAME, and the tree is not this working tree:
+    // it was extracted from a pinned revision a moment ago, so the lockfile in
+    // it is THAT revision's answer. Pinning it here would make reading old
+    // evidence fail on a resolution nobody is going to go back and repair, which
+    // is the opposite of what a replay is for (R1262).
+    let build = issue::named_cargo(
+        cargo,
+        Tree::MadeByThisRun(
+            "a tree extracted at a pinned revision, whose lockfile is that \
+             revision's answer rather than this working tree's",
+        ),
+    )
+    .args(["build", "--bin", "mnemosyne-cli"])
+    .current_dir(&tree)
+    .env("CARGO_TARGET_DIR", &target)
+    .output()
+    .map_err(|e| format!("{cargo} build: {e}"))?;
     if !build.status.success() {
         return Err(format!(
             "revision {revision} no longer builds — THIS is the finding, and it kills \

@@ -215,6 +215,7 @@ fn the_wrapper_is_found_wherever_it_carries_and_a_command_it_does_not_carry_is_n
             .collect(),
         harness_args: Vec::new(),
         env: Default::default(),
+        declared: None,
     };
     assert!(
         judged_for_coverage(&carried),
@@ -423,6 +424,7 @@ fn a_suite_that_opts_out_of_freshening_is_seen_to() {
             .collect(),
         harness_args: Vec::new(),
         env: Default::default(),
+        declared: None,
     };
     assert!(!opts_out_of_freshening(&freshened));
 

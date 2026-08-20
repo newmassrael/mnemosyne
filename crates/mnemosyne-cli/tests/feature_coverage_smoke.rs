@@ -36,6 +36,7 @@
 
 use crate::common;
 use ci_plan as ci;
+use ci_plan::issue::{self, Tree};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
@@ -110,9 +111,14 @@ fn workspace_manifests() -> Vec<String> {
 }
 
 fn metadata(manifest: &str, with_deps: bool) -> Metadata {
-    let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
+    // `--locked` UNCONDITIONALLY, because `--no-deps` here is not (R1262). The
+    // manifest is one this repository tracks, and the arm that asks for
+    // dependencies RESOLVES: without the flag a lockfile that disagreed with its
+    // manifests would be rewritten by this test rather than reported, and the
+    // suite that reads the tree afterwards would read the repair.
+    let mut command = issue::cargo(Tree::ThisRepository);
     command
-        .args(["metadata", "--format-version", "1"])
+        .args(["metadata", "--format-version", "1", "--locked"])
         .arg("--manifest-path")
         .arg(common::repo_root().join(manifest))
         .current_dir(common::repo_root());
@@ -419,6 +425,7 @@ fn a_command_is_read_for_the_features_it_actually_enables() {
                 cargo_args: found.cargo_args,
                 harness_args: found.harness_args,
                 env: Default::default(),
+                declared: None,
             },
             &declared,
             &declared,

@@ -35,12 +35,12 @@
 //! [`Report::verdict`] REFUSES rather than passing when the reach is empty or
 //! partial.
 
+use ci_plan::issue::{self, Tree};
 use proc_macro2::LineColumn;
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use syn::spanned::Spanned as _;
 
 /// What the gate rejects.
@@ -278,13 +278,24 @@ pub struct Census {
 }
 
 /// Ask cargo where the workspace is and what belongs to it.
+///
+/// WHOSE TREE THIS IS, IS THE CALLER'S TO SAY (R1262): the side-workspace gate
+/// points this at this repository's own manifests and the hook tests point it at
+/// fixture trees they built a moment earlier, so no declaration made here could
+/// be true of both. What holds instead is stronger — `--no-deps` means the
+/// census RESOLVES NOTHING, measured against cargo in
+/// `locked_resolution_smoke`, so there is no lockfile for it to rewrite whoever
+/// points it where.
 pub fn census(manifest: &Path) -> Result<Census, String> {
-    let output = Command::new(cargo())
-        .args(["metadata", "--format-version", "1", "--no-deps"])
-        .arg("--manifest-path")
-        .arg(manifest)
-        .output()
-        .map_err(|e| format!("could not run cargo metadata: {e}"))?;
+    let output = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the side gate points this at this repository and the hook tests point \
+         it at the fixture trees they build",
+    ))
+    .args(["metadata", "--format-version", "1", "--no-deps"])
+    .arg("--manifest-path")
+    .arg(manifest)
+    .output()
+    .map_err(|e| format!("could not run cargo metadata: {e}"))?;
     if !output.status.success() {
         return Err(format!(
             "cargo metadata failed for {}: {}",
@@ -320,10 +331,6 @@ pub fn census(manifest: &Path) -> Result<Census, String> {
         member_dirs,
         test_target_srcs,
     })
-}
-
-fn cargo() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
 }
 
 // --- the walk ---------------------------------------------------------------

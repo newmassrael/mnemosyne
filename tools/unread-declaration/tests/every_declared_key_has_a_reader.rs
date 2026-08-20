@@ -157,6 +157,12 @@ fn gate(
         Some(answer) => command.env("UNREAD_DECLARATION_ANSWER", answer),
         None => command.env_remove("UNREAD_DECLARATION_ANSWER"),
     };
+    // WHICH CARGO, ABSENT ON PURPOSE (R1262). This gate reaches `ci-plan`, whose
+    // one door to a cargo command reads `CARGO` to pin the cargo that built the
+    // process — so the gate and the program it questions now READ a variable
+    // neither of them uses, and R1211's law is right to ask this test to say
+    // which. Removed rather than set: nothing under this test runs cargo.
+    command.env_remove("CARGO");
     command.output().expect("run the gate")
 }
 

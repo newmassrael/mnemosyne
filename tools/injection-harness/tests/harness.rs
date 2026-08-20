@@ -243,6 +243,14 @@ fn manifest_body(
 fn sweep_command() -> Command {
     let mut command = Command::new(binary());
     command.arg("sweep");
+    // WHICH CARGO, SAID RATHER THAN INHERITED (R1262). This harness links
+    // `ci-plan`, whose one door to a cargo command reads `CARGO` to pin the cargo
+    // that built the process, so the binary these cases drive now READS it and
+    // R1211's law is right to ask them to say which. The cases here run a suite
+    // through it, so the ANSWER is the cargo running this test rather than its
+    // absence: a sweep that ran under a different channel's cargo would be
+    // measuring a tree this suite did not compile.
+    command.env("CARGO", ci_plan::issue::program());
     command
 }
 

@@ -58,6 +58,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use ci_plan::issue::{self, Tree};
 use ci_plan::CargoCommand;
 use serde::Deserialize;
 
@@ -204,10 +205,6 @@ impl Report {
 
 // --- asking cargo -----------------------------------------------------------
 
-fn cargo() -> String {
-    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
-}
-
 #[derive(Debug, Deserialize)]
 struct Artifact {
     reason: String,
@@ -237,7 +234,10 @@ struct ArtifactProfile {
 /// they are out of cargo's own artifact record rather than out of a path this
 /// gate derived. R1078 established that as the way to know what a gate reached.
 pub fn build_test_binaries(root: &Path, cargo_args: &[String]) -> Result<Vec<TestBinary>, String> {
-    let mut command = Command::new(cargo());
+    let mut command = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the words are a command judged where it is WRITTEN — this re-issues \
+         them with `--no-run`, over whichever manifest they already name",
+    ));
     command
         .args(cargo_args.iter().skip(1))
         .arg("--no-run")
@@ -400,7 +400,10 @@ struct MetaTarget {
 /// is asked BEFORE the probe, of `cargo metadata` rather than of an error
 /// message: a string cargo is free to reword is not an authority.
 fn has_library(root: &Path, command: &CargoCommand) -> Result<bool, String> {
-    let mut invocation = Command::new(cargo());
+    let mut invocation = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the gate is pointed at a workspace by whoever runs it, and `--no-deps` \
+         is why this census resolves nothing wherever that is",
+    ));
     invocation
         .args(["metadata", "--format-version", "1", "--no-deps"])
         .current_dir(root);
@@ -438,7 +441,10 @@ fn list_doc_tests(
     command: &CargoCommand,
     extra_harness: &[&str],
 ) -> Result<BTreeSet<TestId>, String> {
-    let mut invocation = Command::new(cargo());
+    let mut invocation = issue::cargo(Tree::WhereverTheCallerPoints(
+        "the words are a command judged where it is WRITTEN — this re-issues \
+         them to LIST doc-tests, over whichever manifest they already name",
+    ));
     invocation
         .args(command.cargo_args.iter().skip(1))
         .arg("--doc")
@@ -609,6 +615,9 @@ pub fn population_command(manifest: &str) -> CargoCommand {
         carrier: Vec::new(),
         harness_args: Vec::new(),
         env: Default::default(),
+        // The manifest is a literal in the words, so the manifest is what says
+        // whose lockfile this resolves.
+        declared: None,
     }
 }
 

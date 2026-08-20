@@ -105,7 +105,21 @@ syn = { version = "3", default-features = false, features = [
   "extra-traits",
   "proc-macro",
   "visit",
+  # Round 1262 — `clone-impls` because following a program name one hop means
+  # KEEPING the expression a `fn` or a `const` answers with, out of the borrow
+  # of the file it was read from, and resolving it later against another site.
+  "clone-impls",
 ] }
+
+# Round 1262 — the sixth place a cargo command is written is a Rust program's
+# own `.arg()` chain, and `ci-plan` reads it with the walk above. Two crates
+# come with that reading rather than beside it: `span-locations` is what turns a
+# finding into a line a person can open (it is a proc-macro2 feature and not a
+# syn one, and without it every site in the report points at line 0), and
+# `quote` renders the expression a site hands over so a word decided at runtime
+# is printed as it is written rather than dropped.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
 
 # Round 292 — regex backend for `query_term` read primitive
 # (literal+regex search over atomic-store fields, replacing external grep).

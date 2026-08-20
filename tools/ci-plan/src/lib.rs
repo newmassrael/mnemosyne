@@ -46,12 +46,22 @@
 //!   `[commands]` out of `.claude/remote-build.toml`. R1197 added it for the
 //!   reason R1115 added the one above: three cargo commands were written there,
 //!   one of them the whole workspace suite, and no law reached any of them.
+//! - **Rust's own `.arg()` chains** — [`rust::cargo_commands`], the sixth place
+//!   and the first one whose words are COMPUTED rather than written down. R1262
+//!   added it; [`rust`] holds why a static walk is still the complete answer to
+//!   WHERE, and what it does with the words it cannot finish reading. It is a
+//!   module rather than a sixth function beside the others because the reading
+//!   is a different KIND — a syntax walk, with a vocabulary of its own for the
+//!   parts of a computed command line.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
 use yaml_rust2::{Yaml, YamlLoader};
+
+pub mod issue;
+pub mod rust;
 
 // --- workflows --------------------------------------------------------------
 
@@ -1290,6 +1300,21 @@ pub struct CargoCommand {
     /// The environment the command runs in — see [`RunStep::env`]. Empty for a
     /// command a gate builds for itself rather than reads out of a workflow.
     pub env: BTreeMap<String, String>,
+    /// Whose lockfile this command resolves, WHEN THE SITE SAID SO.
+    ///
+    /// R1262, and it exists because the sixth source can say what the other five
+    /// cannot. For a command written as data the answer is READ off the manifest
+    /// path — `--manifest-path tools/x/Cargo.toml` names the workspace, and
+    /// [`CargoCommand::manifest`] is the one reader of that. For a command a Rust
+    /// program assembles, the path is a value: the same three words appear in the
+    /// gate that walks this repository's workspaces and in the fixture that made
+    /// a throwaway one two lines earlier, and no reading of the syntax separates
+    /// them. So that site declares it ([`issue::Tree`]) and the declaration
+    /// arrives here.
+    ///
+    /// `None` is not "unknown" — it is "read it off the manifest", which is the
+    /// right answer for every source whose words are written down.
+    pub declared: Option<rust::Declared>,
 }
 
 impl CargoCommand {
@@ -1459,13 +1484,43 @@ pub enum ManifestTarget {
 /// The two `false`s are the interesting ones: `fmt` and `sweep` both REFUSE
 /// `--locked` outright, so requiring the flag everywhere would be a law no
 /// correct command could satisfy.
+///
+/// THE SUBCOMMAND IS NOT ALWAYS THE WHOLE QUESTION, which is why every judge
+/// asks [`resolves_the_lockfile_of`] and not this. See it for the one flag that
+/// changes the answer.
 pub fn resolves_the_lockfile(subcommand: &str) -> Option<bool> {
     match subcommand {
-        "bench" | "build" | "check" | "clean" | "clippy" | "doc" | "fix" | "metadata"
-        | "package" | "run" | "rustc" | "rustdoc" | "test" | "tree" => Some(true),
+        "bench" | "build" | "check" | "clean" | "clippy" | "doc" | "fix" | "generate-lockfile"
+        | "metadata" | "package" | "run" | "rustc" | "rustdoc" | "test" | "tree" => Some(true),
         "fmt" | "sweep" => Some(false),
         _ => None,
     }
+}
+
+/// Does THIS COMMAND resolve the lockfile of the workspace it points at?
+///
+/// R1262, and the reason it is a second function rather than a wider table: the
+/// answer depends on one flag, and the fact was ALREADY MEASURED in this
+/// repository and never reached the judge.
+///
+/// `locked_resolution_smoke` has pinned, since the round that wrote it, that
+/// `cargo metadata --no-deps` never resolves — "the cheap check that is not
+/// one", asserted against cargo in the same fixture as everything else here.
+/// [`resolves_the_lockfile`] answers about `metadata` all the same, because a
+/// table keyed on the subcommand cannot say it. Nothing had noticed, because no
+/// command written as DATA in this repository is a `metadata --no-deps`: the
+/// sixth source is the first to bring one, and it brings seven.
+///
+/// What that would have cost, had this round trusted the table: seven `--locked`
+/// flags added to commands the repository's own measurement says the flag can do
+/// nothing for — a law demanding a word with no effect, which is the shape of a
+/// gate people learn to satisfy rather than read.
+pub fn resolves_the_lockfile_of(command: &CargoCommand) -> Option<bool> {
+    let subcommand = command.subcommand()?;
+    if subcommand == "metadata" && command.has("--no-deps") {
+        return Some(false);
+    }
+    resolves_the_lockfile(subcommand)
 }
 
 /// Every `Cargo.toml` this repository tracks, sorted.
@@ -1554,7 +1609,7 @@ pub fn lock_verdict(
     let Some(subcommand) = command.subcommand() else {
         return LockVerdict::Unreadable("no subcommand at all".to_string());
     };
-    match resolves_the_lockfile(subcommand) {
+    match resolves_the_lockfile_of(command) {
         None => {
             return LockVerdict::Unreadable(format!(
                 "`cargo {subcommand}` is a subcommand nobody has measured against a \
@@ -1564,20 +1619,50 @@ pub fn lock_verdict(
         Some(false) => return LockVerdict::ResolvesNothing,
         Some(true) => {}
     }
-    let manifest = match command.manifest(tracked) {
-        ManifestTarget::Root => "Cargo.toml".to_string(),
-        ManifestTarget::Named(path) => path,
-        ManifestTarget::Unreadable(written) => {
+    // THE DECLARATION WINS WHERE THERE IS ONE, and it is not a shortcut past the
+    // reading below — it is the only answer available. R1262: a command a Rust
+    // program assembles points at a manifest that is a VALUE, so the reading
+    // below answers `Unreadable` for the gate walking this repository's own
+    // workspaces exactly as it does for the fixture next door. The site is the
+    // only party that knows which, so the site says.
+    let ours = match &command.declared {
+        Some(rust::Declared::ThisRepository) => true,
+        Some(rust::Declared::MadeByThisRun(_)) => false,
+        // THE ARM THAT DECLINED TO NAME THE TREE OWES THE MOST. Getting here
+        // means the command resolves — the check above returned otherwise — so
+        // the site is running something that can rewrite a lockfile over a
+        // workspace nobody named. That is not a pass and it is not a hole in
+        // this reader: it is a declaration the words contradict.
+        Some(rust::Declared::WhereverTheCallerPoints(why)) => {
             return LockVerdict::Unreadable(format!(
-                "`--manifest-path {written}` does not name one manifest this \
-                 repository tracks"
+                "declared as running wherever the caller points ({why}), and yet \
+                 `cargo {subcommand}` resolves — a command that can rewrite a \
+                 lockfile has to say whose"
             ))
         }
+        Some(rust::Declared::Unreadable(written)) => {
+            return LockVerdict::Unreadable(format!(
+                "the tree it runs over is declared as `{written}`, which this \
+                 reader cannot read"
+            ))
+        }
+        None => {
+            let manifest = match command.manifest(tracked) {
+                ManifestTarget::Root => "Cargo.toml".to_string(),
+                ManifestTarget::Named(path) => path,
+                ManifestTarget::Unreadable(written) => {
+                    return LockVerdict::Unreadable(format!(
+                        "`--manifest-path {written}` does not name one manifest this \
+                         repository tracks"
+                    ))
+                }
+            };
+            !foreign.iter().any(|directory| {
+                manifest == format!("{directory}/Cargo.toml")
+                    || manifest.starts_with(&format!("{directory}/"))
+            })
+        }
     };
-    let ours = !foreign.iter().any(|directory| {
-        manifest == format!("{directory}/Cargo.toml")
-            || manifest.starts_with(&format!("{directory}/"))
-    });
     match (ours, command.has("--locked")) {
         (true, true) => LockVerdict::Pinned,
         (true, false) => LockVerdict::RepairsWhatItShouldReport,
@@ -1599,6 +1684,7 @@ pub fn script_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                 cargo_args: found.cargo_args,
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
+                declared: None,
             });
         }
     }
@@ -1650,6 +1736,7 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
                 cargo_args: found.cargo_args,
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
+                declared: None,
             });
         }
     }
@@ -1716,6 +1803,7 @@ pub fn sweep_cargo_commands(root: &Path) -> Vec<CargoCommand> {
             cargo_args: found.cargo_args,
             harness_args: found.harness_args,
             env: BTreeMap::new(),
+            declared: None,
         });
     }
     out
@@ -1741,12 +1829,17 @@ pub fn sweep_cargo_commands(root: &Path) -> Vec<CargoCommand> {
 /// decision somebody made rather than a fact nobody was handed.
 #[derive(Debug, Clone, Default)]
 pub struct IssuedCommands {
-    /// The commands, from all five sources.
+    /// The commands, from all six sources.
     pub commands: Vec<CargoCommand>,
     /// The workspaces the lister declined on this machine, with its reasons.
     /// Empty is a real answer — it says every separate workspace was reachable
     /// here — and is not the same as never having asked.
     pub skipped: Vec<SkippedWorkspace>,
+    /// What the SIXTH source read and could not finish reading — see
+    /// [`rust::RustSpawns`]. Carried for the reason `skipped` is: a law that
+    /// receives the residue can say its size, and one that never sees it cannot
+    /// say anything at all.
+    pub rust: rust::RustSpawns,
 }
 
 impl IssuedCommands {
@@ -1759,6 +1852,7 @@ impl IssuedCommands {
         Self {
             commands: lister_declared_commands(listed),
             skipped: listed.skipped.clone(),
+            rust: rust::RustSpawns::default(),
         }
     }
 
@@ -1794,6 +1888,12 @@ pub fn commands_this_repository_issues(root: &Path) -> IssuedCommands {
     );
     issued.extend(declared_build_commands(root));
     issued.extend(sweep_cargo_commands(root));
+    // THE SIXTH SOURCE, and the only one that hands back a residue of its own:
+    // what a Rust program spells, this reader reads, and what it computes is
+    // counted rather than guessed at (R1262).
+    let read = rust::cargo_commands(root);
+    issued.extend(read.commands.clone());
+    issued.rust = read;
     issued
 }
 
@@ -1845,6 +1945,7 @@ pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                     cargo_args: found.cargo_args,
                     harness_args: found.harness_args,
                     env: step.env.clone(),
+                    declared: None,
                 });
             }
         }
@@ -2255,6 +2356,7 @@ pub fn lister_declared_commands(listed: &Workspaces) -> Vec<CargoCommand> {
                 cargo_args,
                 harness_args,
                 env: BTreeMap::new(),
+                declared: None,
             }
         })
         .collect()

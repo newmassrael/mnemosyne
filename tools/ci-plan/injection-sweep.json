@@ -290,7 +290,10 @@
           "to": "        if words.first().map(String::as_str) == Some(\"cargo\")\n            && !words.iter().any(|word| word == \"--\")\n        {"
         }
       ],
-      "expect_red": ["cargos_own_marker_does_not_start_a_second_command"]
+      "expect_red": [
+        "cargos_own_marker_does_not_start_a_second_command",
+        "every_cargo_spawn_in_tracked_rust_is_placed"
+      ]
     },
     {
       "name": "what-carried-the-command-is-thrown-away",
@@ -430,6 +433,112 @@
         }
       ],
       "expect_red": ["every_job_says_what_it_is_allowed_to_take_and_is_called_something_of_its_own"]
+    },
+    {
+      "name": "a-conditional-argument-is-read-as-a-certain-one",
+      "why": "R1262 — a flag added inside an `if` is neither present nor absent, and reading it as present is how a gate comes to say a command pins its lockfile when it pins it on some paths only. The reader answers `Sometimes`, and that answer is what keeps a `--locked` nobody can rely on out of the judged population",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let certain = self.depth <= self.opened_at[site];",
+          "to": "        let certain = true;"
+        }
+      ],
+      "expect_red": [
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent"
+      ]
+    },
+    {
+      "name": "a-bare-name-is-resolved-through-a-function-of-that-name",
+      "why": "R1262 — the first run's own defect. `Command::new(program)` inside a function TAKING `program` resolved through `fn program()` in the same file, and the one site that IS the door read as a second one. A call names a function; a bare name is a local or a parameter, and the two cannot share a map",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        let landings = if named.called {",
+          "to": "        let landings = if true {"
+        }
+      ],
+      "expect_red": [
+        "a_program_named_by_a_parameter_is_not_resolved_through_a_function_of_the_same_name"
+      ]
+    },
+    {
+      "name": "the-manifest-directory-becomes-a-runtime-value",
+      "why": "R1262 — `env!(\"CARGO_MANIFEST_DIR\")` is decided by which crate the file belongs to, so a reader that knows the path knows the value. Left unread, three commands in this repository name no manifest at all and no law can say whose lockfile they resolve",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                (name.value() == \"CARGO_MANIFEST_DIR\").then(|| self.manifest_dir.clone())",
+          "to": "                (name.value() == \"CARGO_MANIFEST_DIR_NEVER\").then(|| self.manifest_dir.clone())"
+        }
+      ],
+      "expect_red": [
+        "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in"
+      ]
+    },
+    {
+      "name": "an-array-of-words-is-read-as-a-hole",
+      "why": "R1262 — an `.args([..])` has a KNOWN length even when its elements do not, and reading it as a hole throws away every flag written right there. Four of this repository's commands spell `--locked` inside such an array",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            syn::Expr::Array(array) => Some(",
+          "to": "            syn::Expr::Tuple(array) => Some("
+        }
+      ],
+      "expect_red": [
+        "an_array_of_words_keeps_the_flags_a_runtime_value_sits_between",
+        "a_command_built_over_several_statements_is_one_command",
+        "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in"
+      ]
+    },
+    {
+      "name": "a-command-built-over-several-statements-loses-its-words",
+      "why": "R1262 — `let mut c = issue::cargo(..); c.arg(..)` is the same command as the same words in one chain, and a reader that followed only chains reports the tidier spelling as argument-free: a command with no `--locked` in it and nothing to notice",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if let Some(name) = binding_name(&local.pat) {\n            if sites.is_empty() {",
+          "to": "        if let Some(name) = binding_name(&local.pat) {\n            if true {"
+        }
+      ],
+      "expect_red": [
+        "a_command_built_over_several_statements_is_one_command",
+        "two_functions_holding_a_command_each_do_not_share_one",
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent"
+      ]
+    },
+    {
+      "name": "the-door-is-recognised-only-when-its-module-is-spelled",
+      "why": "R1262 — `use ci_plan::issue::cargo;` and then `cargo(Tree::ThisRepository)` is the same door with one word less, and reading only the qualified path makes that command INVISIBLE rather than refused: the one direction this reader exists to rule out. No site in the tree is written that way today, which is exactly why the case is a fixture",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        || !matches!(declaration(call), Declared::Unreadable(_))",
+          "to": "        || false"
+        }
+      ],
+      "expect_red": ["the_door_is_the_door_however_its_module_is_spelled"]
+    },
+    {
+      "name": "the-door-stops-being-recognised",
+      "why": "R1262 — every cargo command a Rust program issues comes through one door, and a reader that cannot see it sees no cargo commands at all: the declaration beside the words goes unread, and every site becomes something else",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if !(ends_with(call, &[\"cargo\"]) || ends_with(call, &[\"named_cargo\"])) {",
+          "to": "    if !(ends_with(call, &[\"cargo_nowhere\"])) {"
+        }
+      ],
+      "expect_red": [
+        "the_declaration_is_read_beside_the_words_and_a_variant_nobody_knows_is_refused",
+        "the_door_is_the_door_however_its_module_is_spelled",
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "an_array_of_words_keeps_the_flags_a_runtime_value_sits_between",
+        "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
+        "a_command_built_over_several_statements_is_one_command",
+        "two_functions_holding_a_command_each_do_not_share_one"
+      ]
     }
   ]
 }

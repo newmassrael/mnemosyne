@@ -275,7 +275,10 @@ dependencies = [
 name = "ci-plan"
 version = "0.1.0"
 dependencies = [
+ "proc-macro2",
+ "quote",
  "serde_json",
+ "syn 3.0.3",
  "toml",
  "yaml-rust2",
 ]

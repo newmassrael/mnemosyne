@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": true,
+  "complete": false,
   "fired": {
     "a-kit-that-names-two-revisions-gets-the-first": {
       "edits": [
@@ -58,8 +58,8 @@
       "edits": [
         {
           "file": "tools/experiment-harness/src/open.rs",
-          "from": "    let build = Command::new(cargo)",
-          "to": "    let build = Command::new(\"cargo\")"
+          "from": "    let build = issue::named_cargo(\n        cargo,",
+          "to": "    let build = issue::named_cargo(\n        \"cargo\","
         }
       ],
       "expect_red": [
@@ -84,5 +84,6 @@
         "open::tests::the_listing_leaves_no_kit_out_and_says_which_kind_each_is"
       ]
     }
-  }
+  },
+  "forgotten": {}
 }

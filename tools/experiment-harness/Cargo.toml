@@ -36,3 +36,8 @@ serde = { version = "1", features = ["derive"] }
 # change actually added.
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
+# Round 1262 — the one door a cargo command is issued through. `open-kit` builds
+# a pinned revision, and the declaration it makes there is that the tree is that
+# revision's rather than this one's. A path dependency reaching INTO the root
+# workspace, the shape the gates under `tools/` already carry.
+ci-plan = { path = "../ci-plan" }

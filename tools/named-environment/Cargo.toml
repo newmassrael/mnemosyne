@@ -74,6 +74,10 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 # expression kind would be a second, lossy spelling of what `ToTokens` already
 # does exactly — and syn already pulls this crate in.
 quote = "1"
+# Round 1262 — the one door a cargo command is issued through, and with it the
+# declaration of whose lockfile this gate's census resolves. A path dependency
+# reaching INTO the root workspace, the same shape the sibling gates carry.
+ci-plan = { path = "../ci-plan" }
 
 [dev-dependencies]
 # The end-to-end tests build throwaway cargo workspaces OUTSIDE this repository
