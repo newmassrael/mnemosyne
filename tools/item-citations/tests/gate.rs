@@ -57,7 +57,16 @@ fn assert_answer(run: &Run, expected: Answer, why: &str) {
     );
 }
 
-/// Write a cargo workspace from `(relative path, contents)` pairs.
+/// Write a cargo workspace from `(relative path, contents)` pairs, WITH A
+/// LOCKFILE OF ITS OWN.
+///
+/// The gate pins every resolving command it issues (`Tree::PinnedWhereverItPoints`),
+/// because pointed at this repository it must report a lockfile that disagrees
+/// rather than repair it. A tree with no lockfile at all is a disagreement like
+/// any other, so the fixture makes one here — the same line
+/// `stale-artifacts`'s cases write, and the only alternative was for the gate to
+/// resolve freely wherever it is pointed, which is what this repository's law
+/// exists to refuse.
 fn fixture(files: &[(&str, &str)]) -> TempDir {
     let dir = tempfile::tempdir().expect("a temporary directory");
     for (path, contents) in files {
@@ -65,6 +74,28 @@ fn fixture(files: &[(&str, &str)]) -> TempDir {
         std::fs::create_dir_all(full.parent().expect("a parent")).expect("mkdir");
         std::fs::write(&full, contents).expect("write");
     }
+    // A TREE WITH NO MANIFEST HAS NO LOCKFILE TO MAKE, and one case here writes
+    // exactly that on purpose — it is what the gate's "this is not a manifest"
+    // answer is about. Resolving it anyway would fail this helper before that
+    // case ever reached the gate, and the failure would be about the helper.
+    if !dir.path().join("Cargo.toml").exists() {
+        return dir;
+    }
+    let resolved = issue::cargo(Tree::MadeByThisRun(
+        "the fixture workspace this case wrote, whose lockfile is being created \
+         here for the first time",
+    ))
+    .args(["generate-lockfile", "--offline"])
+    .current_dir(dir.path())
+    .output()
+    .expect("cargo generate-lockfile runs");
+    assert!(
+        resolved.status.success(),
+        "the fixture has no lockfile and the gate pins every command it issues, \
+         so every case over it would fail on the flag rather than on what it is \
+         about:\n{}",
+        String::from_utf8_lossy(&resolved.stderr)
+    );
     dir
 }
 

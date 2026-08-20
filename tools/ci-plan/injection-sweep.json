@@ -12,8 +12,17 @@
     "names the test that must go red for it.",
     "",
     "Scoped to this crate, not the workspace: these edits cannot reach a test",
-    "outside it, and the root suite is five minutes of proving nothing."
+    "outside it, and the root suite is five minutes of proving nothing.",
+    "",
+    "`red_set: exhaustive` — every red an injection raises is named, including",
+    "the ones it did not aim at. Until R1263 this manifest TOLERATED unnamed",
+    "reds, which is the weak claim R1140 made a format to replace: an injection",
+    "that turns four tests red while predicting one is an injection whose reach",
+    "nobody has read, and the number went 12 -> 34 in a single round without a",
+    "word being said about it. Naming them is what makes a red that MOVES a",
+    "failure rather than a smaller number."
   ],
+  "red_set": "exhaustive",
   "repo": "../..",
   "test_command": ["cargo", "test", "--locked", "-p", "ci-plan", "--no-fail-fast"],
   "logs": "../../target/injection-logs",
@@ -53,7 +62,11 @@
           "to": "    match None::<usize> {"
         }
       ],
-      "expect_red": ["a_cache_key_is_read_down_to_the_prefix_a_restore_matches_on"]
+      "expect_red": [
+        "a_cache_key_is_read_down_to_the_prefix_a_restore_matches_on",
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named",
+        "every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in"
+      ]
     },
     {
       "name": "only-a-saving-step-declares-a-cache",
@@ -113,7 +126,10 @@
           "to": "        .map(|rest| rest.rsplit('@').next().unwrap_or(rest))"
         }
       ],
-      "expect_red": ["a_runners_workflow_reference_resolves_to_the_file_it_names"]
+      "expect_red": [
+        "a_runners_workflow_reference_resolves_to_the_file_it_names",
+        "a_reference_naming_a_workflow_this_repository_does_not_track_is_refused"
+      ]
     },
     {
       "name": "the-repository-segments-are-not-skipped",
@@ -238,7 +254,9 @@
       ],
       "expect_red": [
         "a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command",
-        "the_reading_follows_every_hop_and_invents_no_command"
+        "the_reading_follows_every_hop_and_invents_no_command",
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "the_declaration_is_read_for_the_commands_it_issues"
       ]
     },
     {
@@ -277,7 +295,8 @@
       ],
       "expect_red": [
         "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
-        "the_reading_follows_every_hop_and_invents_no_command"
+        "the_reading_follows_every_hop_and_invents_no_command",
+        "the_declaration_is_read_for_the_commands_it_issues"
       ]
     },
     {
@@ -292,7 +311,10 @@
       ],
       "expect_red": [
         "cargos_own_marker_does_not_start_a_second_command",
-        "every_cargo_spawn_in_tracked_rust_is_placed"
+        "every_cargo_spawn_in_tracked_rust_is_placed",
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "a_shell_line_is_split_where_cargo_stops_and_the_harness_starts",
+        "the_declaration_is_read_for_the_commands_it_issues"
       ]
     },
     {
@@ -305,7 +327,11 @@
           "to": "        words.drain(..at);"
         }
       ],
-      "expect_red": ["a_command_a_wrapper_carries_is_still_a_command_this_repository_issues"]
+      "expect_red": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "the_declaration_is_read_for_the_commands_it_issues",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ]
     },
     {
       "name": "an-unknown-ownership-verdict-is-read-as-owned",
@@ -343,7 +369,8 @@
       ],
       "expect_red": [
         "a_fallback_that_cannot_serve_an_earlier_generation_is_named",
-        "every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in"
+        "every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in",
+        "a_fallback_onto_a_build_directory_is_named_and_one_onto_a_cargo_home_is_not"
       ]
     },
     {
@@ -445,7 +472,8 @@
         }
       ],
       "expect_red": [
-        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent"
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
       ]
     },
     {
@@ -468,12 +496,13 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "                (name.value() == \"CARGO_MANIFEST_DIR\").then(|| self.manifest_dir.clone())",
-          "to": "                (name.value() == \"CARGO_MANIFEST_DIR_NEVER\").then(|| self.manifest_dir.clone())"
+          "from": "            (name.value() == \"CARGO_MANIFEST_DIR\").then(|| manifest_dir.to_string())",
+          "to": "            (name.value() == \"CARGO_MANIFEST_DIR_NEVER\").then(|| manifest_dir.to_string())"
         }
       ],
       "expect_red": [
-        "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in"
+        "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
+        "a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir"
       ]
     },
     {
@@ -482,14 +511,18 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "            syn::Expr::Array(array) => Some(",
-          "to": "            syn::Expr::Tuple(array) => Some("
+          "from": "        syn::Expr::Array(array) => Some(",
+          "to": "        syn::Expr::Tuple(array) => Some("
         }
       ],
       "expect_red": [
         "an_array_of_words_keeps_the_flags_a_runtime_value_sits_between",
         "a_command_built_over_several_statements_is_one_command",
-        "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in"
+        "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
+        "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
+        "a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir",
+        "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
+        "the_words_a_caller_writes_keep_their_place_among_the_sites_own"
       ]
     },
     {
@@ -505,7 +538,8 @@
       "expect_red": [
         "a_command_built_over_several_statements_is_one_command",
         "two_functions_holding_a_command_each_do_not_share_one",
-        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent"
+        "an_argument_added_on_some_paths_only_is_read_as_neither_present_nor_absent",
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
       ]
     },
     {
@@ -537,7 +571,165 @@
         "an_array_of_words_keeps_the_flags_a_runtime_value_sits_between",
         "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
         "a_command_built_over_several_statements_is_one_command",
-        "two_functions_holding_a_command_each_do_not_share_one"
+        "two_functions_holding_a_command_each_do_not_share_one",
+        "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
+        "a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir",
+        "a_call_site_writing_its_list_as_a_vec_is_read_like_one_writing_an_array",
+        "a_call_written_inside_a_macro_is_listed_rather_than_missed",
+        "a_method_call_inside_a_macro_is_not_read_as_a_call_of_a_free_function",
+        "a_hole_that_is_not_a_parameter_is_not_followed_back",
+        "a_method_hands_over_no_parameter_this_reader_follows",
+        "a_name_that_means_two_functions_is_not_followed_back",
+        "a_parameter_a_closure_has_taken_over_is_not_followed_back",
+        "a_parameter_a_local_has_taken_over_is_not_followed_back",
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in",
+        "a_wrapper_nothing_calls_says_that_rather_than_reading_as_clean",
+        "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
+        "an_associated_function_is_not_a_call_of_a_free_function_of_that_name",
+        "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name",
+        "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
+        "two_lists_handed_over_are_refused_rather_than_split_between_the_parameters"
+      ]
+    },
+    {
+      "name": "a-call-inside-a-macro-is-not-looked-for",
+      "why": "`syn` hands macro invocations over as tokens and does not parse them, so `assert!(run(&[..]).is_ok())` is a call the walk cannot see. Left out, a wrapper whose other callers all wrote literals reads as one whose EVERY call site was read — the one way this hop can report a partly-read population as a whole one",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                        if wanted.contains(&name) {",
+          "to": "                        if wanted.contains(&name) && false {"
+        }
+      ],
+      "expect_red": [
+        "a_call_written_inside_a_macro_is_listed_rather_than_missed"
+      ]
+    },
+    {
+      "name": "a-dotted-name-in-a-macro-is-read-as-a-free-call",
+      "why": "`x.run(..)` inside a macro is the receiver's `run`, and the only thing in the tokens that says so is the dot in front of it; without that the reader lists a call site that does not exist and leaves a site carried for a reason that is not true",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                previous = (!after_a_dot).then_some(ident);",
+          "to": "                previous = Some(ident);"
+        }
+      ],
+      "expect_red": [
+        "a_method_call_inside_a_macro_is_not_read_as_a_call_of_a_free_function"
+      ]
+    },
+    {
+      "name": "a-name-that-means-two-functions-is-followed-back-anyway",
+      "why": "a wrapper's words are read at its call sites, so a name two functions answer to hands one caller's literals to the other one's spawn — a cargo command in the population that nothing in this repository runs",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        Some(1) => {}",
+          "to": "        Some(_) => {}"
+        }
+      ],
+      "expect_red": [
+        "a_name_that_means_two_functions_is_not_followed_back"
+      ]
+    },
+    {
+      "name": "a-parameter-a-local-took-over-is-followed-back-anyway",
+      "why": "the name still reads like the parameter and is not it any more, so the call sites' literals would answer for words that never reach this spawn",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            && !self.values.contains_key(&name)",
+          "to": "            && !name.is_empty()"
+        }
+      ],
+      "expect_red": [
+        "a_parameter_a_local_has_taken_over_is_not_followed_back"
+      ]
+    },
+    {
+      "name": "a-parameter-a-closure-took-over-is-followed-back-anyway",
+      "why": "the same shadowing one binding further in — a closure argument of that name is not the parameter, and reading it as one answers a question nobody asked",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            && !self.shadowed.contains(&name))",
+          "to": "            && !name.is_empty())"
+        }
+      ],
+      "expect_red": [
+        "a_parameter_a_closure_has_taken_over_is_not_followed_back"
+      ]
+    },
+    {
+      "name": "a-call-qualified-by-a-type-counts-as-a-call-of-that-name",
+      "why": "`Command::new(..)` and `Path::new(..)` would become calls of whichever `fn new` is unique in the tree, and the words they hand over would be attributed to a wrapper that never took them",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if let Some(qualifier) = before.last() {",
+          "to": "    if let Some(qualifier) = before.last().filter(|_| false) {"
+        }
+      ],
+      "expect_red": [
+        "an_associated_function_is_not_a_call_of_a_free_function_of_that_name"
+      ]
+    },
+    {
+      "name": "an-associated-functions-parameters-are-followed-back",
+      "why": "an associated function is called `G::make(..)` and never bare, so a bare call of that name is somebody else's — an import, a macro's expansion. Following the parameter puts that caller's literals into a command nothing runs",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        self.in_function(item.sig.ident.to_string(), Vec::new(), &item.block);",
+          "to": "        self.in_function(item.sig.ident.to_string(), parameters_of(&item.sig), &item.block);"
+        }
+      ],
+      "expect_red": [
+        "an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name"
+      ]
+    },
+    {
+      "name": "a-word-added-on-some-paths-is-filled-in-from-a-caller",
+      "why": "no caller's literal says whether a conditional flag is there, and a command reported as pinning a lockfile it pins every other Tuesday is the false green this reader exists to refuse",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        .find(|word| matches!(word, Word::Sometimes(_)))",
+          "to": "        .find(|_word| false)"
+        }
+      ],
+      "expect_red": [
+        "a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in"
+      ]
+    },
+    {
+      "name": "the-callers-words-are-appended-rather-than-spliced",
+      "why": "a flag the wrapper adds after the caller's words would move in front of the subcommand; a command whose words were reordered is a different command, and every reading after it is about that one",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        filled.splice(hole.at..=hole.at, handed.iter().cloned());",
+          "to": "        { filled.remove(hole.at); filled.extend(handed.iter().cloned()); }"
+        }
+      ],
+      "expect_red": [
+        "the_words_a_caller_writes_keep_their_place_among_the_sites_own"
+      ]
+    },
+    {
+      "name": "one-caller-read-is-taken-for-all-of-them",
+      "why": "a site four callers finished and a fifth did not is still a site with a hole; counting it as read is a partly-read population reported as a whole one, which is the shape R1190 named",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        !self.from_callers.is_empty() && self.from_callers.iter().all(|call| call.words.is_some())",
+          "to": "        !self.from_callers.is_empty()"
+        }
+      ],
+      "expect_red": [
+        "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
+        "a_call_written_inside_a_macro_is_listed_rather_than_missed"
       ]
     }
   ]

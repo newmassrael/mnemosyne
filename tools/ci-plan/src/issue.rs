@@ -50,12 +50,14 @@ use std::process::Command;
 
 /// Whose lockfile a cargo command resolves — the fact only the call site has.
 ///
-/// THREE ARMS AND EACH ONE OWES SOMETHING. The third exists because a gate's
-/// census is pointed at a manifest by whoever calls it, so its author honestly
-/// cannot name the tree — and the arm that declines to name it is the one with
-/// the HARDEST obligation rather than the easiest: the command must be unable to
-/// touch a lockfile at all. An arm that asked nothing would be an exemption, and
-/// R1259 spent a round on what an expectation that cannot fail is worth.
+/// FOUR ARMS AND EACH ONE OWES SOMETHING. Two of them decline to name a tree,
+/// because a gate's census is pointed at a manifest by whoever calls it and its
+/// author honestly cannot say which — and declining is the HARDEST position
+/// rather than the easiest, with two ways to pay for it: resolve nothing at all
+/// ([`Tree::WhereverTheCallerPoints`]), or pin whatever you land on
+/// ([`Tree::PinnedWhereverItPoints`]). An arm that asked nothing would be an
+/// exemption, and R1259 spent a round on what an expectation that cannot fail is
+/// worth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tree {
     /// This repository, in any of its workspaces. Its lockfiles are tracked
@@ -76,6 +78,23 @@ pub enum Tree {
     /// lockfile is refused, because whose lockfile it is has become a question
     /// with an answer nobody wrote down.
     WhereverTheCallerPoints(&'static str),
+    /// Whichever tree the caller points at, PINNED WHATEVER IT TURNS OUT TO BE.
+    ///
+    /// The arm above declines to name a tree and pays by touching no lockfile at
+    /// all. This one declines and pays the other way: the command says
+    /// `--locked`, so whosever lockfile it meets, it REPORTS a disagreement
+    /// instead of repairing it. That is the answer for a gate that has to run a
+    /// resolving subcommand — `cargo check` for the artifacts it reads, `cargo
+    /// test -- --list` for the names it asks about — over a workspace named at
+    /// run time.
+    ///
+    /// THE COST IS REAL AND IS THE POINT: pointed at a tree with a stale
+    /// lockfile, or none, the gate now FAILS where it used to quietly rewrite,
+    /// and a gate that rewrites the tree it is judging is the very thing
+    /// `locked_resolution_smoke` exists to find. A caller whose trees are
+    /// throwaway makes their lockfiles first (`cargo generate-lockfile`), which
+    /// is one line and says what it is doing.
+    PinnedWhereverItPoints(&'static str),
 }
 
 impl Tree {
@@ -84,7 +103,9 @@ impl Tree {
     pub fn because(&self) -> Option<&'static str> {
         match self {
             Self::ThisRepository => None,
-            Self::MadeByThisRun(why) | Self::WhereverTheCallerPoints(why) => Some(why),
+            Self::MadeByThisRun(why)
+            | Self::WhereverTheCallerPoints(why)
+            | Self::PinnedWhereverItPoints(why) => Some(why),
         }
     }
 }

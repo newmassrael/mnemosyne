@@ -204,6 +204,7 @@ fn library_of(
         &[
             "check",
             "-q",
+            "--locked",
             "--manifest-path",
             &manifest.display().to_string(),
             "-p",
@@ -243,6 +244,7 @@ fn dev_only_externs(
         &[
             "check",
             "-q",
+            "--locked",
             "--manifest-path",
             &manifest.display().to_string(),
             "-p",
@@ -386,7 +388,20 @@ fn document_package(
             selectors.join(" ")
         );
         let manifest_arg = manifest.display().to_string();
-        let mut argv: Vec<&str> = vec!["rustdoc", "--manifest-path", &manifest_arg, "-p", package];
+        // `--locked` HERE TOO, and this reader cannot see it. The declaration in
+        // `cargo` below covers every command through it, and the two whose words
+        // are assembled at run time are the ones no law reads: `ci_plan::rust`
+        // follows a hole back to a caller's LITERAL, and a list built two lines
+        // earlier is not one. The flag is right whether or not anything is
+        // watching, which is the whole reason it is written here.
+        let mut argv: Vec<&str> = vec![
+            "rustdoc",
+            "--locked",
+            "--manifest-path",
+            &manifest_arg,
+            "-p",
+            package,
+        ];
         argv.extend(selectors.iter().map(String::as_str));
         argv.extend(["--keep-going", "--message-format=json"]);
         let output = cargo(root, &argv, Some(flags))?;
@@ -493,6 +508,7 @@ fn list_harness(
     let mut argv: Vec<String> = vec![
         "test".to_string(),
         "-q".to_string(),
+        "--locked".to_string(),
         "--manifest-path".to_string(),
         manifest_arg,
         "-p".to_string(),
@@ -519,9 +535,11 @@ fn list_harness(
 }
 
 fn cargo(root: &Path, argv: &[&str], rustdoc_flags: Option<&str>) -> Result<Output, String> {
-    let mut command = issue::cargo(Tree::WhereverTheCallerPoints(
+    let mut command = issue::cargo(Tree::PinnedWhereverItPoints(
         "the gate documents the workspace it was pointed at — this repository \
-         under the side gate, a fixture under its own cases",
+         under the side gate, a fixture under its own cases — and every \
+         resolving command below says `--locked`, so whichever it is, a \
+         lockfile that disagrees is reported rather than repaired",
     ));
     command.current_dir(root).args(argv);
     match rustdoc_flags {

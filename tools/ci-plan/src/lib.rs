@@ -1637,9 +1637,17 @@ pub fn lock_verdict(
             return LockVerdict::Unreadable(format!(
                 "declared as running wherever the caller points ({why}), and yet \
                  `cargo {subcommand}` resolves — a command that can rewrite a \
-                 lockfile has to say whose"
+                 lockfile has to say whose, or pin it whosever it is"
             ))
         }
+        // THE OTHER WAY TO PAY FOR DECLINING TO NAME A TREE. This arm asks to be
+        // judged as though every tree were one to pin, which is the strictest
+        // reading available and the only one that is safe when the answer is not
+        // known: `--locked` over a tree nobody here owns fails loudly, and over
+        // one we do own it is exactly the flag the law wants. So `ours` is true,
+        // and the pair below decides the verdict as it does for any other
+        // command.
+        Some(rust::Declared::PinnedWhereverItPoints(_)) => true,
         Some(rust::Declared::Unreadable(written)) => {
             return LockVerdict::Unreadable(format!(
                 "the tree it runs over is declared as `{written}`, which this \
@@ -2244,6 +2252,29 @@ pub fn workspaces(root: &Path) -> Workspaces {
 /// about what its verdict is ABOUT, never a default.
 pub fn workspaces_ours_only(root: &Path) -> Workspaces {
     ask_lister(root, &["--ours-only"])
+}
+
+/// The workspace DIRECTORIES this repository cannot pin — the ones resolving
+/// against a tree it does not own.
+///
+/// ONE SPELLING FOR A QUESTION TWO GATES ASK, and the second one asked it wrong.
+/// `locked_resolution_smoke` carried this filter privately, and
+/// `feature_coverage_smoke` reasoned from the MANIFEST instead — "the manifest is
+/// one this repository tracks, so the command may pin" — which is true of the
+/// manifest and false of the lockfile. `studio` tracks its manifest here and
+/// path-depends on a sibling checkout, so its `Cargo.lock` is gitignored and
+/// moves whenever that sibling does: `--locked` over it is a gate somebody
+/// else's commit turns red, which is `LockVerdict::PinsWhatItDoesNotOwn` written
+/// out by hand. R1263 met it as a red root suite the day the sibling moved its
+/// own dependency pin.
+#[must_use]
+pub fn workspaces_this_repository_cannot_pin(root: &Path) -> BTreeSet<String> {
+    workspaces(root)
+        .ownership
+        .into_iter()
+        .filter(|(_, ownership)| matches!(ownership, Ownership::Foreign(_)))
+        .map(|(directory, _)| directory)
+        .collect()
 }
 
 fn ask_lister(root: &Path, extra: &[&str]) -> Workspaces {

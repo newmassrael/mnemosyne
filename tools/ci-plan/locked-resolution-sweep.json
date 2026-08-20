@@ -155,8 +155,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "                Word::Unknown(_) | Word::Sometimes(_) => None,",
-          "to": "                Word::Unknown(text) | Word::Sometimes(text) => Some(text.clone()),"
+          "from": "            Word::Unknown(_) | Word::Sometimes(_) => None,",
+          "to": "            Word::Unknown(text) | Word::Sometimes(text) => Some(text.clone()),"
         }
       ],
       "expect_red": [
@@ -187,6 +187,30 @@
         }
       ],
       "expect_red": ["what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"]
+    },
+    {
+      "name": "pinning-wherever-it-points-is-read-as-owning-nothing",
+      "why": "the fourth arm asks to be judged as though every tree were one to pin, which is the strictest reading and the only safe one when nobody named the tree; read the other way it becomes an exemption, and the gate that runs `cargo check` over whatever workspace it is handed goes back to rewriting the lockfile it was pointed at",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::PinnedWhereverItPoints(_)) => true,",
+          "to": "        Some(rust::Declared::PinnedWhereverItPoints(_)) => false,"
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "the-gate-pointed-at-a-workspace-resolves-it-freely",
+      "why": "`item-citations` runs `cargo check` over whichever workspace it is handed — this repository under the side gate — and without the flag a lockfile that disagrees with its manifests is REWRITTEN rather than reported, with every check after it in the same run reading the repaired file",
+      "edits": [
+        {
+          "file": "tools/item-citations/src/main.rs",
+          "from": "            \"check\",\n            \"-q\",\n            \"--locked\",\n            \"--manifest-path\",\n            &manifest.display().to_string(),\n            \"-p\",\n            package,\n            \"--message-format=json\",",
+          "to": "            \"check\",\n            \"-q\",\n            \"--manifest-path\",\n            &manifest.display().to_string(),\n            \"-p\",\n            package,\n            \"--message-format=json\","
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
     }
   ]
 }

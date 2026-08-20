@@ -50,7 +50,9 @@
 //!   words, so the word list has a hole no rendering can fill: a flag might be
 //!   in there. Counted and named rather than judged, because a command this
 //!   reader cannot finish reading and reports as compliant is the empty answer
-//!   wearing a clean one's clothes.
+//!   wearing a clean one's clothes. A hole that is a PARAMETER is followed one
+//!   hop BACKWARDS first — see below — and what stays here is what that hop
+//!   could not finish.
 //! - **[`RustSpawns::beside_the_door`]** — a cargo spawn that did not come
 //!   through [`crate::issue::cargo`]. The defect.
 //! - **[`RustSpawns::unplaceable`]** — the PROGRAM is an expression this reader
@@ -74,6 +76,39 @@
 //! `env!("CARGO_BIN_EXE_<name>")` is NOT one of them — that is a binary this
 //! workspace builds, and it is recognised here precisely so it is never mistaken
 //! for cargo by a reader that matched the letters.
+//!
+//! # The hop in the other direction
+//!
+//! Everywhere above, a name is followed FORWARDS to the value it holds. A
+//! wrapper's words cannot be read that way at all:
+//!
+//! ```text
+//! fn cargo(root: &Path, argv: &[&str]) -> …  { issue::cargo(..).args(argv) }
+//! ```
+//!
+//! `argv` holds nothing here. It holds whatever each CALL SITE writes, and the
+//! call sites write literals — `["metadata", "--no-deps", …]`, `["check", "-q",
+//! "--locked", …]`. So the words are one hop away in the opposite direction, and
+//! R1262 wrote them down as a limit of shape when they were undone work.
+//!
+//! One spawn becomes one command PER CALL SITE, attributed to the caller,
+//! because that is the file a person edits to change what runs. What the hop
+//! costs is safety about WHICH function is being called, and three rules buy it:
+//! only a plain `fn` is followed (a method's calls are written `x.name(..)`, and
+//! no reading of the syntax says which type `x` is); the name and its argument
+//! count must belong to exactly one tracked function, which is the forward hop's
+//! "a name that means two things means neither" pointed backwards; and a call
+//! qualified by a TYPE — `Command::new(..)` — is not a call of a free function
+//! of that name. Every refusal is a sentence on the site
+//! ([`RustSpawn::unfollowed`]), and a hop that reaches only some of the call
+//! sites leaves the site carried with the count of the ones it did not
+//! ([`RustSpawn::reach`]).
+//!
+//! And a call written inside a MACRO invocation is listed as a call site whose
+//! words are unreadable. `syn` hands macro tokens over unparsed, so
+//! `assert!(run(&["build"]).is_ok())` is invisible to the walk — the one way
+//! this hop could report a partly-read site as a finished one, which is the
+//! failure this repository keeps paying for in other shapes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -102,6 +137,10 @@ pub enum Declared {
     /// command must resolve nothing, and [`crate::lock_verdict`] is where that
     /// is held.
     WhereverTheCallerPoints(String),
+    /// `Tree::PinnedWhereverItPoints("…")`. The other way to pay for declining
+    /// to name a tree: the command must say `--locked`, so a disagreement is
+    /// reported wherever it is met rather than repaired.
+    PinnedWhereverItPoints(String),
     /// A `Tree` expression this reader cannot read — a variable, a call, a
     /// variant it does not know. NOT a pass.
     Unreadable(String),
@@ -161,6 +200,49 @@ impl Word {
     }
 }
 
+/// A place in a site's words where an unknown NUMBER of words was handed over,
+/// and the parameter they came from when they came from one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hole {
+    /// Where in [`RustSpawn::words`] it sits.
+    pub at: usize,
+    /// The enclosing function's parameter the site hands over WHOLE. `None`
+    /// when the expression is a local, a field, a transform — anything a call
+    /// site's literal does not answer.
+    pub parameter: Option<String>,
+    /// The expression as the site wrote it, for a report that has to say what it
+    /// could not read.
+    pub written: String,
+}
+
+/// One call of the function a spawn sits in, and the words it hands over.
+///
+/// THIS IS THE HOP IN THE OTHER DIRECTION. Everywhere else this reader follows a
+/// name FORWARDS to what it holds; here the hole is a parameter, and what fills
+/// it is written by whoever calls — one literal per call site, each of them a
+/// different cargo command through the same door.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallerWords {
+    /// The tracked path the call is written in.
+    pub source: String,
+    /// The line the call sits on.
+    pub line: usize,
+    /// The function that holds the call.
+    pub owner: String,
+    /// The words handed over, or `None` when the call hands over something this
+    /// reader cannot read — a value built two lines earlier, another command's
+    /// arguments, a list assembled in a loop.
+    pub words: Option<Vec<Word>>,
+}
+
+impl CallerWords {
+    /// Where it is, for a gate's own output.
+    #[must_use]
+    pub fn origin(&self) -> String {
+        format!("{}:{} `{}`", self.source, self.line, self.owner)
+    }
+}
+
 /// One place a tracked Rust source spawns a program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RustSpawn {
@@ -175,6 +257,20 @@ pub struct RustSpawn {
     pub program: Program,
     /// What it hands over, in the order the source hands it.
     pub words: Vec<Word>,
+    /// The parameters of the function that holds it, in order. Empty when the
+    /// spawn is not inside a plain `fn` — a method, an associated function, the
+    /// file itself — and a hole in one of those is not followed, because the
+    /// calls this reader can enumerate by name are the ones written as
+    /// `name(..)`.
+    pub parameters: Vec<String>,
+    /// Every `.args(..)` whose word COUNT the site does not spell.
+    pub holes: Vec<Hole>,
+    /// What following those holes back to the call sites found. Empty when
+    /// there was nothing to follow, or when [`RustSpawn::unfollowed`] says why
+    /// the hop could not be taken at all.
+    pub from_callers: Vec<CallerWords>,
+    /// Why the holes could not be followed back, when they could not.
+    pub unfollowed: Option<String>,
 }
 
 impl RustSpawn {
@@ -190,7 +286,9 @@ impl RustSpawn {
         let mut out = match &self.program {
             Program::Cargo(Declared::ThisRepository) => "cargo".to_string(),
             Program::Cargo(
-                Declared::MadeByThisRun(why) | Declared::WhereverTheCallerPoints(why),
+                Declared::MadeByThisRun(why)
+                | Declared::WhereverTheCallerPoints(why)
+                | Declared::PinnedWhereverItPoints(why),
             ) => format!("cargo [{why}]"),
             Program::Cargo(Declared::Unreadable(written)) => format!("cargo [{written}?]"),
             Program::CargoBesideTheDoor(how)
@@ -209,13 +307,73 @@ impl RustSpawn {
     /// this reader cannot count — or one whose membership depends on the path
     /// taken through the function.
     fn complete_words(&self) -> Option<Vec<String>> {
-        self.words
+        without_a_hole(&self.words)
+    }
+
+    /// How far the hop back to the call sites got, in one line — the SIZE of
+    /// what is still unread beside what became readable.
+    ///
+    /// R1190's rule about reporting a limit's size, applied to a limit that is
+    /// now partly gone: three of five call sites reading and two not is a
+    /// different fact from none of them reading, and a site that printed only
+    /// "carried" said the same thing for both.
+    #[must_use]
+    pub fn reach(&self) -> String {
+        if let Some(why) = &self.unfollowed {
+            return format!("not followed back: {why}");
+        }
+        if self.from_callers.is_empty() {
+            return "nothing to follow".to_string();
+        }
+        let read = self
+            .from_callers
             .iter()
-            .map(|word| match word {
-                Word::Spelled(text) | Word::Runtime(text) => Some(text.clone()),
-                Word::Unknown(_) | Word::Sometimes(_) => None,
-            })
-            .collect()
+            .filter(|caller| caller.words.is_some())
+            .count();
+        let unread: Vec<String> = self
+            .from_callers
+            .iter()
+            .filter(|caller| caller.words.is_none())
+            .map(CallerWords::origin)
+            .collect();
+        if unread.is_empty() {
+            return format!("{read} call site(s) read");
+        }
+        format!(
+            "{read} of {} call site(s) read; the rest hand over words this reader \
+             cannot read: {}",
+            self.from_callers.len(),
+            unread.join(", ")
+        )
+    }
+
+    /// Did EVERY call site of this wrapper write its words down?
+    ///
+    /// The question the sorting turns on, and it is `all` rather than `any` on
+    /// purpose: a site where four callers wrote literals and a fifth handed over
+    /// a value it built is still a site this reader cannot finish, and rounding
+    /// that off because most of it became readable is how a partly-read
+    /// population comes to be reported as a whole one.
+    #[must_use]
+    pub fn every_call_read(&self) -> bool {
+        !self.from_callers.is_empty() && self.from_callers.iter().all(|call| call.words.is_some())
+    }
+
+    /// The whole words of the command ONE call site issues through this site:
+    /// the site's own, with its hole filled by what that caller wrote.
+    ///
+    /// `None` when the caller's words were not read. The hole is single by
+    /// construction — [`follow_back`] refuses a site with more than one, because
+    /// splitting one caller's literals between two parameters is a second
+    /// question and this reader answers the first honestly rather than both
+    /// vaguely.
+    #[must_use]
+    pub fn words_from(&self, caller: &CallerWords) -> Option<Vec<String>> {
+        let handed = caller.words.as_ref()?;
+        let hole = self.holes.first()?;
+        let mut filled = self.words.clone();
+        filled.splice(hole.at..=hole.at, handed.iter().cloned());
+        without_a_hole(&filled)
     }
 
     /// This site as one of the population's commands, carrying what it declared.
@@ -242,6 +400,34 @@ impl RustSpawn {
             declared: Some(declared),
         }
     }
+
+    /// The command ONE call site issues through this site, attributed where a
+    /// person would go to change it.
+    ///
+    /// THE WORDS ARE THE CALLER'S, so the caller's file is the source: putting
+    /// `--locked` into one of these means editing the literal at that call site,
+    /// and a verdict that named only the wrapper would send its reader to a
+    /// function whose words are a parameter. The door is named in the owner
+    /// beside it, because the DECLARATION lives there and is the other thing
+    /// such a verdict can be about.
+    fn as_command_from(
+        &self,
+        caller: &CallerWords,
+        words: Vec<String>,
+        declared: Declared,
+    ) -> CargoCommand {
+        let mut command = self.as_command(words, declared);
+        command.source = caller.source.clone();
+        command.owner = if caller.source == self.source {
+            format!("{}:{} → {}", caller.owner, caller.line, self.owner)
+        } else {
+            format!(
+                "{}:{} → {}:{} {}",
+                caller.owner, caller.line, self.source, self.line, self.owner
+            )
+        };
+        command
+    }
 }
 
 /// Every place tracked Rust spawns something, sorted into what can be judged and
@@ -259,8 +445,16 @@ pub struct RustSpawns {
     /// `lock_verdict` needs, and a command held out of the population is one no
     /// law asks anything of.
     pub commands: Vec<CargoCommand>,
-    /// Cargo spawns through the door handing over a list of unknown length.
+    /// Cargo spawns through the door handing over a list of unknown length that
+    /// no call site of theirs finished either.
     pub carried: Vec<RustSpawn>,
+    /// Commands in [`RustSpawns::commands`] whose words were read at a CALL SITE
+    /// rather than beside the spawn.
+    ///
+    /// COUNTED APART, because "this reader got further" and "this repository
+    /// issues more commands" are different facts about the same growing number,
+    /// and one total for both says neither.
+    pub through_a_wrapper: usize,
     /// Cargo spawns that did not come through the door. The defect.
     pub beside_the_door: Vec<RustSpawn>,
     /// Spawns whose program this reader cannot name.
@@ -339,17 +533,32 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
     let manifests = tracked_manifests(root);
 
     let mut found = RustSpawns::default();
+    // THREE PASSES NOW, and the third is the one that goes BACKWARDS. A site
+    // whose words are a parameter cannot be finished where it is written; the
+    // words are at the call sites, and those are in files this walk may not have
+    // reached yet. So every file is walked first and the holes are followed
+    // afterwards, over the whole tree at once.
+    let mut sites = Vec::new();
+    let mut walked: Vec<(String, syn::File, String)> = Vec::new();
     for (path, file, named) in parsed {
         found.files += 1;
-        let mut walk = Walk::new(&path, &named, &shared, manifest_dir_of(&path, &manifests));
+        let manifest_dir = manifest_dir_of(&path, &manifests);
+        let mut walk = Walk::new(&path, &named, &shared, manifest_dir.clone());
         walk.visit_file(&file);
-        for site in walk.sites {
+        sites.append(&mut walk.sites);
+        walked.push((path, file, manifest_dir));
+    }
+    follow_every_hole(&mut sites, &walked);
+
+    {
+        for site in sites {
             found.spawns += 1;
             let declared = match &site.program {
                 Program::Cargo(
                     declared @ (Declared::ThisRepository
                     | Declared::MadeByThisRun(_)
-                    | Declared::WhereverTheCallerPoints(_)),
+                    | Declared::WhereverTheCallerPoints(_)
+                    | Declared::PinnedWhereverItPoints(_)),
                 ) => declared.clone(),
                 // THE DOOR'S OWN SPAWN NEEDS NO EXCEPTION HERE, which is a
                 // finding rather than an omission. It ends in a `Command::new`,
@@ -378,11 +587,51 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
             };
             match site.complete_words() {
                 Some(words) => found.commands.push(site.as_command(words, declared)),
-                None => found.carried.push(site),
+                None => {
+                    // ONE COMMAND PER CALL SITE THAT WROTE ITS WORDS DOWN, and
+                    // the site stays carried while any call site did not. Both
+                    // halves are the point: the commands are now judged, and the
+                    // remainder is still counted rather than rounded off by the
+                    // half that became readable.
+                    for caller in &site.from_callers {
+                        if let Some(words) = site.words_from(caller) {
+                            found.through_a_wrapper += 1;
+                            found.commands.push(site.as_command_from(
+                                caller,
+                                words,
+                                declared.clone(),
+                            ));
+                        }
+                    }
+                    if !site.every_call_read() {
+                        found.carried.push(site);
+                    }
+                }
             }
         }
     }
     found
+}
+
+/// Follow every hole this walk left back to the words the call sites wrote.
+///
+/// The names asked for are the functions holding a hole and nothing else: the
+/// definition count is taken over the whole tree because it decides whether a
+/// name may be followed at all, but no tree is walked for calls of a name
+/// nothing is waiting on.
+fn follow_every_hole(sites: &mut [RustSpawn], walked: &[(String, syn::File, String)]) {
+    let wanted: BTreeSet<String> = sites
+        .iter()
+        .filter(|site| !site.holes.is_empty())
+        .map(|site| site.owner.rsplit("::").next().unwrap_or("").to_string())
+        .collect();
+    if wanted.is_empty() {
+        return;
+    }
+    let other = read_the_other_direction(walked, &wanted);
+    for site in sites.iter_mut().filter(|site| !site.holes.is_empty()) {
+        follow_back(site, &other);
+    }
 }
 
 /// The directory cargo would give this file's crate as `CARGO_MANIFEST_DIR`:
@@ -414,12 +663,36 @@ fn manifest_dir_of(path: &str, manifests: &[String]) -> String {
 /// When the text does not parse as Rust.
 #[must_use]
 pub fn spawns_in(source: &str, text: &str, manifest_dir: &str) -> Vec<RustSpawn> {
-    let file = syn::parse_file(text).unwrap_or_else(|why| panic!("{source} does not parse: {why}"));
-    let named = named_values(&file);
+    spawns_across(&[(source, text, manifest_dir)])
+}
+
+/// Every spawn in SEVERAL pieces of Rust, read as one tree.
+///
+/// THE HOP BACKWARDS CROSSES FILES and a one-file reading cannot pin it: a
+/// wrapper in a library and the literals its callers write are routinely in
+/// different files, and so is the crate whose `CARGO_MANIFEST_DIR` those
+/// literals read. Each source is `(tracked path, text, manifest directory)`,
+/// which is what the tree walk derives per file and hands the same reader.
+///
+/// # Panics
+///
+/// When any of the texts does not parse as Rust.
+#[must_use]
+pub fn spawns_across(sources: &[(&str, &str, &str)]) -> Vec<RustSpawn> {
     let shared = BTreeMap::new();
-    let mut walk = Walk::new(source, &named, &shared, manifest_dir.to_string());
-    walk.visit_file(&file);
-    walk.sites
+    let mut sites = Vec::new();
+    let mut walked = Vec::new();
+    for (source, text, manifest_dir) in sources {
+        let file =
+            syn::parse_file(text).unwrap_or_else(|why| panic!("{source} does not parse: {why}"));
+        let named = named_values(&file);
+        let mut walk = Walk::new(source, &named, &shared, (*manifest_dir).to_string());
+        walk.visit_file(&file);
+        sites.append(&mut walk.sites);
+        walked.push(((*source).to_string(), file, (*manifest_dir).to_string()));
+    }
+    follow_every_hole(&mut sites, &walked);
+    sites
 }
 
 /// One file's walk.
@@ -449,6 +722,14 @@ struct Walk<'a> {
     commands: BTreeMap<String, Vec<usize>>,
     /// Local bindings holding something a spawn later names as its program.
     values: BTreeMap<String, syn::Expr>,
+    /// The parameters of the innermost plain `fn` being walked, in order — empty
+    /// inside a method, an associated function, or outside any function at all.
+    parameters: Vec<String>,
+    /// Names bound by something OTHER than a `let` around what is being visited:
+    /// a closure's arguments, a `for` pattern. A hole naming one of these is a
+    /// hole naming that binding and not the parameter it shadows, and following
+    /// it back to a call site would answer a question nobody asked.
+    shadowed: BTreeSet<String>,
     /// How many branches deep the walk currently is inside the function — an
     /// `if`, a `match` arm, a loop body, a closure. Compared against the depth
     /// the site was OPENED at, so a whole command written inside one `if` reads
@@ -474,6 +755,8 @@ impl<'a> Walk<'a> {
             sites: Vec::new(),
             commands: BTreeMap::new(),
             values: BTreeMap::new(),
+            parameters: Vec::new(),
+            shadowed: BTreeSet::new(),
             depth: 0,
             opened_at: Vec::new(),
         }
@@ -490,16 +773,34 @@ impl<'a> Walk<'a> {
     /// Walk a function body with its own binding scope. Bindings are per
     /// function: two functions may each hold a `command`, and carrying one scope
     /// across both would file the second one's arguments under the first.
-    fn in_function(&mut self, name: String, body: &syn::Block) {
+    fn in_function(&mut self, name: String, parameters: Vec<String>, body: &syn::Block) {
         let commands = std::mem::take(&mut self.commands);
         let values = std::mem::take(&mut self.values);
+        let shadowed = std::mem::take(&mut self.shadowed);
         let depth = std::mem::take(&mut self.depth);
+        let outer_parameters = std::mem::replace(&mut self.parameters, parameters);
         self.owners.push(name);
         self.visit_block(body);
         self.owners.pop();
         self.commands = commands;
         self.values = values;
+        self.shadowed = shadowed;
+        self.parameters = outer_parameters;
         self.depth = depth;
+    }
+
+    /// Walk something a pattern binds names over — a closure body, a `for` body.
+    /// The names are the pattern's for the length of it and nobody else's.
+    fn under_a_pattern(&mut self, bound: BTreeSet<String>, walk: impl FnOnce(&mut Self)) {
+        let outer: Vec<String> = bound
+            .iter()
+            .filter(|name| self.shadowed.insert((*name).clone()))
+            .cloned()
+            .collect();
+        walk(self);
+        for name in outer {
+            self.shadowed.remove(&name);
+        }
     }
 
     /// Walk something that only happens on SOME paths.
@@ -518,6 +819,10 @@ impl<'a> Walk<'a> {
             owner: self.owner(),
             program,
             words: Vec::new(),
+            parameters: self.parameters.clone(),
+            holes: Vec::new(),
+            from_callers: Vec::new(),
+            unfollowed: None,
         });
         self.opened_at.push(self.depth);
         self.sites.len() - 1
@@ -646,7 +951,7 @@ impl<'a> Walk<'a> {
         match call.method.to_string().as_str() {
             "arg" => {
                 if let Some(first) = call.args.first() {
-                    let word = self.read_word(first);
+                    let word = read_word(&self.manifest_dir, first);
                     self.add(site, word);
                 }
             }
@@ -656,13 +961,21 @@ impl<'a> Walk<'a> {
                     // `["run", "--manifest-path", path]` is three words, one of
                     // them decided at runtime, and reading it as a hole would
                     // throw away the two flags that are right there.
-                    match self.word_list(first) {
+                    match word_list(&self.manifest_dir, first) {
                         Some(words) => {
                             for word in words {
                                 self.add(site, word);
                             }
                         }
-                        None => self.add(site, Word::Unknown(rendered_as_a_value(first))),
+                        None => {
+                            let hole = Hole {
+                                at: self.sites[site].words.len(),
+                                parameter: self.parameter_named(first),
+                                written: rendered_as_a_value(first),
+                            };
+                            self.sites[site].holes.push(hole);
+                            self.add(site, Word::Unknown(rendered_as_a_value(first)));
+                        }
                     }
                 }
             }
@@ -676,66 +989,22 @@ impl<'a> Walk<'a> {
         }
     }
 
-    /// One argument's word.
-    fn read_word(&self, expression: &syn::Expr) -> Word {
-        match self.compile_time_text(expression) {
-            Some(text) => Word::Spelled(text),
-            None => Word::Runtime(rendered_as_a_value(expression)),
-        }
-    }
-
-    /// The words of an `.args(..)` argument, or `None` when their NUMBER is
-    /// decided at runtime.
-    fn word_list(&self, expression: &syn::Expr) -> Option<Vec<Word>> {
-        match unwrap(expression) {
-            syn::Expr::Array(array) => Some(
-                array
-                    .elems
-                    .iter()
-                    .map(|item| self.read_word(item))
-                    .collect(),
-            ),
-            _ => None,
-        }
-    }
-
-    /// The text a word has BEFORE the program runs: a literal, the manifest
-    /// directory cargo hands this file's crate, or a `concat!` of those.
-    fn compile_time_text(&self, expression: &syn::Expr) -> Option<String> {
-        if let Some(literal) = string_literal(expression) {
-            return Some(literal);
-        }
-        let syn::Expr::Macro(macro_call) = unwrap(expression) else {
+    /// The parameter a `.args(..)` argument hands over WHOLE, when it hands over
+    /// one.
+    ///
+    /// The name has to still mean the parameter where the spawn is written: a
+    /// `let` of the same name, or a closure or loop binding around it, makes the
+    /// words somebody else's, and a call site's literal would then answer a
+    /// question nobody asked.
+    fn parameter_named(&self, expression: &syn::Expr) -> Option<String> {
+        let syn::Expr::Path(path) = through_the_shapes_that_keep_a_list(expression) else {
             return None;
         };
-        match macro_call
-            .mac
-            .path
-            .segments
-            .last()?
-            .ident
-            .to_string()
-            .as_str()
-        {
-            "env" => {
-                let name: syn::LitStr = macro_call.mac.parse_body().ok()?;
-                (name.value() == "CARGO_MANIFEST_DIR").then(|| self.manifest_dir.clone())
-            }
-            "concat" => {
-                let parts: syn::punctuated::Punctuated<syn::Expr, syn::Token![,]> = macro_call
-                    .mac
-                    .parse_body_with(
-                        syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated,
-                    )
-                    .ok()?;
-                let mut out = String::new();
-                for part in &parts {
-                    out.push_str(&self.compile_time_text(part)?);
-                }
-                Some(out)
-            }
-            _ => None,
-        }
+        let name = path.path.get_ident()?.to_string();
+        (self.parameters.contains(&name)
+            && !self.values.contains_key(&name)
+            && !self.shadowed.contains(&name))
+        .then_some(name)
     }
 
     /// What program an expression names, following it one hop when it names a
@@ -789,16 +1058,24 @@ impl<'a> Walk<'a> {
 
 impl<'ast> Visit<'ast> for Walk<'_> {
     fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
-        self.in_function(item.sig.ident.to_string(), &item.block);
+        self.in_function(
+            item.sig.ident.to_string(),
+            parameters_of(&item.sig),
+            &item.block,
+        );
     }
 
+    // A METHOD'S PARAMETERS ARE NOT FOLLOWED, and the empty list here is that
+    // decision rather than an omission. The calls this reader enumerates are the
+    // ones written `name(..)`; `x.name(..)` is a method call whose receiver
+    // decides which `name`, and no reading of the syntax says which type `x` is.
     fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
-        self.in_function(item.sig.ident.to_string(), &item.block);
+        self.in_function(item.sig.ident.to_string(), Vec::new(), &item.block);
     }
 
     fn visit_trait_item_fn(&mut self, item: &'ast syn::TraitItemFn) {
         if let Some(body) = &item.default {
-            self.in_function(item.sig.ident.to_string(), body);
+            self.in_function(item.sig.ident.to_string(), Vec::new(), body);
         }
     }
 
@@ -839,7 +1116,8 @@ impl<'ast> Visit<'ast> for Walk<'_> {
 
     fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
         self.visit_expr(&node.expr);
-        self.in_a_branch(|walk| walk.visit_block(&node.body));
+        let bound = names_bound_by(&node.pat);
+        self.in_a_branch(|walk| walk.under_a_pattern(bound, |walk| walk.visit_block(&node.body)));
     }
 
     fn visit_expr_loop(&mut self, node: &'ast syn::ExprLoop) {
@@ -847,7 +1125,8 @@ impl<'ast> Visit<'ast> for Walk<'_> {
     }
 
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
-        self.in_a_branch(|walk| walk.visit_expr(&node.body));
+        let bound = node.inputs.iter().flat_map(names_bound_by).collect();
+        self.in_a_branch(|walk| walk.under_a_pattern(bound, |walk| walk.visit_expr(&node.body)));
     }
 }
 
@@ -891,6 +1170,348 @@ fn named_values(file: &syn::File) -> Landings {
     let mut names = Names(Landings::default());
     names.visit_file(file);
     names.0
+}
+
+// --- the hop in the other direction -----------------------------------------
+
+/// One call written `name(..)`, kept so a hole in a spawn's words can be
+/// followed back to the words its caller wrote.
+struct Call {
+    source: String,
+    line: usize,
+    owner: String,
+    /// What `env!("CARGO_MANIFEST_DIR")` reads as in the CALLER's file, which is
+    /// where these words are written and therefore whose crate decides it.
+    manifest_dir: String,
+    arguments: Vec<syn::Expr>,
+}
+
+/// What the hop backwards needs to know about the tree it is taken in.
+#[derive(Default)]
+struct TheOtherDirection {
+    /// How many tracked functions answer to each name and argument count. More
+    /// than one, and a call of that name names none of them in particular — the
+    /// same rule the forward hop draws for a value two files disagree about,
+    /// pointed the other way.
+    definitions: BTreeMap<(String, usize), usize>,
+    /// Every call written `name(..)`, by name.
+    calls: BTreeMap<String, Vec<Call>>,
+    /// Calls of a wanted name written INSIDE A MACRO'S TOKENS, as (path, line).
+    ///
+    /// THE ONE WAY THIS HOP COULD REPORT A PARTLY-READ SITE AS FINISHED. `syn`
+    /// hands a macro invocation over as tokens and does not parse them, so
+    /// `assert!(run(&["build"]).is_ok())` is a call of `run` that the walk above
+    /// cannot see — and a wrapper whose other callers all wrote literals would
+    /// then read as one whose every call site was read. These are counted as
+    /// call sites whose words are unreadable, which is what they are.
+    in_macros: BTreeMap<String, Vec<(String, usize)>>,
+}
+
+/// Read a tree's function definitions and the calls of the names asked for.
+///
+/// THE DEFINITIONS ARE COUNTED OVER EVERYTHING and the calls only over what was
+/// asked, because the two answer different questions: the count decides whether
+/// a name may be followed at all, and it is wrong the moment it is taken over a
+/// subset.
+fn read_the_other_direction(
+    files: &[(String, syn::File, String)],
+    wanted: &BTreeSet<String>,
+) -> TheOtherDirection {
+    let mut found = TheOtherDirection::default();
+    for (path, file, manifest_dir) in files {
+        struct Definitions<'a>(&'a mut BTreeMap<(String, usize), usize>);
+        impl<'ast> Visit<'ast> for Definitions<'_> {
+            fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+                *self
+                    .0
+                    .entry((item.sig.ident.to_string(), item.sig.inputs.len()))
+                    .or_default() += 1;
+                syn::visit::visit_item_fn(self, item);
+            }
+            fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+                *self
+                    .0
+                    .entry((item.sig.ident.to_string(), item.sig.inputs.len()))
+                    .or_default() += 1;
+                syn::visit::visit_impl_item_fn(self, item);
+            }
+            fn visit_trait_item_fn(&mut self, item: &'ast syn::TraitItemFn) {
+                *self
+                    .0
+                    .entry((item.sig.ident.to_string(), item.sig.inputs.len()))
+                    .or_default() += 1;
+                syn::visit::visit_trait_item_fn(self, item);
+            }
+        }
+        Definitions(&mut found.definitions).visit_file(file);
+
+        struct Calls<'a> {
+            path: &'a str,
+            manifest_dir: &'a str,
+            wanted: &'a BTreeSet<String>,
+            owners: Vec<String>,
+            found: Vec<(String, Call)>,
+        }
+        impl Calls<'_> {
+            fn owner(&self) -> String {
+                if self.owners.is_empty() {
+                    "<file>".to_string()
+                } else {
+                    self.owners.join("::")
+                }
+            }
+        }
+        impl<'ast> Visit<'ast> for Calls<'_> {
+            fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+                self.owners.push(item.sig.ident.to_string());
+                syn::visit::visit_item_fn(self, item);
+                self.owners.pop();
+            }
+            fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+                self.owners.push(item.sig.ident.to_string());
+                syn::visit::visit_impl_item_fn(self, item);
+                self.owners.pop();
+            }
+            fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+                if let Some(name) = called_name(call) {
+                    if self.wanted.contains(&name) {
+                        let at: LineColumn = call.span().start();
+                        self.found.push((
+                            name,
+                            Call {
+                                source: self.path.to_string(),
+                                line: at.line,
+                                owner: self.owner(),
+                                manifest_dir: self.manifest_dir.to_string(),
+                                arguments: call.args.iter().cloned().collect(),
+                            },
+                        ));
+                    }
+                }
+                syn::visit::visit_expr_call(self, call);
+            }
+        }
+        let mut calls = Calls {
+            path,
+            manifest_dir,
+            wanted,
+            owners: Vec::new(),
+            found: Vec::new(),
+        };
+        calls.visit_file(file);
+        for (name, call) in calls.found {
+            found.calls.entry(name).or_default().push(call);
+        }
+
+        struct InMacros<'a> {
+            wanted: &'a BTreeSet<String>,
+            found: Vec<(String, usize)>,
+        }
+        impl<'ast> Visit<'ast> for InMacros<'_> {
+            fn visit_macro(&mut self, invocation: &'ast syn::Macro) {
+                calls_inside(invocation.tokens.clone(), self.wanted, &mut self.found);
+                syn::visit::visit_macro(self, invocation);
+            }
+        }
+        let mut in_macros = InMacros {
+            wanted,
+            found: Vec::new(),
+        };
+        in_macros.visit_file(file);
+        for (name, line) in in_macros.found {
+            found
+                .in_macros
+                .entry(name)
+                .or_default()
+                .push((path.to_string(), line));
+        }
+    }
+    found
+}
+
+/// Every `name(..)` written inside a macro's tokens, for the names asked about.
+///
+/// TOKENS, NOT SYNTAX, because that is all a macro invocation is until it is
+/// expanded — and expanding it is a different program. So the shape is matched:
+/// an identifier this reader is looking for, not preceded by a `.`, followed by
+/// a parenthesised group of the right number of arguments. Groups are walked
+/// into, because `assert!(v.contains(&run(&["a"])))` puts the call two
+/// delimiters deep.
+///
+/// Over-matching here is SAFE and under-matching is not: a call this finds
+/// becomes a call site whose words are unreadable, which leaves its site
+/// carried; one it misses is a command nobody counted.
+fn calls_inside(
+    tokens: proc_macro2::TokenStream,
+    wanted: &BTreeSet<String>,
+    into: &mut Vec<(String, usize)>,
+) {
+    let mut previous: Option<proc_macro2::Ident> = None;
+    let mut after_a_dot = false;
+    for token in tokens {
+        match token {
+            proc_macro2::TokenTree::Ident(ident) => {
+                previous = (!after_a_dot).then_some(ident);
+                after_a_dot = false;
+            }
+            proc_macro2::TokenTree::Group(group) => {
+                if group.delimiter() == proc_macro2::Delimiter::Parenthesis {
+                    if let Some(ident) = previous.take() {
+                        let name = ident.to_string();
+                        if wanted.contains(&name) {
+                            into.push((name, ident.span().start().line));
+                        }
+                    }
+                }
+                calls_inside(group.stream(), wanted, into);
+                previous = None;
+                after_a_dot = false;
+            }
+            proc_macro2::TokenTree::Punct(punct) => {
+                previous = None;
+                after_a_dot = punct.as_char() == '.';
+            }
+            proc_macro2::TokenTree::Literal(_) => {
+                previous = None;
+                after_a_dot = false;
+            }
+        }
+    }
+}
+
+/// The function a call names, when the call names one this reader can follow.
+///
+/// A TYPE BEFORE THE NAME MEANS THE RECEIVER DECIDES. `Command::new(..)` and
+/// `Path::new(..)` are not calls of any `fn new` written elsewhere in this
+/// repository, and a reader that matched the last segment alone would file every
+/// one of them under whichever `fn new` happened to be unique — words handed to
+/// a function that never took them.
+fn called_name(call: &syn::ExprCall) -> Option<String> {
+    let syn::Expr::Path(path) = call.func.as_ref() else {
+        return None;
+    };
+    let segments: Vec<String> = path
+        .path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    let (last, before) = segments.split_last()?;
+    if let Some(qualifier) = before.last() {
+        if qualifier.chars().next().is_some_and(char::is_uppercase) {
+            return None;
+        }
+    }
+    Some(last.clone())
+}
+
+/// Fill a site's hole from the call sites of the function it sits in, or say why
+/// that hop cannot be taken.
+///
+/// EVERY REFUSAL IS NAMED AND NONE OF THEM IS SILENT. A site this returns
+/// without callers stays exactly as carried as it was, and the sentence it
+/// carries is what distinguishes "nobody calls it" from "its name means two
+/// things" from "the words are not a parameter at all" — three different pieces
+/// of work, and a report that said "carried" for all three would name none.
+fn follow_back(site: &mut RustSpawn, other: &TheOtherDirection) {
+    let mut refuse = |why: String| site.unfollowed = Some(why);
+    if site.holes.len() > 1 {
+        refuse(format!(
+            "{} lists this reader cannot count, and splitting one call site's \
+             literals between them is a second question",
+            site.holes.len()
+        ));
+        return;
+    }
+    let Some(hole) = site.holes.first() else {
+        return;
+    };
+    if let Some(sometimes) = site
+        .words
+        .iter()
+        .find(|word| matches!(word, Word::Sometimes(_)))
+    {
+        refuse(format!(
+            "`{}` is added on some paths through the function only, which no \
+             caller's literal answers",
+            sometimes.rendered()
+        ));
+        return;
+    }
+    let Some(parameter) = hole.parameter.clone() else {
+        refuse(format!(
+            "the words handed over are `{}`, which is not a parameter of \
+             `{}` this reader can follow",
+            hole.written, site.owner
+        ));
+        return;
+    };
+    let Some(at) = site.parameters.iter().position(|name| *name == parameter) else {
+        refuse(format!(
+            "`{parameter}` is not among the parameters of `{}`",
+            site.owner
+        ));
+        return;
+    };
+    let name = site
+        .owner
+        .rsplit("::")
+        .next()
+        .unwrap_or(&site.owner)
+        .to_string();
+    let arity = site.parameters.len();
+    match other.definitions.get(&(name.clone(), arity)).copied() {
+        Some(1) => {}
+        other_count => {
+            refuse(format!(
+                "`{name}` is the name of {} function(s) of {arity} argument(s) in \
+                 this repository, so a call of it names none of them in particular",
+                other_count.unwrap_or(0)
+            ));
+            return;
+        }
+    }
+    let calls: Vec<&Call> = other
+        .calls
+        .get(&name)
+        .map(|calls| {
+            calls
+                .iter()
+                .filter(|call| call.arguments.len() == arity)
+                .collect()
+        })
+        .unwrap_or_default();
+    // A CALL INSIDE A MACRO IS A CALL SITE THIS READER CANNOT READ, and it is
+    // listed rather than left out. Leaving it out is the one way this hop could
+    // report a partly-read site as finished: `syn` hands macro invocations over
+    // as tokens, so `assert!(run(&["build"]).is_ok())` is invisible to the walk,
+    // and a wrapper whose other callers all wrote literals would read as one
+    // every call site of which was read.
+    let in_a_macro = other.in_macros.get(&name).map_or(&[][..], Vec::as_slice);
+    if calls.is_empty() && in_a_macro.is_empty() {
+        refuse(format!(
+            "nothing in this repository calls `{name}` with {arity} argument(s)"
+        ));
+        return;
+    }
+    site.from_callers = calls
+        .into_iter()
+        .map(|call| CallerWords {
+            source: call.source.clone(),
+            line: call.line,
+            owner: call.owner.clone(),
+            words: call
+                .arguments
+                .get(at)
+                .and_then(|argument| word_list(&call.manifest_dir, argument)),
+        })
+        .chain(in_a_macro.iter().map(|(source, line)| CallerWords {
+            source: source.clone(),
+            line: *line,
+            owner: "a call inside a macro invocation".to_string(),
+            words: None,
+        }))
+        .collect();
 }
 
 /// Is this call `Command::new(..)`, however the path is written?
@@ -987,8 +1608,47 @@ fn one_declaration(expression: &syn::Expr) -> Declared {
                 Declared::WhereverTheCallerPoints,
             )
         }
+        syn::Expr::Call(call) if ends_with(call, &["PinnedWhereverItPoints"]) => {
+            call.args.first().and_then(string_literal).map_or_else(
+                || Declared::Unreadable(rendered_text),
+                Declared::PinnedWhereverItPoints,
+            )
+        }
         _ => Declared::Unreadable(rendered_text),
     }
+}
+
+/// A plain `fn`'s parameters, in the order it takes them.
+///
+/// A `self` receiver ends the reading: a signature with one is a method, whose
+/// calls are written `x.name(..)` and are not the ones this reader enumerates.
+/// A parameter bound by a pattern rather than a name keeps its POSITION — the
+/// list has to stay as long as the signature is, or every parameter after it
+/// would be followed to the wrong argument.
+fn parameters_of(signature: &syn::Signature) -> Vec<String> {
+    let mut taken = Vec::new();
+    for input in &signature.inputs {
+        match input {
+            syn::FnArg::Receiver(_) => return Vec::new(),
+            syn::FnArg::Typed(typed) => taken.push(binding_name(&typed.pat).unwrap_or_default()),
+        }
+    }
+    taken
+}
+
+/// Every name a pattern binds — a closure's argument, a `for` loop's, however
+/// deeply it destructures.
+fn names_bound_by(pattern: &syn::Pat) -> BTreeSet<String> {
+    struct Bound(BTreeSet<String>);
+    impl<'ast> Visit<'ast> for Bound {
+        fn visit_pat_ident(&mut self, ident: &'ast syn::PatIdent) {
+            self.0.insert(ident.ident.to_string());
+            syn::visit::visit_pat_ident(self, ident);
+        }
+    }
+    let mut bound = Bound(BTreeSet::new());
+    bound.visit_pat(pattern);
+    bound.0
 }
 
 /// The name a `let` binds, when it binds one plainly. A destructuring pattern
@@ -1074,6 +1734,132 @@ fn string_literal(expression: &syn::Expr) -> Option<String> {
             syn::Lit::Str(text) => Some(text.value()),
             _ => None,
         },
+        _ => None,
+    }
+}
+
+/// A word list with no hole in it, or `None` when one is still there.
+///
+/// ONE SPELLING FOR TWO READERS. The site's own words and the words a call site
+/// finishes are the same question asked of two lists, and a second copy of this
+/// match is a copy free to answer differently the day a fifth kind of word is
+/// added — the shape `CLAUDE.md` calls a half-enforced invariant.
+fn without_a_hole(words: &[Word]) -> Option<Vec<String>> {
+    words
+        .iter()
+        .map(|word| match word {
+            Word::Spelled(text) | Word::Runtime(text) => Some(text.clone()),
+            Word::Unknown(_) | Word::Sometimes(_) => None,
+        })
+        .collect()
+}
+
+/// One argument's word.
+///
+/// A FREE FUNCTION AND NOT A METHOD, because it is read from two sides now: at
+/// the spawn, where the words are written beside the `Command`, and at a CALL
+/// SITE one hop back, where the same literal array is written as an argument.
+/// `manifest_dir` is what `env!("CARGO_MANIFEST_DIR")` reads as in the file the
+/// words are written in — the caller's file for a call site, which is the whole
+/// reason this takes it rather than holding one.
+fn read_word(manifest_dir: &str, expression: &syn::Expr) -> Word {
+    match compile_time_text(manifest_dir, expression) {
+        Some(text) => Word::Spelled(text),
+        None => Word::Runtime(rendered_as_a_value(expression)),
+    }
+}
+
+/// The words of a list-shaped expression, or `None` when their NUMBER is decided
+/// at runtime.
+fn word_list(manifest_dir: &str, expression: &syn::Expr) -> Option<Vec<Word>> {
+    match through_the_shapes_that_keep_a_list(expression) {
+        syn::Expr::Array(array) => Some(
+            array
+                .elems
+                .iter()
+                .map(|item| read_word(manifest_dir, item))
+                .collect(),
+        ),
+        syn::Expr::Macro(invocation) if invocation.mac.path.is_ident("vec") => {
+            let elements: syn::punctuated::Punctuated<syn::Expr, syn::Token![,]> = invocation
+                .mac
+                .parse_body_with(
+                    syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+            Some(
+                elements
+                    .iter()
+                    .map(|item| read_word(manifest_dir, item))
+                    .collect(),
+            )
+        }
+        _ => None,
+    }
+}
+
+/// Through the spellings that hand a list on WITHOUT changing which words are in
+/// it: `&`, `(..)`, a macro's invisible group, `.iter()`, `.into_iter()`,
+/// `.as_slice()`, `.to_vec()`, `.clone()`.
+///
+/// A METHOD THAT RESHAPES THE LIST IS NOT ONE OF THESE. `.skip(1)`, `.map(..)`,
+/// `[1..]` all answer a different list, and reading them as their receiver would
+/// credit a command with words it drops — so they fall through to the refusal
+/// rather than being followed. `named_environment::positions_of` draws the same
+/// line for the same reason.
+fn through_the_shapes_that_keep_a_list(expression: &syn::Expr) -> &syn::Expr {
+    match expression {
+        syn::Expr::Reference(inner) => through_the_shapes_that_keep_a_list(&inner.expr),
+        syn::Expr::Paren(inner) => through_the_shapes_that_keep_a_list(&inner.expr),
+        syn::Expr::Group(inner) => through_the_shapes_that_keep_a_list(&inner.expr),
+        syn::Expr::MethodCall(call)
+            if call.args.is_empty()
+                && matches!(
+                    call.method.to_string().as_str(),
+                    "iter" | "into_iter" | "as_slice" | "as_ref" | "to_vec" | "clone"
+                ) =>
+        {
+            through_the_shapes_that_keep_a_list(&call.receiver)
+        }
+        other => other,
+    }
+}
+
+/// The text a word has BEFORE the program runs: a literal, the manifest
+/// directory cargo hands the file's crate, or a `concat!` of those.
+fn compile_time_text(manifest_dir: &str, expression: &syn::Expr) -> Option<String> {
+    if let Some(literal) = string_literal(expression) {
+        return Some(literal);
+    }
+    let syn::Expr::Macro(macro_call) = unwrap(expression) else {
+        return None;
+    };
+    match macro_call
+        .mac
+        .path
+        .segments
+        .last()?
+        .ident
+        .to_string()
+        .as_str()
+    {
+        "env" => {
+            let name: syn::LitStr = macro_call.mac.parse_body().ok()?;
+            (name.value() == "CARGO_MANIFEST_DIR").then(|| manifest_dir.to_string())
+        }
+        "concat" => {
+            let parts: syn::punctuated::Punctuated<syn::Expr, syn::Token![,]> = macro_call
+                .mac
+                .parse_body_with(
+                    syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+            let mut out = String::new();
+            for part in &parts {
+                out.push_str(&compile_time_text(manifest_dir, part)?);
+            }
+            Some(out)
+        }
         _ => None,
     }
 }

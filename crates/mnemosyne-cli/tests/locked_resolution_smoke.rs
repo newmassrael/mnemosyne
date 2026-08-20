@@ -29,7 +29,7 @@ use std::process::Command;
 use ci_plan::issue::{self, Tree};
 use ci_plan::{
     commands_this_repository_issues, lock_verdict, resolves_the_lockfile, tracked_manifests,
-    workspaces, CargoCommand, LockVerdict, Ownership, BUILD_DECLARATION,
+    workspaces_this_repository_cannot_pin, CargoCommand, LockVerdict, BUILD_DECLARATION,
 };
 
 fn repository_root() -> PathBuf {
@@ -85,18 +85,13 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
         issued.rust.unplaceable.len()
     );
     for site in &issued.rust.carried {
-        println!("[locked-resolution]   carried: {}", site.origin());
+        println!(
+            "[locked-resolution]   carried: {} — {}",
+            site.origin(),
+            site.reach()
+        );
     }
     issued.commands
-}
-
-fn workspaces_this_repository_cannot_pin(root: &Path) -> BTreeSet<String> {
-    workspaces(root)
-        .ownership
-        .into_iter()
-        .filter(|(_, ownership)| matches!(ownership, Ownership::Foreign(_)))
-        .map(|(directory, _)| directory)
-        .collect()
 }
 
 #[test]

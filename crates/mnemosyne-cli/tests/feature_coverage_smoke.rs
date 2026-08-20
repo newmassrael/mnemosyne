@@ -40,6 +40,7 @@ use ci_plan::issue::{self, Tree};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;
+use std::sync::OnceLock;
 
 use serde::Deserialize;
 
@@ -110,18 +111,49 @@ fn workspace_manifests() -> Vec<String> {
     workspaces().askable
 }
 
+/// The workspaces whose lockfile is not this repository's to pin, asked once.
+///
+/// A `git` call and a lister run per `cargo metadata` would be three of each for
+/// every workspace; the answer is a fact about the checkout and does not move
+/// under this test.
+fn cannot_be_pinned() -> &'static BTreeSet<String> {
+    static ANSWER: OnceLock<BTreeSet<String>> = OnceLock::new();
+    ANSWER.get_or_init(|| {
+        let found = ci::workspaces_this_repository_cannot_pin(&common::repo_root());
+        // PRINTED, because whether this branch is taken depends on the MACHINE:
+        // a workspace path-depending on a sibling checkout is skipped entirely
+        // where that sibling is absent, so a run on a build machine exercises
+        // nothing here and says so by printing an empty set.
+        println!(
+            "[feature-coverage] {} workspace(s) asked without `--locked`, their \
+             lockfile not being this repository's: {found:?}",
+            found.len()
+        );
+        found
+    })
+}
+
 fn metadata(manifest: &str, with_deps: bool) -> Metadata {
-    // `--locked` UNCONDITIONALLY, because `--no-deps` here is not (R1262). The
-    // manifest is one this repository tracks, and the arm that asks for
-    // dependencies RESOLVES: without the flag a lockfile that disagreed with its
-    // manifests would be rewritten by this test rather than reported, and the
-    // suite that reads the tree afterwards would read the repair.
+    // `--locked` EXCEPT OVER A LOCKFILE THIS REPOSITORY DOES NOT OWN, and the
+    // exception is R1263's. The arm that asks for dependencies RESOLVES, so
+    // without the flag a lockfile that disagreed with its manifests would be
+    // rewritten by this test rather than reported, and the suite reading the
+    // tree afterwards would read the repair. But `studio` path-depends on a
+    // sibling checkout: its `Cargo.lock` is gitignored and moves whenever that
+    // sibling moves its own pins, so `--locked` there is a gate another
+    // repository's commit turns red — `LockVerdict::PinsWhatItDoesNotOwn`, which
+    // the earlier comment here reasoned past by asking whether the MANIFEST was
+    // tracked. It is; the lockfile is not.
+    let directory = manifest.strip_suffix("/Cargo.toml").unwrap_or_default();
     let mut command = issue::cargo(Tree::ThisRepository);
     command
-        .args(["metadata", "--format-version", "1", "--locked"])
+        .args(["metadata", "--format-version", "1"])
         .arg("--manifest-path")
         .arg(common::repo_root().join(manifest))
         .current_dir(common::repo_root());
+    if !cannot_be_pinned().contains(directory) {
+        command.arg("--locked");
+    }
     if !with_deps {
         command.arg("--no-deps");
     }

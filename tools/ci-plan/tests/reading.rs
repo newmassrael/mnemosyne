@@ -2012,6 +2012,352 @@ fn two_functions_holding_a_command_each_do_not_share_one() {
     assert_eq!(found[1].words, vec![Word::Spelled("test".to_string())]);
 }
 
+// --- the hop in the other direction -----------------------------------------
+
+fn carried_by(text: &str) -> RustSpawn {
+    let site = only(text);
+    assert!(!site.holes.is_empty(), "no hole to follow: {site:#?}");
+    site
+}
+
+fn words_read(site: &RustSpawn) -> Vec<Vec<String>> {
+    site.from_callers
+        .iter()
+        .filter_map(|caller| caller.words.as_ref())
+        .map(|words| words.iter().map(Word::rendered).collect())
+        .collect()
+}
+
+#[test]
+fn a_wrappers_words_are_read_at_the_call_sites_that_wrote_them() {
+    // The shape R1262 wrote down as a limit: the words are not at the spawn,
+    // they are at every call, and each call is a different cargo command.
+    let site = carried_by(
+        r#"fn one() { run(&["metadata", "--no-deps"]); }
+           fn two() { run(&["check", "--locked"]); }
+           fn run(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }"#,
+    );
+    assert_eq!(site.unfollowed, None, "{site:#?}");
+    assert!(site.every_call_read(), "{site:#?}");
+    assert_eq!(
+        words_read(&site),
+        vec![
+            vec!["metadata".to_string(), "--no-deps".to_string()],
+            vec!["check".to_string(), "--locked".to_string()],
+        ],
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn a_call_site_in_another_file_is_followed_and_reads_its_own_crates_manifest_dir() {
+    // THE HOP CROSSES FILES, which is how a wrapper in a library and the
+    // literals its callers write are actually laid out — and the literal is read
+    // in the CALLER's crate, so `env!("CARGO_MANIFEST_DIR")` there is the
+    // caller's directory and not the wrapper's.
+    let found = ci_plan::rust::spawns_across(&[
+        (
+            "tools/gate/src/lib.rs",
+            "fn run(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }",
+            "tools/gate",
+        ),
+        (
+            "crates/user/tests/case.rs",
+            r#"fn f() { run(&["metadata", concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")]); }"#,
+            "crates/user",
+        ),
+    ]);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(
+        words_read(&found[0]),
+        vec![vec![
+            "metadata".to_string(),
+            "crates/user/Cargo.toml".to_string(),
+        ]],
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at() {
+    // R1190's rule where the limit is now PARTLY gone: one call site read and
+    // one not is a different fact from none read, and a site that said
+    // "carried" for both said neither.
+    let site = carried_by(
+        r#"fn one() { run(&["metadata", "--no-deps"]); }
+           fn two() { let built = assemble(); run(&built); }
+           fn run(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }"#,
+    );
+    assert_eq!(site.from_callers.len(), 2, "{site:#?}");
+    assert_eq!(words_read(&site).len(), 1, "{site:#?}");
+    assert!(
+        site.reach().starts_with("1 of 2 call site(s) read"),
+        "{}",
+        site.reach()
+    );
+    assert!(
+        !site.every_call_read(),
+        "a site one caller did not finish is still carried, however many did: \
+         {site:#?}"
+    );
+}
+
+#[test]
+fn a_call_written_inside_a_macro_is_listed_rather_than_missed() {
+    // `syn` hands a macro invocation over as TOKENS and does not parse them, so
+    // this call is invisible to the walk. Left out, the site would read as one
+    // whose every call site was read — a partly-read population reported as a
+    // whole one, by a reader that cannot see the part.
+    let site = carried_by(
+        r#"fn one() { assert!(run(&["metadata"]).is_ok()); }
+           fn two() { let _ = run(&["check"]); }
+           fn run(argv: &[&str]) -> Result<(), ()> {
+               issue::cargo(Tree::ThisRepository).args(argv);
+               Ok(())
+           }"#,
+    );
+    assert_eq!(site.unfollowed, None, "{site:#?}");
+    assert!(
+        !site.every_call_read(),
+        "a call inside a macro is a call site nobody read: {site:#?}"
+    );
+    assert!(
+        site.reach().contains("macro"),
+        "the sentence has to say which call site it could not read: {}",
+        site.reach()
+    );
+}
+
+#[test]
+fn a_method_call_inside_a_macro_is_not_read_as_a_call_of_a_free_function() {
+    // `x.run(..)` inside a macro is the receiver's `run`, and the tokens say so
+    // with the dot in front of it.
+    let site = carried_by(
+        r#"fn one() { assert!(gate.run(&["metadata"]).is_ok()); }
+           fn run(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(
+        why.contains("nothing in this repository calls `run`"),
+        "{why}"
+    );
+}
+
+#[test]
+fn an_associated_functions_parameters_are_not_followed_to_a_bare_call_of_that_name() {
+    // The bare `make(..)` below is SOMEBODY ELSE'S — an import, a macro's
+    // expansion, a function this tree does not define at all. An associated
+    // function is never called that way (`G::make(..)` is, and a type before the
+    // name is refused), so following its parameter would hand the wrapper words
+    // that nothing handed it: a command in the population that nothing runs.
+    let found = ci_plan::rust::spawns_across(&[
+        (
+            "a/one.rs",
+            r#"struct G;
+               impl G {
+                   fn make(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }
+               }"#,
+            "a",
+        ),
+        (
+            "a/two.rs",
+            r#"use other::make;
+               fn caller() { make(&["build"]); }"#,
+            "a",
+        ),
+    ]);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert!(found[0].from_callers.is_empty(), "{found:#?}");
+    let why = found[0].unfollowed.clone().expect("a refusal");
+    assert!(why.contains("not a parameter"), "{why}");
+}
+
+#[test]
+fn a_name_that_means_two_functions_is_not_followed_back() {
+    // The forward hop's rule pointed backwards: `run` here is two functions of
+    // two arguments, so a call of it names neither, and attributing one
+    // caller's words to the wrong wrapper would invent a command nothing runs.
+    let found = ci_plan::rust::spawns_across(&[
+        (
+            "a/one.rs",
+            r#"fn caller() { run(1, &["metadata"]); }
+               fn run(_n: u8, argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }"#,
+            "a",
+        ),
+        (
+            "a/two.rs",
+            "fn run(_n: u8, argv: &[&str]) { let _ = argv; }",
+            "a",
+        ),
+    ]);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    let why = found[0].unfollowed.clone().expect("a refusal");
+    assert!(
+        why.contains("2 function(s) of 2 argument(s)"),
+        "the refusal has to say WHICH refusal it is: {why}"
+    );
+    assert!(found[0].from_callers.is_empty(), "{found:#?}");
+}
+
+#[test]
+fn an_associated_function_is_not_a_call_of_a_free_function_of_that_name() {
+    // `Command::new(..)`, `Path::new(..)`: a type before the name means the
+    // receiver decides which `new` runs, and a reader matching the last segment
+    // would hand a wrapper words nobody handed it.
+    let site = carried_by(
+        r#"fn caller() { let _ = Thing::run(&["build"]); }
+           fn run(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(why.contains("nothing in this repository calls"), "{why}");
+}
+
+#[test]
+fn a_hole_that_is_not_a_parameter_is_not_followed_back() {
+    // A field of a value the run computed. No call site's literal answers it,
+    // and the refusal says which expression it could not read.
+    let site = carried_by(
+        r#"fn caller() { run(&Asked::default()); }
+           fn run(asked: &Asked) { issue::cargo(Tree::ThisRepository).args(&asked.words); }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(
+        why.contains("$asked.words") && why.contains("not a parameter"),
+        "{why}"
+    );
+}
+
+#[test]
+fn a_parameter_a_local_has_taken_over_is_not_followed_back() {
+    // The name still reads like the parameter and is not it any more. Following
+    // it back would answer with words that never reach this spawn.
+    let site = carried_by(
+        r#"fn caller() { run(&["metadata"]); }
+           fn run(argv: &[&str]) {
+               let argv = assemble(argv);
+               issue::cargo(Tree::ThisRepository).args(argv);
+           }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(why.contains("not a parameter"), "{why}");
+}
+
+#[test]
+fn a_parameter_a_closure_has_taken_over_is_not_followed_back() {
+    let site = carried_by(
+        r#"fn caller() { run(&["metadata"]); }
+           fn run(argv: &[&str]) {
+               each(|argv| { issue::cargo(Tree::ThisRepository).args(argv); });
+           }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(why.contains("not a parameter"), "{why}");
+}
+
+#[test]
+fn a_word_added_on_some_paths_only_stops_the_hop_rather_than_being_filled_in() {
+    // No caller's literal says whether the flag is there, so the site is exactly
+    // as unreadable as it was — and the sentence says which of the two holes it
+    // is, because they are different pieces of work.
+    let site = carried_by(
+        r#"fn caller() { run(&["metadata"], true); }
+           fn run(argv: &[&str], pin: bool) {
+               let mut c = issue::cargo(Tree::ThisRepository);
+               c.args(argv);
+               if pin { c.arg("--locked"); }
+           }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(
+        why.contains("--locked") && why.contains("some paths"),
+        "{why}"
+    );
+}
+
+#[test]
+fn a_method_hands_over_no_parameter_this_reader_follows() {
+    // `x.run(..)` is a call whose receiver decides which `run`, and this reader
+    // enumerates the calls written `run(..)`. So a method's parameters are not
+    // followed at all rather than followed to whatever shares the name.
+    let site = carried_by(
+        r#"struct G;
+           impl G {
+               fn run(&self, argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }
+           }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(why.contains("not a parameter"), "{why}");
+}
+
+#[test]
+fn a_wrapper_nothing_calls_says_that_rather_than_reading_as_clean() {
+    let site =
+        carried_by(r#"fn run(argv: &[&str]) { issue::cargo(Tree::ThisRepository).args(argv); }"#);
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(
+        why.contains("nothing in this repository calls `run`"),
+        "{why}"
+    );
+}
+
+#[test]
+fn two_lists_handed_over_are_refused_rather_than_split_between_the_parameters() {
+    let site = carried_by(
+        r#"fn caller() { run(&["metadata"], &["--no-deps"]); }
+           fn run(first: &[&str], second: &[&str]) {
+               issue::cargo(Tree::ThisRepository).args(first).args(second);
+           }"#,
+    );
+    let why = site.unfollowed.clone().expect("a refusal");
+    assert!(why.contains("2 lists this reader cannot count"), "{why}");
+}
+
+#[test]
+fn the_words_a_caller_writes_keep_their_place_among_the_sites_own() {
+    // The hole is spliced where it sat, so a flag the wrapper adds AFTER the
+    // caller's words stays after them — a command whose words were reordered is
+    // a different command.
+    let site = carried_by(
+        r#"fn caller() { run(&["check", "-q"]); }
+           fn run(argv: &[&str]) {
+               issue::cargo(Tree::ThisRepository)
+                   .arg("--offline")
+                   .args(argv)
+                   .arg("--message-format=json");
+           }"#,
+    );
+    let whole: Vec<Vec<String>> = site
+        .from_callers
+        .iter()
+        .filter_map(|caller| site.words_from(caller))
+        .collect();
+    assert_eq!(
+        whole,
+        vec![vec![
+            "--offline".to_string(),
+            "check".to_string(),
+            "-q".to_string(),
+            "--message-format=json".to_string(),
+        ]],
+        "{site:#?}"
+    );
+}
+
+#[test]
+fn a_call_site_writing_its_list_as_a_vec_is_read_like_one_writing_an_array() {
+    // `vec![..]` and `[..]` are the same words to cargo, and a reader that knew
+    // one of them would report half the call sites as unreadable.
+    let site = carried_by(
+        r#"fn caller() { run(vec!["metadata", "--no-deps"]); }
+           fn run(argv: Vec<&str>) { issue::cargo(Tree::ThisRepository).args(argv); }"#,
+    );
+    assert_eq!(
+        words_read(&site),
+        vec![vec!["metadata".to_string(), "--no-deps".to_string()]],
+        "{site:#?}"
+    );
+}
+
 /// The sixth place a cargo command is written, read where it is written.
 ///
 /// A CENSUS BESIDE THE LAW, and the numbers are half of it: the walk answers
@@ -2023,11 +2369,12 @@ fn every_cargo_spawn_in_tracked_rust_is_placed() {
     let root = repository_root();
     let found = ci_plan::rust::cargo_commands(&root);
     println!(
-        "[rust-spawns] {} file(s), {} spawn(s): {} read, {} carried, \
-         {} beside the door, {} unplaceable",
+        "[rust-spawns] {} file(s), {} spawn(s): {} read ({} of them at a call \
+         site one hop back), {} carried, {} beside the door, {} unplaceable",
         found.files,
         found.spawns,
         found.commands.len(),
+        found.through_a_wrapper,
         found.carried.len(),
         found.beside_the_door.len(),
         found.unplaceable.len()
@@ -2042,6 +2389,7 @@ fn every_cargo_spawn_in_tracked_rust_is_placed() {
                 Some(
                     ci_plan::rust::Declared::MadeByThisRun(why)
                     | ci_plan::rust::Declared::WhereverTheCallerPoints(why)
+                    | ci_plan::rust::Declared::PinnedWhereverItPoints(why)
                     | ci_plan::rust::Declared::Unreadable(why),
                 ) => why.clone(),
                 None => "undeclared".to_string(),
@@ -2050,6 +2398,11 @@ fn every_cargo_spawn_in_tracked_rust_is_placed() {
     }
     for site in &found.carried {
         println!("  CARRIED     {} — {}", site.origin(), site.rendered());
+        // WHY IT IS STILL CARRIED, because "carried" is now several different
+        // pieces of work wearing one word: a name that means two things, a
+        // conditional flag, a value assembled two lines earlier, a call site
+        // nobody wrote a literal at.
+        println!("              {}", site.reach());
     }
     for site in &found.beside_the_door {
         println!("  SECOND DOOR {} — {}", site.origin(), site.rendered());

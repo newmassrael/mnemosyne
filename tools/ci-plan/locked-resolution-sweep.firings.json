@@ -9,8 +9,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "                Word::Unknown(_) | Word::Sometimes(_) => None,",
-          "to": "                Word::Unknown(text) | Word::Sometimes(text) => Some(text.clone()),"
+          "from": "            Word::Unknown(_) | Word::Sometimes(_) => None,",
+          "to": "            Word::Unknown(text) | Word::Sometimes(text) => Some(text.clone()),"
         }
       ],
       "expect_red": [
@@ -125,6 +125,36 @@
       ],
       "tests": [
         "locked_resolution_smoke::a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile"
+      ]
+    },
+    "pinning-wherever-it-points-is-read-as-owning-nothing": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::PinnedWhereverItPoints(_)) => true,",
+          "to": "        Some(rust::Declared::PinnedWhereverItPoints(_)) => false,"
+        }
+      ],
+      "expect_red": [
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    "the-gate-pointed-at-a-workspace-resolves-it-freely": {
+      "edits": [
+        {
+          "file": "tools/item-citations/src/main.rs",
+          "from": "            \"check\",\n            \"-q\",\n            \"--locked\",\n            \"--manifest-path\",\n            &manifest.display().to_string(),\n            \"-p\",\n            package,\n            \"--message-format=json\",",
+          "to": "            \"check\",\n            \"-q\",\n            \"--manifest-path\",\n            &manifest.display().to_string(),\n            \"-p\",\n            package,\n            \"--message-format=json\","
+        }
+      ],
+      "expect_red": [
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     },
     "the-lister-stops-pinning-anything": {

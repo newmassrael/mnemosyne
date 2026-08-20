@@ -101,6 +101,7 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
             Some(Declared::ThisRepository) => "this repository",
             Some(Declared::MadeByThisRun(_)) => "a tree the run made",
             Some(Declared::WhereverTheCallerPoints(_)) => "wherever the caller points",
+            Some(Declared::PinnedWhereverItPoints(_)) => "pinned wherever it points",
             Some(Declared::Unreadable(_)) | None => {
                 panic!("{} came through the door undeclared", command.origin())
             }
@@ -118,6 +119,24 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
         found.our_binaries,
         found.other_programs,
         found.unplaceable.len()
+    );
+    for site in &found.carried {
+        println!("[one-door]   carried: {} — {}", site.origin(), site.reach());
+    }
+
+    // THE HOP BACKWARDS IS IN USE, and this is what keeps it from going quiet.
+    // A wrapper's words are at its call sites, and a reader that stopped
+    // following them there would report every one of those commands as carried —
+    // which is exactly what this repository looked like before R1263, and
+    // nothing said so. The number is small on purpose: it is the count of
+    // commands whose words no law could read until the reader went one hop in
+    // the other direction.
+    assert!(
+        found.through_a_wrapper > 0,
+        "no cargo command in this repository has its words read at a call site \
+         one hop back, so either the wrappers are gone or the reader stopped \
+         following them — and a command it cannot finish reading is one no law \
+         asks anything of"
     );
 
     // AND THE PILE OF THINGS NOBODY IS HOLDING TO ANYTHING HAS A DENOMINATOR.
@@ -138,15 +157,16 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
         println!("[one-door]   unplaceable: {}", site.origin());
     }
 
-    // ALL THREE ARMS ARE IN USE, and this is the assertion that keeps the third
-    // one honest. `WhereverTheCallerPoints` is the arm that declines to name a
-    // tree, and it owes `lock_verdict` a command that resolves nothing; if it
-    // ever became the only arm anybody reached for, the two above would be dead
+    // ALL FOUR ARMS ARE IN USE, and this is the assertion that keeps the two
+    // that decline to name a tree honest. One of them owes `lock_verdict` a
+    // command that resolves nothing and the other owes it `--locked`; if either
+    // ever became the only arm anybody reached for, the rest would be dead
     // letters and nothing here would say so.
     for arm in [
         "this repository",
         "a tree the run made",
         "wherever the caller points",
+        "pinned wherever it points",
     ] {
         assert!(
             arms.get(arm).copied().unwrap_or(0) > 0,
