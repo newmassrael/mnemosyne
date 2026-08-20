@@ -11,20 +11,35 @@
     "Keep it runnable: the `from` texts are exact, and a source edit that moves",
     "one of them makes this sweep refuse out loud rather than pass quietly.",
     "",
-    "AND EVERY INJECTION INTO `src/` REDDENS ONE TEST NOBODY AIMED AT IT:",
+    "AND MOST INJECTIONS HERE REDDEN ONE TEST NOBODY AIMED AT THEM:",
     "`every_tracked_sweep_still_applies_to_the_tree_it_names` reads the anchors of",
     "every sweep this repository tracks, and while an injection is in the tree the",
     "anchors of THIS file no longer match the source they name. That is the law",
-    "working, not a guard nobody wrote down — so it is left as a reported",
-    "`unexpected` rather than named as an expectation, which would claim the read",
-    "under injection is what reddened it. It is also why this manifest does not",
-    "declare its red sets exhaustive: under that claim the artefact would fail the",
-    "sweep it is an artefact of."
+    "working, not a guard nobody wrote down.",
+    "",
+    "`tests_that_read_the_anchors` IS WHERE THAT IS SAID, and it is not an excuse",
+    "list. Naming it in an `expect_red` would claim the read the injection removed",
+    "is what reddened it — a claim the mechanism satisfies whatever the code does,",
+    "which the harness refuses before the run. Declared here it is judged from the",
+    "TREE instead: the harness works out, per injection, whether this manifest",
+    "still describes the tree while that injection is in it, excuses the red only",
+    "there, and REQUIRES it there — an excuse that stopped applying fails the sweep",
+    "like a missed expectation. Two of the injections below leave the anchor",
+    "standing, because their `to` contains their `from`, and for those two nothing",
+    "is excused: one of them is aimed at that very law, through ANOTHER sweep's",
+    "anchor, and it is falsifiable for exactly that reason.",
+    "",
+    "That is what lets this manifest declare `red_set: exhaustive`, which it could",
+    "not while its own artefact would have failed the sweep it is an artefact of."
   ],
   "repo": ".",
   "test_command": ["cargo", "test", "--locked", "--no-fail-fast"],
   "logs": "target/self-check-logs",
   "min_free_mb": 4000,
+  "red_set": "exhaustive",
+  "tests_that_read_the_anchors": [
+    "every_tracked_sweep_still_applies_to_the_tree_it_names"
+  ],
   "injections": [
     {
       "name": "a-record-is-read-as-absent-when-it-will-not-parse",
@@ -48,7 +63,12 @@
           "to": "    let _ = (row, injection);\n    true"
         }
       ],
-      "expect_red": ["an_edited_injection_is_not_covered_by_the_old_evidence"]
+      "expect_red": [
+        "an_edited_injection_is_not_covered_by_the_old_evidence",
+        "a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_add",
+        "a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited",
+        "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it"
+      ]
     },
     {
       "name": "a-record-belongs-to-a-directory-rather-than-a-sweep",
@@ -62,7 +82,9 @@
       ],
       "expect_red": [
         "a_record_belongs_to_one_sweep_and_not_to_a_directory",
-        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks"
+        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks",
+        "a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_add",
+        "every_injection_a_record_covers_is_one_that_has_fired"
       ]
     },
     {
@@ -149,7 +171,12 @@
           "to": "    let beside = Path::new(\".\");"
         }
       ],
-      "expect_red": ["a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place"]
+      "expect_red": [
+        "a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place",
+        "every_sweep_names_a_suite_this_tree_can_still_run",
+        "a_sweep_that_runs_the_whole_workspace_runs_its_features_too",
+        "every_test_a_sweep_names_is_one_this_tree_still_has"
+      ]
     },
     {
       "name": "a-tree-somebody-else-injected-is-taken-as-a-baseline",
@@ -185,7 +212,10 @@
           "to": "    if hits == 0 {"
         }
       ],
-      "expect_red": ["a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped"]
+      "expect_red": [
+        "a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped",
+        "an_edit_that_matches_twice_is_refused_before_the_suite_is_asked"
+      ]
     },
     {
       "name": "a-report-carries-counts-under-no-suite-at-all",
@@ -222,7 +252,8 @@
         }
       ],
       "expect_red": [
-        "a_red_nobody_described_is_judged_only_where_the_manifest_claims_every_one"
+        "a_red_nobody_described_is_judged_only_where_the_manifest_claims_every_one",
+        "a_red_this_manifest_excuses_is_still_unnamed_where_its_anchors_survive"
       ]
     },
     {
@@ -260,12 +291,13 @@
         }
       ],
       "expect_red": [
-        "every_tracked_sweep_still_applies_to_the_tree_it_names",
         "every_sweep_names_a_suite_this_tree_can_still_run",
         "every_test_a_sweep_names_is_one_this_tree_still_has",
         "every_injection_a_record_covers_is_one_that_has_fired",
         "a_sweep_that_runs_the_whole_workspace_runs_its_features_too",
-        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks"
+        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks",
+        "every_expectation_a_sweep_names_is_one_that_could_fail",
+        "every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run"
       ]
     },
     {
@@ -535,6 +567,74 @@
         }
       ],
       "expect_red": ["a_header_that_would_run_something_else_is_named_by_which_half_is_wrong"]
+    },
+    {
+      "name": "the-excuse-is-this-manifests-rather-than-the-trees",
+      "why": "R1259 — an excuse that applies to every injection is not a fact about the tree, it is a blanket. Two injections here leave their anchor standing because their `to` contains their `from`, and one of THOSE is aimed at the anchor law through another sweep's manifest: blanket the excuse and that injection's whole subject stops being judged, while its expectation becomes one the mechanism guarantees",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        if which_apply(repo, injections, &under) != baseline {\n            lost.insert(applied.name.clone());\n        }",
+          "to": "        let _ = under;\n        lost.insert(applied.name.clone());"
+        }
+      ],
+      "expect_red": [
+        "a_red_the_mechanism_raises_is_excused_where_the_anchors_are_gone_and_nowhere_else",
+        "a_red_this_manifest_excuses_is_still_unnamed_where_its_anchors_survive",
+        "every_expectation_a_sweep_names_is_one_that_could_fail"
+      ]
+    },
+    {
+      "name": "the-mechanisms-red-is-counted-as-one-nobody-described",
+      "why": "R1259 — the other half of the same field: a red this manifest accounts for, counted as a red nobody described, is what made an exhaustive claim impossible here. Without the exclusion the artefact fails the sweep it is an artefact of, which is the shape that makes a device stop being run",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "                    && !mechanism.iter().any(|reader| answers_to(red, reader))\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_red_the_mechanism_raises_is_excused_where_the_anchors_are_gone_and_nowhere_else"
+      ]
+    },
+    {
+      "name": "an-excuse-that-stopped-applying-is-one-fewer-red",
+      "why": "R1259 — a name this manifest excuses and that did NOT go red while the anchors it reads were gone is an excuse about a mechanism that has moved. Unheld, the excuse decays exactly the way a blanket exemption does: silently, and in the direction that reads as a pass",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        let mechanism_missed: BTreeSet<String> = mechanism\n            .iter()\n            .filter(|name| !reached(&fired, name))\n            .cloned()\n            .collect();",
+          "to": "        let mechanism_missed: BTreeSet<String> = BTreeSet::new();"
+        }
+      ],
+      "expect_red": ["an_excuse_that_did_not_apply_stops_the_sweep"]
+    },
+    {
+      "name": "an-expectation-the-mechanism-guarantees-is-let-through",
+      "why": "R1259 — the field that lets a red be excused is also the way to build an expectation that cannot fail: name the excused test in an `expect_red` from an injection that takes the anchors with it, and the sweep scores it reached with the property deleted. The refusal landed in the same change as the hatch, and this is what says it is still there",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if manifest.tests_that_read_the_anchors.is_empty() {\n        return Ok(Vec::new());\n    }",
+          "to": "    if !manifest.tests_that_read_the_anchors.is_empty() {\n        return Ok(Vec::new());\n    }"
+        }
+      ],
+      "expect_red": [
+        "an_expectation_the_mechanism_guarantees_is_refused_before_the_suite_runs"
+      ]
+    },
+    {
+      "name": "the-law-over-falsifiable-expectations-is-over-nothing",
+      "why": "R1259 — the law exists only for manifests that declare an anchor reader, and today exactly one does. A predicate that reads that one as none leaves the law printing the same silence as a repository where every expectation could fail, which is the empty answer that reads as a clean one. The first spelling of this injection INVERTED the filter and reddened nothing: the complement is 33 manifests, every one of which passes, so the law held for a reason that had nothing to do with what it checks — which is this injection's own subject, happening to it",
+      "edits": [
+        {
+          "file": "tests/sweeps.rs",
+          "from": "        if a_test_input(&path) || manifest.tests_that_read_the_anchors.is_empty() {\n            continue;\n        }\n        declaring.push(path.clone());",
+          "to": "        if a_test_input(&path) || manifest.tests_that_read_the_anchors.len() < 2 {\n            continue;\n        }\n        declaring.push(path.clone());"
+        }
+      ],
+      "expect_red": ["every_expectation_a_sweep_names_is_one_that_could_fail"]
     }
   ]
 }

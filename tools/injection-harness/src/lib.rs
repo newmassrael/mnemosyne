@@ -694,6 +694,32 @@ pub struct Manifest {
     /// which is what every sweep meant before the field existed.
     #[serde(default)]
     pub red_set: RedSet,
+    /// Tests that read THIS MANIFEST'S ANCHORS against the tree, and are
+    /// therefore red while an injection has replaced one of them.
+    ///
+    /// THE MECHANISM REDDENS THEM, NOT THE READ ANY INJECTION REMOVED. An
+    /// anchor is exact text that must occur once; applying an injection
+    /// replaces it, so from that moment this manifest no longer describes the
+    /// tree it names, and anything that checks that says so. It is the law
+    /// working rather than a guard nobody wrote — and it is the reason the
+    /// harness's own manifest could not declare its red sets exhaustive: under
+    /// that claim the artefact would fail the sweep it is an artefact of.
+    ///
+    /// NAMING THEM HERE RATHER THAN IN `expect_red` IS THE WHOLE POINT. An
+    /// injection that named one would be claiming the read it removed is what
+    /// reddened it, and that claim CANNOT FAIL — the mechanism satisfies it
+    /// whatever the code does. [`unfalsifiable`] refuses exactly that, so the
+    /// escape from an unnameable red is not a licence to launder a real
+    /// expectation through it.
+    ///
+    /// AND THE EXCUSE IS CHECKED IN BOTH DIRECTIONS. Where an injection takes
+    /// this manifest's anchors with it ([`unanchored`]), every name here MUST
+    /// go red — a blanket excuse that has quietly stopped applying is the
+    /// silent kind of decay this file exists to refuse. Where an injection
+    /// leaves them standing, nothing here is excused and a red among these
+    /// names is as unexpected as any other.
+    #[serde(default)]
+    pub tests_that_read_the_anchors: Vec<String>,
     pub injections: Vec<Injection>,
 }
 
@@ -883,48 +909,22 @@ pub fn snapshot_and_dry_run(
 ) -> Result<BTreeMap<PathBuf, Vec<u8>>, String> {
     let mut snapshot: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
     let mut problems: Vec<String> = Vec::new();
-    'injection: for injection in injections {
-        let mut staged: BTreeMap<PathBuf, String> = BTreeMap::new();
-        for edit in &injection.edits {
-            let path = repo.join(&edit.file);
-            if !snapshot.contains_key(&path) {
-                match fs::read(&path) {
-                    Ok(bytes) => {
-                        snapshot.insert(path.clone(), bytes);
-                    }
-                    Err(e) => {
-                        problems.push(format!(
-                            "{}: {} unreadable: {e}",
-                            injection.name,
-                            path.display()
-                        ));
-                        continue 'injection;
-                    }
-                }
+    for injection in injections {
+        let mut from_disk = |path: &Path| -> Result<String, String> {
+            if !snapshot.contains_key(path) {
+                let bytes =
+                    fs::read(path).map_err(|e| format!("{} unreadable: {e}", path.display()))?;
+                snapshot.insert(path.to_path_buf(), bytes);
             }
-            let text = match staged.remove(&path) {
-                Some(edited) => edited,
-                None => match String::from_utf8(snapshot[&path].clone()) {
-                    Ok(text) => text,
-                    Err(_) => {
-                        problems.push(format!(
-                            "{}: {} is not text, so no replacement in it can be described",
-                            injection.name,
-                            path.display()
-                        ));
-                        continue 'injection;
-                    }
-                },
-            };
-            match replace_once(&text, edit) {
-                Ok(edited) => {
-                    staged.insert(path, edited);
-                }
-                Err(problem) => {
-                    problems.push(format!("{}: {problem}", injection.name));
-                    continue 'injection;
-                }
-            }
+            String::from_utf8(snapshot[path].clone()).map_err(|_| {
+                format!(
+                    "{} is not text, so no replacement in it can be described",
+                    path.display()
+                )
+            })
+        };
+        if let Err(problem) = stage(repo, injection, &mut from_disk) {
+            problems.push(format!("{}: {problem}", injection.name));
         }
     }
     if problems.is_empty() {
@@ -932,6 +932,173 @@ pub fn snapshot_and_dry_run(
     } else {
         Err(problems.join("\n"))
     }
+}
+
+/// One injection applied to text rather than to disk — the files it rewrites,
+/// with its edits chained in the order the sweep's own `apply` does them.
+///
+/// THE READER IS AN ARGUMENT BECAUSE THE TREE IS THE QUESTION. Handed the files
+/// as they sit, this is the dry run above: does this injection still apply.
+/// Handed a tree that ALREADY HAS another injection in it, the same code answers
+/// the question [`unanchored`] asks — does this manifest still describe its tree
+/// while that one is applied. Two spellings of "apply an injection to text"
+/// would be two answers free to disagree, and the second is the one the sweep
+/// judges an unnameable red by.
+fn stage(
+    repo: &Path,
+    injection: &Injection,
+    read: &mut impl FnMut(&Path) -> Result<String, String>,
+) -> Result<BTreeMap<PathBuf, String>, String> {
+    let mut staged: BTreeMap<PathBuf, String> = BTreeMap::new();
+    for edit in &injection.edits {
+        let path = repo.join(&edit.file);
+        let text = match staged.remove(&path) {
+            Some(edited) => edited,
+            None => read(&path)?,
+        };
+        staged.insert(path, replace_once(&text, edit)?);
+    }
+    Ok(staged)
+}
+
+/// The injections under which THIS MANIFEST NO LONGER DESCRIBES ITS TREE.
+///
+/// An anchor is exact text that must occur exactly once, and applying an
+/// injection replaces it: from that moment the manifest names text its tree does
+/// not hold, and every reader of those anchors — this crate's own law over every
+/// tracked sweep, most of all — is red for that reason and not for the read the
+/// injection removed.
+///
+/// IT IS NOT EVERY INJECTION, WHICH IS WHY THIS IS COMPUTED RATHER THAN
+/// DECLARED. An injection whose `to` CONTAINS its `from` leaves the anchor
+/// standing, and this repository has two of them: one that prepends a line, and
+/// one that appends a comment to a line held inside another sweep's manifest —
+/// where the anchor survives and the OTHER sweep's comes loose, which is that
+/// injection's whole subject. Measured before this function existed, in the
+/// firing record: 19 of the 20 rows carried the anchor law's red and the
+/// twentieth was the injection that prepends.
+///
+/// AGAINST THE TREE AS IT STANDS, so a manifest with an anchor ALREADY loose
+/// says nothing here: that failure is in the baseline, the law is red in the
+/// control too, and a red the control also had is not this injection's. The same
+/// subtraction the sweep makes over its suites, made over text.
+/// AND IT IS A `Result` BECAUSE THE EMPTY SET IS AN ANSWER. A tree whose files
+/// this cannot read excuses nothing, and returning "no injection unanchors
+/// anything" for it would hand every reader the quiet half of the verdict: the
+/// sweep would judge an unnameable red as unexpected, and the law below would
+/// find no unfalsifiable expectation in a manifest it never opened.
+pub fn unanchored(repo: &Path, injections: &[Injection]) -> Result<BTreeSet<String>, String> {
+    let snapshot = read_touched(repo, injections)?;
+    let baseline = which_apply(repo, injections, &snapshot);
+    let mut lost = BTreeSet::new();
+    for applied in injections {
+        if !baseline.contains(&applied.name) {
+            continue;
+        }
+        let mut read = |path: &Path| -> Result<String, String> {
+            snapshot.get(path).cloned().ok_or_else(|| {
+                format!(
+                    "{} is not one of the files this sweep edits",
+                    path.display()
+                )
+            })
+        };
+        let Ok(staged) = stage(repo, applied, &mut read) else {
+            continue;
+        };
+        let mut under = snapshot.clone();
+        under.extend(staged);
+        if which_apply(repo, injections, &under) != baseline {
+            lost.insert(applied.name.clone());
+        }
+    }
+    Ok(lost)
+}
+
+/// Every file any injection touches, as text — and nothing said about whether
+/// the injections apply, which is [`which_apply`]'s question.
+fn read_touched(
+    repo: &Path,
+    injections: &[Injection],
+) -> Result<BTreeMap<PathBuf, String>, String> {
+    let mut tree = BTreeMap::new();
+    for injection in injections {
+        for edit in &injection.edits {
+            let path = repo.join(&edit.file);
+            if tree.contains_key(&path) {
+                continue;
+            }
+            let bytes =
+                fs::read(&path).map_err(|e| format!("{} unreadable: {e}", path.display()))?;
+            let text =
+                String::from_utf8(bytes).map_err(|_| format!("{} is not text", path.display()))?;
+            tree.insert(path, text);
+        }
+    }
+    Ok(tree)
+}
+
+/// Which of these injections still apply to a tree given as text.
+fn which_apply(
+    repo: &Path,
+    injections: &[Injection],
+    tree: &BTreeMap<PathBuf, String>,
+) -> BTreeSet<String> {
+    injections
+        .iter()
+        .filter(|injection| {
+            let mut read = |path: &Path| -> Result<String, String> {
+                tree.get(path)
+                    .cloned()
+                    .ok_or_else(|| format!("{} was not read", path.display()))
+            };
+            stage(repo, injection, &mut read).is_ok()
+        })
+        .map(|injection| injection.name.clone())
+        .collect()
+}
+
+/// Expectations a manifest names that the MECHANISM ALREADY GUARANTEES, one
+/// line each.
+///
+/// A test that reads this manifest's anchors is red whenever an injection takes
+/// them with it ([`unanchored`]), whatever the code under it does. An
+/// `expect_red` naming that test from such an injection therefore cannot fail:
+/// delete the property it is aimed at and the sweep still scores it reached. It
+/// is the vacuous expectation this whole device exists to detect, arrived at
+/// from the other side — and the escape hatch
+/// [`Manifest::tests_that_read_the_anchors`] would be the way to build one by
+/// accident, which is why the hatch and this refusal landed together.
+///
+/// HERE AND NOT IN THE SWEEP, so the same rule the sweep refuses to start on is
+/// the rule this crate's suite holds over every tracked manifest. A sweep is
+/// tens of minutes; the suite is where a reader finds out.
+pub fn unfalsifiable(repo: &Path, manifest: &Manifest) -> Result<Vec<String>, String> {
+    if manifest.tests_that_read_the_anchors.is_empty() {
+        return Ok(Vec::new());
+    }
+    let lost = unanchored(repo, &manifest.injections)?;
+    let mut found = Vec::new();
+    for injection in &manifest.injections {
+        if !lost.contains(&injection.name) {
+            continue;
+        }
+        for expected in &injection.expect_red {
+            if manifest
+                .tests_that_read_the_anchors
+                .iter()
+                .any(|reader| answers_to(expected, reader) || answers_to(reader, expected))
+            {
+                found.push(format!(
+                    "{}: `{expected}` reads this manifest's anchors, and this \
+                     injection takes them with it — so the red is the \
+                     mechanism's and this expectation cannot fail",
+                    injection.name
+                ));
+            }
+        }
+    }
+    Ok(found)
 }
 
 // --- what a plan's name answers to -------------------------------------------

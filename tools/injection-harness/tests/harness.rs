@@ -136,6 +136,7 @@ fn manifest(root: &Path, injections: serde_json::Value) -> PathBuf {
         injections,
         serde_json::Value::Null,
         serde_json::Value::Null,
+        serde_json::Value::Null,
     )
 }
 
@@ -144,7 +145,13 @@ fn manifest_with(
     injections: serde_json::Value,
     min_free_mb: serde_json::Value,
 ) -> PathBuf {
-    manifest_body(root, injections, min_free_mb, serde_json::Value::Null)
+    manifest_body(
+        root,
+        injections,
+        min_free_mb,
+        serde_json::Value::Null,
+        serde_json::Value::Null,
+    )
 }
 
 /// A manifest claiming its `expect_red` lists name the WHOLE red set.
@@ -154,6 +161,40 @@ fn manifest_claiming_every_red(root: &Path, injections: serde_json::Value) -> Pa
         injections,
         serde_json::Value::Null,
         serde_json::json!("exhaustive"),
+        serde_json::Value::Null,
+    )
+}
+
+/// The same, and naming the tests that read this manifest's own anchors — the
+/// reds an injection raises by being applied at all rather than by what it
+/// removed.
+fn manifest_claiming_every_red_and_reading(
+    root: &Path,
+    injections: serde_json::Value,
+    readers: serde_json::Value,
+) -> PathBuf {
+    manifest_body(
+        root,
+        injections,
+        serde_json::Value::Null,
+        serde_json::json!("exhaustive"),
+        readers,
+    )
+}
+
+/// And under the WEAKER claim, where an unnamed red is a finding rather than a
+/// failure — because what a declared reader is held to must not depend on that.
+fn manifest_reading_its_anchors(
+    root: &Path,
+    injections: serde_json::Value,
+    readers: serde_json::Value,
+) -> PathBuf {
+    manifest_body(
+        root,
+        injections,
+        serde_json::Value::Null,
+        serde_json::Value::Null,
+        readers,
     )
 }
 
@@ -164,6 +205,7 @@ fn manifest_body(
     injections: serde_json::Value,
     min_free_mb: serde_json::Value,
     red_set: serde_json::Value,
+    reads_the_anchors: serde_json::Value,
 ) -> PathBuf {
     let path = root.join("manifest.json");
     let mut body = serde_json::json!({
@@ -184,6 +226,9 @@ fn manifest_body(
     }
     if !red_set.is_null() {
         body["red_set"] = red_set;
+    }
+    if !reads_the_anchors.is_null() {
+        body["tests_that_read_the_anchors"] = reads_the_anchors;
     }
     fs::write(&path, serde_json::to_string(&body).expect("json")).expect("write manifest");
     path
@@ -2093,6 +2138,259 @@ fn a_red_set_that_has_moved_since_it_was_proven_is_said_and_an_unchanged_one_is_
     assert!(
         shrunk.contains("1 no longer red [\"a_ghost\"]"),
         "a red that has gone since the proof is named too: {shrunk}"
+    );
+}
+
+/// A tree with TWO anchored files and a suite that answers two different
+/// questions about them — the shape the harness's own manifest is in.
+///
+/// `the_law` is a property an injection is AIMED at: the source says exactly
+/// `HEALTHY`. `the_anchor_reader` stands for a test that reads ANCHORS — exact
+/// text some manifest names — and it is red when either has moved: `HEALTHY`
+/// gone from the source, or `OTHER` no longer alone on its line in the second
+/// file.
+///
+/// THE THREE CASES ARE THE THREE THIS REPOSITORY ACTUALLY HAS, and the fixture
+/// exists because they are indistinguishable in the verdict and not in the
+/// cause: an injection that takes its own anchor with it, one whose `to`
+/// CONTAINS its `from` and so leaves it standing, and one that leaves its own
+/// standing while moving an anchor somebody else named.
+fn two_anchor_tree(root: &Path) -> PathBuf {
+    fs::create_dir_all(root.join("logs")).expect("mkdir");
+    fs::write(root.join("src.txt"), "HEALTHY\n").expect("write source");
+    fs::write(root.join("other.txt"), "OTHER\n").expect("write the second anchor");
+    let suite = root.join("suite.sh");
+    fs::write(
+        &suite,
+        r#"#!/bin/sh
+law=ok
+reader=ok
+grep -qx HEALTHY src.txt || law=FAILED
+grep -q HEALTHY src.txt && grep -qx OTHER other.txt || reader=FAILED
+printf 'test the_law ... %s\ntest the_anchor_reader ... %s\n\n' "$law" "$reader"
+failed=0
+list=''
+if [ "$law" = FAILED ]; then failed=$((failed+1)); list="$list    the_law\n"; fi
+if [ "$reader" = FAILED ]; then failed=$((failed+1)); list="$list    the_anchor_reader\n"; fi
+if [ "$failed" -eq 0 ]; then
+  printf 'test result: ok. 2 passed; 0 failed; 0 ignored\n'
+  exit 0
+fi
+printf 'failures:\n'
+printf "$list"
+printf '\ntest result: FAILED. %s passed; %s failed; 0 ignored\n' "$((2-failed))" "$failed"
+exit 1
+"#,
+    )
+    .expect("write suite");
+    suite
+}
+
+/// One injection per case the fixture above is built for.
+fn three_anchor_cases() -> serde_json::Value {
+    serde_json::json!([
+        {
+            "name": "takes-the-anchor-with-it",
+            "why": "the ordinary shape: the text this manifest names is replaced, so from that moment the manifest does not describe the tree",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "SICK"}],
+            "expect_red": ["the_law"],
+        },
+        {
+            "name": "leaves-the-anchor-standing",
+            "why": "a `to` that CONTAINS its `from` — the anchor still occurs once, so nothing that reads anchors has anything to say about this run",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "HEALTHY, mostly"}],
+            "expect_red": ["the_law"],
+        },
+        {
+            "name": "moves-an-anchor-somebody-else-named",
+            "why": "its own anchor survives and the one the reader also watches does not — the case where a red among these names is the injection's own doing and must be named",
+            "edits": [{"file": "other.txt", "from": "OTHER", "to": "OTHER moved"}],
+            "expect_red": ["the_anchor_reader"],
+        }
+    ])
+}
+
+/// A red the MECHANISM raises is excused where the anchors are gone, and
+/// nowhere else.
+///
+/// The three injections differ only in what their edits do to the text the
+/// manifest names, and the verdict has to differ with it: the first is excused
+/// its second red, the second raises none to excuse, and the third raises the
+/// SAME red with its anchors standing — so that one is the injection's own and
+/// is named like any other expectation. A device that excused it everywhere
+/// would pass this file's first case and quietly stop judging the third.
+#[test]
+fn a_red_the_mechanism_raises_is_excused_where_the_anchors_are_gone_and_nowhere_else() {
+    let dir = tempdir();
+    two_anchor_tree(dir.path());
+    let path = manifest_claiming_every_red_and_reading(
+        dir.path(),
+        three_anchor_cases(),
+        serde_json::json!(["the_anchor_reader"]),
+    );
+    let out = harness(&path);
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        out.status.success(),
+        "a manifest that says which reds read its anchors can claim its red sets \
+         exhaustive: {why}"
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("the report is JSON");
+    let by_name: std::collections::BTreeMap<&str, &serde_json::Value> = report["injections"]
+        .as_array()
+        .expect("injections")
+        .iter()
+        .map(|result| (result["name"].as_str().expect("a name"), result))
+        .collect();
+
+    let gone = by_name["takes-the-anchor-with-it"];
+    assert_eq!(
+        gone["anchors_gone"], true,
+        "an injection that replaces the text this manifest names takes its anchors \
+         with it: {gone}"
+    );
+    assert!(
+        gone["fired"]
+            .as_array()
+            .expect("fired")
+            .iter()
+            .any(|red| red == "the_anchor_reader"),
+        "and the reader did go red, which is what there is to excuse: {gone}"
+    );
+    assert_eq!(
+        gone["unexpected"].as_array().expect("unexpected").len(),
+        0,
+        "and it is accounted for rather than counted as a red nobody described: {gone}"
+    );
+
+    let standing = by_name["leaves-the-anchor-standing"];
+    assert_eq!(
+        standing["anchors_gone"], false,
+        "a `to` that contains its `from` leaves the anchor occurring once: {standing}"
+    );
+    assert_eq!(
+        standing["mechanism_missed"]
+            .as_array()
+            .expect("mechanism_missed")
+            .len(),
+        0,
+        "and nothing is expected of a reader whose anchors never moved: {standing}"
+    );
+
+    let elsewhere = by_name["moves-an-anchor-somebody-else-named"];
+    assert_eq!(
+        elsewhere["anchors_gone"], false,
+        "this one's own anchor survives — it is somebody else's that moved: {elsewhere}"
+    );
+    assert_eq!(
+        elsewhere["missed"].as_array().expect("missed").len(),
+        0,
+        "and the red it names is one it actually reached: {elsewhere}"
+    );
+}
+
+/// AND THE OTHER DIRECTION, which is the one an excuse decays into: the same
+/// red, from the injection whose anchors are standing, with nobody naming it.
+///
+/// If the excuse were the manifest's rather than the tree's, this would pass —
+/// and the third case above would have stopped being judged without a word.
+#[test]
+fn a_red_this_manifest_excuses_is_still_unnamed_where_its_anchors_survive() {
+    let dir = tempdir();
+    two_anchor_tree(dir.path());
+    let path = manifest_claiming_every_red_and_reading(
+        dir.path(),
+        serde_json::json!([{
+            "name": "moves-an-anchor-somebody-else-named",
+            "why": "its own anchor survives, so nothing here is the mechanism's",
+            "edits": [{"file": "other.txt", "from": "OTHER", "to": "OTHER moved"}],
+            "expect_red": ["the_law"],
+        }]),
+        serde_json::json!(["the_anchor_reader"]),
+    );
+    let out = harness(&path);
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        !out.status.success(),
+        "the reader's red is this injection's own doing here, and unnamed: {why}"
+    );
+    assert!(
+        why.contains("the_anchor_reader") && why.contains("does not name"),
+        "and it is named as a red the manifest does not name: {why}"
+    );
+}
+
+/// An expectation the MECHANISM guarantees is refused, and before the suite
+/// runs.
+///
+/// The escape hatch above is the one way to build a vacuous expectation on
+/// purpose: name the reader in `expect_red` from an injection that takes the
+/// anchors with it, and the sweep scores it reached whatever the code does.
+/// Refused where a loose anchor is refused — a sweep is tens of minutes, and a
+/// claim that cannot be false should not cost them.
+#[test]
+fn an_expectation_the_mechanism_guarantees_is_refused_before_the_suite_runs() {
+    let dir = tempdir();
+    two_anchor_tree(dir.path());
+    let path = manifest_claiming_every_red_and_reading(
+        dir.path(),
+        serde_json::json!([{
+            "name": "takes-the-anchor-with-it",
+            "why": "and then claims the red that follows from that is evidence about the code",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "SICK"}],
+            "expect_red": ["the_law", "the_anchor_reader"],
+        }]),
+        serde_json::json!(["the_anchor_reader"]),
+    );
+    let out = harness(&path);
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(!out.status.success(), "{why}");
+    assert!(
+        why.contains("cannot fail")
+            && why.contains("takes-the-anchor-with-it")
+            && why.contains("the_anchor_reader"),
+        "and it says which expectation, in which injection: {why}"
+    );
+    assert_eq!(
+        fs::read_dir(dir.path().join("logs"))
+            .expect("the logs directory is made before anything is refused")
+            .count(),
+        0,
+        "and nothing ran: the price of finding this out is not a suite"
+    );
+}
+
+/// AND THE EXCUSE IS HELD TO WHAT IT CLAIMS, under the weaker claim too.
+///
+/// `red_set` decides what an UNNAMED red means. It decides nothing about a name
+/// this manifest declared and then did not see: an excuse that has stopped
+/// applying is a false statement about the mechanism either way, and the
+/// direction it fails in is the one that reads as a pass.
+#[test]
+fn an_excuse_that_did_not_apply_stops_the_sweep() {
+    let dir = tempdir();
+    tree(dir.path(), "HEALTHY here");
+    let path = manifest_reading_its_anchors(
+        dir.path(),
+        serde_json::json!([{
+            "name": "takes-the-anchor-with-it",
+            "why": "the anchor is replaced, so a test that read it would be red — and this suite has no such test",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+            "expect_red": ["the_law"],
+        }]),
+        serde_json::json!(["the_other"]),
+    );
+    let out = harness(&path);
+    let why = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        !out.status.success(),
+        "a declared reader that stayed green while its anchors were gone is an \
+         excuse about a mechanism that has moved: {why}"
+    );
+    assert!(
+        why.contains("the_other") && why.contains("read its anchors"),
+        "and the sweep says which name and why it was expecting it: {why}"
     );
 }
 

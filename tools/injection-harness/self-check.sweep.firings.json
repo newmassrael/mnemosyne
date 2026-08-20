@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": false,
+  "complete": true,
   "fired": {
     "a-decision-with-no-reason-is-recorded-anyway": {
       "edits": [
@@ -103,6 +103,22 @@
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
+    "a-key-nobody-reads-is-taken-as-a-key-nobody-wrote": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "#[derive(Debug, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Manifest {",
+          "to": "#[derive(Debug, Deserialize)]\npub struct Manifest {"
+        }
+      ],
+      "expect_red": [
+        "a_key_this_reader_does_not_know_is_refused_rather_than_ignored"
+      ],
+      "tests": [
+        "a_key_this_reader_does_not_know_is_refused_rather_than_ignored",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "a-name-in-both-halves-is-not-a-contradiction": {
       "edits": [
         {
@@ -119,6 +135,24 @@
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
+    "a-name-no-walk-can-see-goes-back-to-being-a-name-that-is-gone": {
+      "edits": [
+        {
+          "file": "tests/sweeps.rs",
+          "from": "            proc_macro2::TokenTree::Ident(ident) => {\n                into.insert(ident.to_string());\n            }",
+          "to": "            proc_macro2::TokenTree::Ident(ident) => {\n                let _ = ident;\n            }"
+        }
+      ],
+      "expect_red": [
+        "the_walk_finds_a_test_wherever_it_is_written_and_says_what_it_could_not_see",
+        "every_test_a_sweep_names_is_one_this_tree_still_has"
+      ],
+      "tests": [
+        "every_test_a_sweep_names_is_one_this_tree_still_has",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "the_walk_finds_a_test_wherever_it_is_written_and_says_what_it_could_not_see"
+      ]
+    },
     "a-record-belongs-to-a-directory-rather-than-a-sweep": {
       "edits": [
         {
@@ -129,7 +163,9 @@
       ],
       "expect_red": [
         "a_record_belongs_to_one_sweep_and_not_to_a_directory",
-        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks"
+        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks",
+        "a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_add",
+        "every_injection_a_record_covers_is_one_that_has_fired"
       ],
       "tests": [
         "a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_add",
@@ -155,6 +191,24 @@
         "tests::a_record_that_will_not_parse_is_not_an_absent_one"
       ]
     },
+    "a-red-nobody-described-is-counted-and-never-judged": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        if manifest.red_set == RedSet::Exhaustive && !result.unexpected.is_empty() {",
+          "to": "        if false && !result.unexpected.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "a_red_nobody_described_is_judged_only_where_the_manifest_claims_every_one",
+        "a_red_this_manifest_excuses_is_still_unnamed_where_its_anchors_survive"
+      ],
+      "tests": [
+        "a_red_nobody_described_is_judged_only_where_the_manifest_claims_every_one",
+        "a_red_this_manifest_excuses_is_still_unnamed_where_its_anchors_survive",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "a-red-set-that-moved-since-the-proof-goes-back-to-being-silence": {
       "edits": [
         {
@@ -168,6 +222,22 @@
       ],
       "tests": [
         "a_red_set_that_has_moved_since_it_was_proven_is_said_and_an_unchanged_one_is_not",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-report-carries-counts-under-no-suite-at-all": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        test_command: manifest.test_command.clone(),",
+          "to": "        test_command: Vec::new(),"
+        }
+      ],
+      "expect_red": [
+        "every_report_names_the_suite_whose_counts_it_carries"
+      ],
+      "tests": [
+        "every_report_names_the_suite_whose_counts_it_carries",
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
@@ -234,6 +304,57 @@
         "forgetting_a_row_an_injection_still_needs_is_refused"
       ]
     },
+    "a-sweep-whose-anchor-came-loose-goes-unnoticed": {
+      "edits": [
+        {
+          "file": "../cache-budget/injection-sweep.json",
+          "from": "        let contradicted = self.heard_where_nothing_collects();",
+          "to": "        let contradicted = self.heard_where_nothing_collects(); // moved"
+        }
+      ],
+      "expect_red": [
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ],
+      "tests": [
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "a-target-no-name-covers-is-close-enough": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    if run.reached.is_empty() || named == run.targets {\n        return None;\n    }",
+          "to": "    if true {\n        return None;\n    }"
+        }
+      ],
+      "expect_red": [
+        "tests::a_result_no_line_announced_is_a_target_no_name_covers",
+        "a_result_nothing_announced_stops_the_sweep_in_the_control",
+        "a_result_nothing_announced_stops_the_sweep_in_an_injected_run_too"
+      ],
+      "tests": [
+        "a_result_nothing_announced_stops_the_sweep_in_an_injected_run_too",
+        "a_result_nothing_announced_stops_the_sweep_in_the_control",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "tests::a_result_no_line_announced_is_a_target_no_name_covers"
+      ]
+    },
+    "a-tree-somebody-else-injected-is-taken-as-a-baseline": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        if !injected.is_empty() {",
+          "to": "        if false && !injected.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "a_tree_left_injected_by_a_dead_sweep_stops_the_next_one"
+      ],
+      "tests": [
+        "a_tree_left_injected_by_a_dead_sweep_stops_the_next_one",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "an-already-forgotten-row-takes-the-newer-reason": {
       "edits": [
         {
@@ -250,6 +371,24 @@
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
+    "an-anchor-that-matches-twice-is-close-enough": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if hits != 1 {",
+          "to": "    if hits == 0 {"
+        }
+      ],
+      "expect_red": [
+        "a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped",
+        "an_edit_that_matches_twice_is_refused_before_the_suite_is_asked"
+      ],
+      "tests": [
+        "a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped",
+        "an_edit_that_matches_twice_is_refused_before_the_suite_is_asked",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "an-edited-injection-keeps-the-evidence-of-the-old-one": {
       "edits": [
         {
@@ -259,11 +398,65 @@
         }
       ],
       "expect_red": [
-        "an_edited_injection_is_not_covered_by_the_old_evidence"
+        "an_edited_injection_is_not_covered_by_the_old_evidence",
+        "a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_add",
+        "a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited",
+        "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it"
       ],
       "tests": [
+        "a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_add",
+        "a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited",
         "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it",
         "tests::an_edited_injection_is_not_covered_by_the_old_evidence"
+      ]
+    },
+    "an-excuse-that-stopped-applying-is-one-fewer-red": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        let mechanism_missed: BTreeSet<String> = mechanism\n            .iter()\n            .filter(|name| !reached(&fired, name))\n            .cloned()\n            .collect();",
+          "to": "        let mechanism_missed: BTreeSet<String> = BTreeSet::new();"
+        }
+      ],
+      "expect_red": [
+        "an_excuse_that_did_not_apply_stops_the_sweep"
+      ],
+      "tests": [
+        "an_excuse_that_did_not_apply_stops_the_sweep",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "an-exhaustive-set-of-nothing-is-a-claim-worth-suites": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if manifest.red_set == RedSet::Exhaustive {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": [
+        "an_exhaustive_manifest_that_names_no_red_is_refused_before_the_run"
+      ],
+      "tests": [
+        "an_exhaustive_manifest_that_names_no_red_is_refused_before_the_run",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "an-expectation-the-mechanism-guarantees-is-let-through": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if manifest.tests_that_read_the_anchors.is_empty() {\n        return Ok(Vec::new());\n    }",
+          "to": "    if !manifest.tests_that_read_the_anchors.is_empty() {\n        return Ok(Vec::new());\n    }"
+        }
+      ],
+      "expect_red": [
+        "an_expectation_the_mechanism_guarantees_is_refused_before_the_suite_runs"
+      ],
+      "tests": [
+        "an_expectation_the_mechanism_guarantees_is_refused_before_the_suite_runs",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
     "forgetting-a-name-nobody-holds-succeeds-quietly": {
@@ -280,6 +473,56 @@
       "tests": [
         "every_tracked_sweep_still_applies_to_the_tree_it_names",
         "forgetting_a_row_that_is_not_there_is_refused_rather_than_recorded"
+      ]
+    },
+    "nothing-leads-its-own-process-group": {
+      "edits": [
+        {
+          "file": "src/supervise.rs",
+          "from": "            if libc::setpgid(0, 0) != 0 {",
+          "to": "            if false && libc::setpgid(0, 0) != 0 {"
+        }
+      ],
+      "expect_red": [
+        "a_sweep_that_is_interrupted_puts_the_tree_back_and_takes_the_suite_with_it",
+        "a_sweep_that_is_killed_outright_is_still_survived_by_its_tree"
+      ],
+      "tests": [
+        "a_sweep_that_is_interrupted_puts_the_tree_back_and_takes_the_suite_with_it",
+        "a_sweep_that_is_killed_outright_is_still_survived_by_its_tree",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "only-the-control-is-asked-whether-its-names-cover-it": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        if let Some(unaccounted) = unaccounted_targets(&result.run) {",
+          "to": "        if let Some(unaccounted) = unaccounted_targets(&Run::default()) {"
+        }
+      ],
+      "expect_red": [
+        "a_result_nothing_announced_stops_the_sweep_in_an_injected_run_too"
+      ],
+      "tests": [
+        "a_result_nothing_announced_stops_the_sweep_in_an_injected_run_too",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-control-only-mode-prints-a-shape-of-its-own": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        println!(\"{}\", serde_json::to_string_pretty(&report).map_err(err)?);",
+          "to": "        println!(\"{}\", serde_json::to_string_pretty(&control).map_err(err)?);"
+        }
+      ],
+      "expect_red": [
+        "every_report_names_the_suite_whose_counts_it_carries"
+      ],
+      "tests": [
+        "every_report_names_the_suite_whose_counts_it_carries",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
     "the-evidence-a-run-is-replacing-outlives-the-control-it-reddens": {
@@ -300,6 +543,55 @@
         "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it"
       ]
     },
+    "the-excuse-is-this-manifests-rather-than-the-trees": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        if which_apply(repo, injections, &under) != baseline {\n            lost.insert(applied.name.clone());\n        }",
+          "to": "        let _ = under;\n        lost.insert(applied.name.clone());"
+        }
+      ],
+      "expect_red": [
+        "a_red_the_mechanism_raises_is_excused_where_the_anchors_are_gone_and_nowhere_else",
+        "a_red_this_manifest_excuses_is_still_unnamed_where_its_anchors_survive",
+        "every_expectation_a_sweep_names_is_one_that_could_fail"
+      ],
+      "tests": [
+        "a_red_the_mechanism_raises_is_excused_where_the_anchors_are_gone_and_nowhere_else",
+        "a_red_this_manifest_excuses_is_still_unnamed_where_its_anchors_survive",
+        "every_expectation_a_sweep_names_is_one_that_could_fail",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-exit-code-goes-back-to-being-recorded-only": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    if run.exit_code == Some(0) && !run.red.is_empty() {",
+          "to": "    if false && run.exit_code == Some(0) && !run.red.is_empty() {"
+        },
+        {
+          "file": "src/main.rs",
+          "from": "    if run.exit_code != Some(0) && run.red.is_empty() {",
+          "to": "    if false && run.exit_code != Some(0) && run.red.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "a_control_that_failed_without_naming_a_test_stops_the_sweep",
+        "an_injection_run_that_failed_without_naming_a_test_is_not_a_clean_surface",
+        "a_run_that_exited_green_over_a_red_log_stops_the_sweep",
+        "a_suite_killed_by_a_signal_is_not_a_run_that_finished",
+        "tests::a_suite_killed_by_a_signal_exits_nothing_and_that_is_a_disagreement"
+      ],
+      "tests": [
+        "a_control_that_failed_without_naming_a_test_stops_the_sweep",
+        "a_run_that_exited_green_over_a_red_log_stops_the_sweep",
+        "a_suite_killed_by_a_signal_is_not_a_run_that_finished",
+        "an_injection_run_that_failed_without_naming_a_test_is_not_a_clean_surface",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "tests::a_suite_killed_by_a_signal_exits_nothing_and_that_is_a_disagreement"
+      ]
+    },
     "the-first-word-is-a-manifest-again": {
       "edits": [
         {
@@ -316,6 +608,60 @@
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
+    "the-law-over-falsifiable-expectations-is-over-nothing": {
+      "edits": [
+        {
+          "file": "tests/sweeps.rs",
+          "from": "        if a_test_input(&path) || manifest.tests_that_read_the_anchors.is_empty() {\n            continue;\n        }\n        declaring.push(path.clone());",
+          "to": "        if a_test_input(&path) || manifest.tests_that_read_the_anchors.len() < 2 {\n            continue;\n        }\n        declaring.push(path.clone());"
+        }
+      ],
+      "expect_red": [
+        "every_expectation_a_sweep_names_is_one_that_could_fail"
+      ],
+      "tests": [
+        "every_expectation_a_sweep_names_is_one_that_could_fail",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-manifest-paths-are-resolved-against-whoever-ran-it": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    let beside = path.parent().unwrap_or(Path::new(\".\"));",
+          "to": "    let beside = Path::new(\".\");"
+        }
+      ],
+      "expect_red": [
+        "a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place",
+        "every_sweep_names_a_suite_this_tree_can_still_run",
+        "a_sweep_that_runs_the_whole_workspace_runs_its_features_too",
+        "every_test_a_sweep_names_is_one_this_tree_still_has"
+      ],
+      "tests": [
+        "a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place",
+        "a_sweep_that_runs_the_whole_workspace_runs_its_features_too",
+        "every_sweep_names_a_suite_this_tree_can_still_run",
+        "every_test_a_sweep_names_is_one_this_tree_still_has",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-mechanisms-red-is-counted-as-one-nobody-described": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "                    && !mechanism.iter().any(|reader| answers_to(red, reader))\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_red_the_mechanism_raises_is_excused_where_the_anchors_are_gone_and_nowhere_else"
+      ],
+      "tests": [
+        "a_red_the_mechanism_raises_is_excused_where_the_anchors_are_gone_and_nowhere_else",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "the-population-of-sweeps-is-whatever-a-glob-finds": {
       "edits": [
         {
@@ -325,20 +671,93 @@
         }
       ],
       "expect_red": [
-        "every_tracked_sweep_still_applies_to_the_tree_it_names",
         "every_sweep_names_a_suite_this_tree_can_still_run",
         "every_test_a_sweep_names_is_one_this_tree_still_has",
         "every_injection_a_record_covers_is_one_that_has_fired",
         "a_sweep_that_runs_the_whole_workspace_runs_its_features_too",
-        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks"
+        "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks",
+        "every_expectation_a_sweep_names_is_one_that_could_fail",
+        "every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run"
       ],
       "tests": [
         "a_sweep_that_runs_the_whole_workspace_runs_its_features_too",
+        "every_expectation_a_sweep_names_is_one_that_could_fail",
         "every_injection_a_record_covers_is_one_that_has_fired",
         "every_sweep_names_a_suite_this_tree_can_still_run",
+        "every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run",
         "every_test_a_sweep_names_is_one_this_tree_still_has",
         "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks",
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-supervisor-stops-dying-with-the-harness": {
+      "edits": [
+        {
+          "file": "src/supervise.rs",
+          "from": "            if die_with_parent && libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {",
+          "to": "            if false && die_with_parent && libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {"
+        }
+      ],
+      "expect_red": [
+        "a_sweep_that_is_killed_outright_is_still_survived_by_its_tree"
+      ],
+      "tests": [
+        "a_sweep_that_is_killed_outright_is_still_survived_by_its_tree",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-supervisor-stops-putting-the-tree-back": {
+      "edits": [
+        {
+          "file": "src/supervise.rs",
+          "from": "            match read_originals(&index).and_then(|originals| restore_originals(&originals)) {",
+          "to": "            match read_originals(&index).map(|_| ()) {"
+        }
+      ],
+      "expect_red": [
+        "a_sweep_that_is_killed_outright_is_still_survived_by_its_tree"
+      ],
+      "tests": [
+        "a_sweep_that_is_killed_outright_is_still_survived_by_its_tree",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-sweep-supervises-from-a-resolved-path-instead-of-its-running-image": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        supervisor: PathBuf::from(supervise::SUPERVISOR),",
+          "to": "        supervisor: std::env::current_exe().map_err(|e| e.to_string())?,"
+        }
+      ],
+      "expect_red": [
+        "a_suite_that_replaces_the_tool_does_not_end_the_sweep"
+      ],
+      "tests": [
+        "a_suite_that_replaces_the_tool_does_not_end_the_sweep",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-targets-a-run-reached-go-back-to-being-a-set": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "            *run.reached.entry(name).or_default() += 1;",
+          "to": "            *run.reached.entry(name).or_default() = 1;"
+        }
+      ],
+      "expect_red": [
+        "tests::two_targets_that_share_a_name_are_counted_and_not_collapsed",
+        "tests::a_target_lost_from_a_shared_name_is_still_drift",
+        "two_targets_that_share_a_name_are_a_baseline_a_sweep_can_use",
+        "a_target_lost_from_a_shared_name_still_stops_the_sweep"
+      ],
+      "tests": [
+        "a_target_lost_from_a_shared_name_still_stops_the_sweep",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "tests::a_target_lost_from_a_shared_name_is_still_drift",
+        "tests::two_targets_that_share_a_name_are_counted_and_not_collapsed",
+        "two_targets_that_share_a_name_are_a_baseline_a_sweep_can_use"
       ]
     }
   },

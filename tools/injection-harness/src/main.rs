@@ -280,6 +280,14 @@ struct InjectionResult {
     /// because for every other sweep this is the count of guards nobody has
     /// written down yet, which is a finding rather than a failure.
     unexpected: BTreeSet<String>,
+    /// Whether this injection took the manifest's own anchors with it, which is
+    /// what decides whether `tests_that_read_the_anchors` accounts for anything
+    /// here. In the report because a reader who cannot see it cannot tell an
+    /// excused red from an unnamed one.
+    anchors_gone: bool,
+    /// Names the manifest says read its anchors and that did NOT go red while
+    /// those anchors were gone — an excuse that has stopped applying.
+    mechanism_missed: BTreeSet<String>,
     /// Targets the control reached and this run reached fewer of, and the
     /// reverse — by name, with both counts.
     targets: TargetGap,
@@ -480,6 +488,33 @@ fn run(argv: &[String]) -> Result<(), String> {
     let (chosen, scope) = injection_harness::select(&manifest.injections, &only)?;
     let chosen: Vec<Injection> = chosen.into_iter().cloned().collect();
     let snapshot = injection_harness::snapshot_and_dry_run(&manifest.repo, &chosen)?;
+
+    // AND WHICH INJECTIONS TAKE THIS MANIFEST'S ANCHORS WITH THEM — asked of
+    // every injection the FILE carries and not only of the chosen, because the
+    // question is about the tree a reader of those anchors sees, and that reader
+    // does not know which of them this run selected.
+    //
+    // BEFORE THE CONTROL, with the pre-flight, and for the same reason: what it
+    // can refuse is a manifest whose expectation cannot fail, and finding that
+    // out after the suites have run is finding it out at the price of the whole
+    // sweep.
+    //
+    // REFUSED WHOLE RATHER THAN SCOPED TO `--only`. A loose anchor is a fact
+    // about the tree and a narrow run is how somebody repairs it; an expectation
+    // the mechanism guarantees is a defect in the FILE, repaired by editing it,
+    // and after that edit this refusal is gone. Nothing here blocks its own fix.
+    let unfalsifiable = injection_harness::unfalsifiable(&manifest.repo, &manifest)?;
+    if !unfalsifiable.is_empty() {
+        return Err(format!(
+            "{} expectation(s) in {manifest_path} cannot fail. `{}` names the \
+             test(s) that read this manifest's anchors, and a red the mechanism \
+             raises whatever the code does is not evidence about the code:\n  {}",
+            unfalsifiable.len(),
+            "tests_that_read_the_anchors",
+            unfalsifiable.join("\n  ")
+        ));
+    }
+    let unanchored = injection_harness::unanchored(&manifest.repo, &manifest.injections)?;
 
     // AND THE EVIDENCE THIS RUN IS ABOUT TO REPLACE IS VOIDED BEFORE THE CONTROL
     // READS IT (R1200). A row proven against a definition the manifest no longer
@@ -749,6 +784,18 @@ fn run(argv: &[String]) -> Result<(), String> {
             .filter(|name| !reached(&fired, name))
             .cloned()
             .collect();
+        // THE REDS THE MECHANISM ACCOUNTS FOR, and only where it does. While
+        // this injection is in the tree the manifest's anchors are gone, so
+        // whatever reads them is red for that and not for the read the injection
+        // removed; where the anchors survive — an injection whose `to` contains
+        // its `from` — nothing here is excused and such a red is as unnamed as
+        // any other.
+        let anchors_gone = unanchored.contains(&injection.name);
+        let mechanism: &[String] = if anchors_gone {
+            &manifest.tests_that_read_the_anchors
+        } else {
+            &[]
+        };
         let unexpected: BTreeSet<String> = fired
             .iter()
             .filter(|red| {
@@ -756,7 +803,19 @@ fn run(argv: &[String]) -> Result<(), String> {
                     .expect_red
                     .iter()
                     .any(|expected| answers_to(red, expected))
+                    && !mechanism.iter().any(|reader| answers_to(red, reader))
             })
+            .cloned()
+            .collect();
+        // AND THE EXCUSE IS HELD TO THE SAME STANDARD AS AN EXPECTATION. A name
+        // the manifest excuses and that did not go red while the anchors it
+        // reads were gone is an excuse that has quietly stopped applying — the
+        // way a blanket exemption decays, and the direction that reads as a
+        // pass. Named here so the sweep says so instead of counting one fewer
+        // unnamed red.
+        let mechanism_missed: BTreeSet<String> = mechanism
+            .iter()
+            .filter(|name| !reached(&fired, name))
             .cloned()
             .collect();
         let drift = run.targets as i64 - control.targets as i64;
@@ -817,6 +876,8 @@ fn run(argv: &[String]) -> Result<(), String> {
             fired,
             missed,
             unexpected,
+            anchors_gone,
+            mechanism_missed,
             targets,
             target_drift: drift,
             edits: injection.edits.clone(),
@@ -869,6 +930,18 @@ fn run(argv: &[String]) -> Result<(), String> {
                 "{}: aimed at {:?} and did not reach it — a sweep that comes \
                  back 0 is a misaimed injection until something says otherwise",
                 result.name, result.missed
+            ));
+        }
+        // AND THE EXCUSE IN THE SAME BREATH AS THE EXPECTATION, under BOTH
+        // claims. `red_set` decides what an unnamed red means; it decides
+        // nothing about a name this manifest declared and then did not see,
+        // which is a false statement about the mechanism either way.
+        if !result.mechanism_missed.is_empty() {
+            broken.push(format!(
+                "{}: this manifest says {:?} read its anchors, and this injection \
+                 replaced them — they did not go red, so what excuses an unnamed \
+                 red here is a claim about a mechanism that has moved",
+                result.name, result.mechanism_missed
             ));
         }
         // AND THE OTHER DIRECTION, FOR A MANIFEST THAT CLAIMS ITS SET IS WHOLE.

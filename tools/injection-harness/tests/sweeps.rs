@@ -336,6 +336,88 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     );
 }
 
+/// AND EVERY EXPECTATION A SWEEP NAMES IS ONE THAT COULD FAIL.
+///
+/// A sweep's whole verdict is "breaking this read reddens that test", and the
+/// one answer it must never invent is the reassuring one. `expect_red` is where
+/// that claim is written down, and there is a way to write one the MECHANISM
+/// satisfies: a test that reads this manifest's own anchors is red from the
+/// moment an injection replaces one, whatever the code under it does. Name it
+/// and the sweep scores the injection as having reached what it was aimed at —
+/// for ever, including after the property is deleted.
+///
+/// THE HATCH AND THIS LAW ARE ONE CHANGE. `tests_that_read_the_anchors` exists
+/// so the harness's own manifest can declare its red sets exhaustive without
+/// claiming the mechanism's red is its evidence; the same field is the way to
+/// build the vacuous expectation on purpose, so the refusal lands beside it
+/// rather than a round later. The sweep refuses to start on one; this is where a
+/// reader who did not start one finds out.
+///
+/// OVER THE MANIFESTS THAT DECLARE A READER, which is the only population the
+/// question exists for — and counted, because a law over none of them passes in
+/// exactly the shape of a law over all of them.
+#[test]
+fn every_expectation_a_sweep_names_is_one_that_could_fail() {
+    let root = repository_root();
+    let mut declaring: Vec<String> = Vec::new();
+    let mut unanchoring = 0;
+    let mut injections = 0;
+    let mut vacuous: Vec<String> = Vec::new();
+    for path in tracked_json(&root) {
+        let Ok(manifest) = injection_harness::read_manifest(&root.join(&path)) else {
+            continue;
+        };
+        if a_test_input(&path) || manifest.tests_that_read_the_anchors.is_empty() {
+            continue;
+        }
+        declaring.push(path.clone());
+        injections += manifest.injections.len();
+        let lost = injection_harness::unanchored(&manifest.repo, &manifest.injections)
+            .unwrap_or_else(|why| panic!("{path}: {why}"));
+        unanchoring += lost.len();
+        for problem in injection_harness::unfalsifiable(&manifest.repo, &manifest)
+            .unwrap_or_else(|why| panic!("{path}: {why}"))
+        {
+            vacuous.push(format!("{path} / {problem}"));
+        }
+    }
+
+    // NON-VACUITY, IN THE TWO PLACES THIS LAW CAN QUIETLY STOP ASKING. A
+    // repository where nothing declares a reader has no question here — and so
+    // does one where the field was renamed and every manifest read as declaring
+    // nothing. The second is the one that looks like a pass.
+    assert!(
+        !declaring.is_empty(),
+        "no tracked sweep names the tests that read its anchors, so this law is \
+         over nothing — the harness's own manifest declares them, and a rename \
+         that silently emptied this population would print this same silence"
+    );
+    // AND THE MECHANISM ITSELF MUST STILL BE HAPPENING. An expectation can only
+    // be unfalsifiable where an injection takes the anchors with it; if none
+    // does, this law holds for a reason that has nothing to do with what it
+    // checks.
+    assert!(
+        unanchoring > 0,
+        "none of the {injections} injection(s) in {} manifest(s) that declare an \
+         anchor reader takes its manifest's anchors with it, so nothing here \
+         could have been unfalsifiable: {declaring:?}",
+        declaring.len()
+    );
+    eprintln!(
+        "[falsifiable] {} sweep(s) declare an anchor reader; {unanchoring} of \
+         {injections} injection(s) take their manifest's anchors with them",
+        declaring.len()
+    );
+    assert!(
+        vacuous.is_empty(),
+        "{} expectation(s) cannot fail. The red they name is raised by the \
+         injection being applied at all, so the sweep scores them reached with \
+         the property they are aimed at deleted:\n  {}",
+        vacuous.len(),
+        vacuous.join("\n  ")
+    );
+}
+
 /// A SWEEP THAT SAYS `--workspace` MUST RUN THE WHOLE OF IT (Round 1171).
 ///
 /// A sweep's verdict is "which tests went red", so the suite its command
@@ -621,6 +703,7 @@ fn unresolved(
 #[test]
 fn every_sweep_names_a_suite_this_tree_can_still_run() {
     let root = repository_root();
+    let here = root.canonicalize().expect("the repository root resolves");
     let mut selecting = 0;
     let mut judged = Vec::new();
     let mut broken = Vec::new();
@@ -647,6 +730,25 @@ fn every_sweep_names_a_suite_this_tree_can_still_run() {
         if !tree.is_file() {
             broken.push(format!(
                 "{path}: its command runs in {}, where there is no manifest",
+                tree.display()
+            ));
+            continue;
+        }
+        // AND IT MUST BE A MANIFEST THIS REPOSITORY HOLDS. `repo` is DATA and
+        // `targets_of` RUNS CARGO against whatever it names. This machine keeps
+        // six checkouts under one home, so a `repo` that resolves one directory
+        // too high points cargo at somebody else's tree — where it may write a
+        // lockfile, which is a change to a repository this one does not own.
+        // R1259 measured the sibling shape of this in the law below: the same
+        // wrong resolution sent a WALK to `/home/coin`, and `syn` overflowed its
+        // stack on another checkout's source. A sweep whose command would run
+        // outside this repository is one this repository cannot run, so it is
+        // named rather than asked.
+        if !inside_this_repository(&here, &tree) {
+            broken.push(format!(
+                "{path}: its command runs in {}, which is outside this repository — \
+                 asking that tree for its targets runs cargo in a checkout this one \
+                 does not own",
                 tree.display()
             ));
             continue;
@@ -686,6 +788,75 @@ fn every_sweep_names_a_suite_this_tree_can_still_run() {
          that would score it never starts:\n  {}",
         broken.len(),
         broken.join("\n  ")
+    );
+}
+
+/// Whether a path a manifest NAMES is one this repository holds.
+///
+/// A sweep's `repo` is DATA, and the two laws that act on the tree it names do
+/// the two things that get expensive when the data is wrong: one WALKS it, and
+/// one RUNS CARGO in it. This machine keeps six checkouts under one home, so a
+/// `repo` that resolves one directory too high names all of them — and R1259
+/// measured what each half costs. The walk reached `/home/coin`, ran for over a
+/// minute and `syn` overflowed its stack on another checkout's source, which
+/// ABORTS the test binary and takes every verdict in it: three reds that had
+/// already printed were lost, and the injection's whole red set came back as one
+/// test. Cargo in a sibling checkout is the quieter half — `cargo metadata` may
+/// write a lockfile, which is a change to a repository this one does not own.
+///
+/// ONE SPELLING FOR BOTH, because two laws answering "is this ours" separately
+/// is two answers free to disagree. Resolved rather than compared lexically:
+/// `..` in the data is exactly how the wrong path is built.
+fn inside_this_repository(here: &Path, named: &Path) -> bool {
+    named
+        .canonicalize()
+        .is_ok_and(|resolved| resolved.starts_with(here))
+}
+
+/// AND THAT ANSWER IS NOT ALWAYS YES, which is the half no tracked sweep can
+/// show.
+///
+/// Every `repo` this repository tracks resolves inside it today, so both laws
+/// above take the accepting branch for every one of their population and the
+/// refusing branch is reached by nothing they read. An injection cannot supply
+/// the missing half either: it can only break the resolution, and a `repo`
+/// resolved one directory too high names a `Cargo.toml` that does not exist, so
+/// the law names it for THAT instead. The case is asked here directly, of two
+/// paths that exist — this repository's own manifest, and a directory that is
+/// really outside it on this machine.
+#[test]
+fn a_tree_outside_this_repository_is_not_one_of_its_own() {
+    let root = repository_root();
+    let here = root.canonicalize().expect("the repository root resolves");
+    assert!(
+        inside_this_repository(&here, &root.join("Cargo.toml")),
+        "this repository's own manifest is one it holds"
+    );
+    assert!(
+        inside_this_repository(&here, &root.join("tools/injection-harness")),
+        "and so is a directory inside it, reached through the path this crate \
+         was started from"
+    );
+    // A REAL DIRECTORY OUTSIDE IT, and the one the wrong answer actually lands
+    // in: the directory this repository sits in. Not a made-up path —
+    // `canonicalize` fails for one that does not exist, and the answer would
+    // then be right for the wrong reason, where "absent" and "somebody else's"
+    // are the two the laws above must keep apart. A `repo` of `../../..` where
+    // `../..` was meant resolves exactly here, which is where the walk that
+    // overflowed a stack was sent, and it is where the other checkouts on this
+    // machine live.
+    let outside = here.parent().expect("this repository sits in a directory");
+    assert!(
+        outside.is_dir() && !outside.starts_with(&here),
+        "this case needs a directory that exists and is not under {here:?}: {outside:?}"
+    );
+    assert!(
+        !inside_this_repository(&here, outside),
+        "a tree that exists and is not this repository's is refused as such"
+    );
+    assert!(
+        !inside_this_repository(&here, &here.join("no-such-file-here.toml")),
+        "and so is one that is not there at all"
     );
 }
 
@@ -878,7 +1049,9 @@ fn test_names_in(tree: &Path) -> TestNames {
 #[test]
 fn every_test_a_sweep_names_is_one_this_tree_still_has() {
     let root = repository_root();
+    let here = root.canonicalize().expect("the repository root resolves");
     let mut trees: BTreeMap<PathBuf, TestNames> = BTreeMap::new();
+    let mut elsewhere: Vec<String> = Vec::new();
     let mut judged = 0;
     // THE TWO GROUNDS, COUNTED SEPARATELY AND BOTH PRINTED. A run in which every
     // expectation was carried by the weak ground is a run this law barely
@@ -897,38 +1070,77 @@ fn every_test_a_sweep_names_is_one_this_tree_still_has() {
         // name found in a package the command does not reach is a miss this law
         // does not report — generous in the direction that cannot raise a false
         // alarm, and the pre-flight is exact about the rest.
+        //
+        // AND IT MUST BE A TREE THIS REPOSITORY HOLDS. `repo` is DATA, so a walk
+        // over it is unbounded work over whatever that path turns out to name:
+        // this machine keeps six checkouts under one home, and a manifest whose
+        // `repo` resolves one directory too high names all of them. R1259
+        // MEASURED it, with the injection aimed at exactly that resolution — the
+        // walk reached `/home/coin`, ran over a minute, and `syn` overflowed its
+        // stack on somebody else's source. A stack overflow ABORTS the test
+        // binary, so every verdict in it went with it, including the three reds
+        // that had already printed: the injection's own red set came back as one
+        // test, and the sweep could say nothing about the rest.
+        //
+        // R1257's shape, one level out: read what the data resolves to, and cut
+        // it to inside this repository. A sweep whose tree is elsewhere is one
+        // this law has nothing to say about — counted, and not walked.
+        if !inside_this_repository(&here, &manifest.repo) {
+            elsewhere.push(format!("{path} → {}", manifest.repo.display()));
+            continue;
+        }
+        let tree = manifest.repo.canonicalize().expect("it just resolved");
         let names = trees
-            .entry(manifest.repo.clone())
-            .or_insert_with(|| test_names_in(&manifest.repo));
-        for injection in &manifest.injections {
-            for expected in &injection.expect_red {
-                let leaf = expected.rsplit("::").next().unwrap_or(expected);
-                judged += 1;
-                if names.named.contains(leaf) {
-                    by_syntax += 1;
-                    continue;
-                }
-                // THE WEAK GROUND. Not proof that the test exists — proof that
-                // this walk is not entitled to say it does not.
-                if names.generated.contains(leaf) {
-                    by_macro += 1;
-                    continue;
-                }
-                let report = format!("{path} / {}: `{expected}`", injection.name);
-                if names.unparsed.is_empty() {
-                    missing.push(format!(
-                        "{report} — no `#[test] fn` of that name in that tree, and none \
-                         of its {} item-position macro invocation(s) is even handed \
-                         that identifier",
-                        names.opaque.len()
-                    ));
-                } else {
-                    unreadable.push(format!(
-                        "{report} — and {} file(s) in that tree did not parse, so an \
-                         absent name and an unread one look alike here",
-                        names.unparsed.len()
-                    ));
-                }
+            .entry(tree.clone())
+            .or_insert_with(|| test_names_in(&tree));
+        // EVERY NAME THE MANIFEST NAMES, and `expect_red` is no longer all of
+        // them. A test declared as reading this sweep's anchors EXCUSES a red
+        // from being counted as one nobody described, so a name there that this
+        // tree no longer has is an excuse that can never be claimed — the same
+        // decay as a stale expectation, in the direction that reads as a pass.
+        let claims: Vec<(&str, &String)> = manifest
+            .injections
+            .iter()
+            .flat_map(|injection| {
+                injection
+                    .expect_red
+                    .iter()
+                    .map(move |expected| (injection.name.as_str(), expected))
+            })
+            .chain(
+                manifest
+                    .tests_that_read_the_anchors
+                    .iter()
+                    .map(|reader| ("tests_that_read_the_anchors", reader)),
+            )
+            .collect();
+        for (claimed_by, expected) in claims {
+            let leaf = expected.rsplit("::").next().unwrap_or(expected);
+            judged += 1;
+            if names.named.contains(leaf) {
+                by_syntax += 1;
+                continue;
+            }
+            // THE WEAK GROUND. Not proof that the test exists — proof that
+            // this walk is not entitled to say it does not.
+            if names.generated.contains(leaf) {
+                by_macro += 1;
+                continue;
+            }
+            let report = format!("{path} / {claimed_by}: `{expected}`");
+            if names.unparsed.is_empty() {
+                missing.push(format!(
+                    "{report} — no `#[test] fn` of that name in that tree, and none \
+                     of its {} item-position macro invocation(s) is even handed \
+                     that identifier",
+                    names.opaque.len()
+                ));
+            } else {
+                unreadable.push(format!(
+                    "{report} — and {} file(s) in that tree did not parse, so an \
+                     absent name and an unread one look alike here",
+                    names.unparsed.len()
+                ));
             }
         }
     }
@@ -956,6 +1168,15 @@ fn every_test_a_sweep_names_is_one_this_tree_still_has() {
         "[expectations] {judged} judged: {by_syntax} by syntax, {by_macro} by a macro's \
          tokens alone"
     );
+    // AND WHAT WAS NOT WALKED, said rather than left as the difference between
+    // two numbers a reader would have to hold in their head.
+    if !elsewhere.is_empty() {
+        eprintln!(
+            "[expectations] {} sweep(s) name a tree outside this repository and were not \
+             walked: {elsewhere:?}",
+            elsewhere.len()
+        );
+    }
     assert!(
         unreadable.is_empty(),
         "{} expectation(s) this law cannot answer for, because part of the tree they are \
@@ -1585,6 +1806,7 @@ fn a_decision_that_does_not_stand_is_named_and_a_sound_one_is_left_alone() {
         logs: PathBuf::from("logs"),
         min_free_mb: None,
         red_set: injection_harness::RedSet::AtLeast,
+        tests_that_read_the_anchors: Vec::new(),
         injections: vec![injection("came-back")],
     };
     let decision = |because: &str| injection_harness::Forgotten {
