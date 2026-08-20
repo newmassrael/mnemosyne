@@ -52,6 +52,36 @@
         "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded"
       ]
     },
+    "a-commit-nothing-measured-is-recorded-anyway": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        if spent.is_empty() {\n            return None;\n        }",
+          "to": "        if checks.is_empty() {\n            return None;\n        }"
+        }
+      ],
+      "expect_red": [
+        "a_commit_no_job_of_which_was_measured_is_not_recorded_at_all"
+      ],
+      "tests": [
+        "a_commit_no_job_of_which_was_measured_is_not_recorded_at_all"
+      ]
+    },
+    "a-commit-read-twice-becomes-two-points-on-its-own-curve": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    fs::rename(&beside, &at)\n        .map_err(|why| format!(\"{} could not be put in place: {why}\", at.display()))?;",
+          "to": "    fs::copy(&beside, &at)\n        .map_err(|why| format!(\"{} could not be put in place: {why}\", at.display()))?;"
+        }
+      ],
+      "expect_red": [
+        "reading_one_commit_twice_replaces_its_record_rather_than_adding_a_second"
+      ],
+      "tests": [
+        "reading_one_commit_twice_replaces_its_record_rather_than_adding_a_second"
+      ]
+    },
     "a-conclusion-github-stops-sending-reads-as-a-check-still-running": {
       "edits": [
         {
@@ -112,6 +142,55 @@
         "a_name_two_workflows_declare_is_a_refusal_rather_than_the_first_one_found"
       ]
     },
+    "a-raised-budget-reads-as-a-job-that-got-cheaper": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    pub fn against(&self) -> u64 {\n        self.last.budget_minutes\n    }",
+          "to": "    pub fn against(&self) -> u64 {\n        self.first.budget_minutes\n    }"
+        }
+      ],
+      "expect_red": [
+        "a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper",
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic"
+      ],
+      "tests": [
+        "a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper",
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic"
+      ]
+    },
+    "a-record-copied-under-another-name-is-placed-on-that-commit": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if named != kept.commit {",
+          "to": "    if named.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused"
+      ],
+      "tests": [
+        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused"
+      ]
+    },
+    "a-record-that-will-not-read-is-dropped-in-silence": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "            Err(why) => trouble.push(why),",
+          "to": "            Err(_) => {}"
+        }
+      ],
+      "expect_red": [
+        "a_record_that_will_not_read_is_named_and_the_others_are_still_read",
+        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused"
+      ],
+      "tests": [
+        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused",
+        "a_record_that_will_not_read_is_named_and_the_others_are_still_read"
+      ]
+    },
     "a-red-commit-does-not-say-how-much-of-it-was-somebody-elses": {
       "edits": [
         {
@@ -157,6 +236,21 @@
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     },
+    "a-run-a-later-push-cancelled-is-held-against-a-budget": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if retired.contains(&check.name) {",
+          "to": "        if retired.contains(\"a name no check of this repository carries\") {"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget"
+      ],
+      "tests": [
+        "a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget"
+      ]
+    },
     "a-run-a-later-push-retired-is-still-called-red": {
       "edits": [
         {
@@ -172,6 +266,36 @@
       "tests": [
         "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    "a-share-off-disk-saturates-into-an-alarming-number": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let allowed = u128::from(budget_minutes) * 60;",
+          "to": "    let allowed = u128::from(budget_minutes.saturating_mul(60));"
+        }
+      ],
+      "expect_red": [
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic"
+      ],
+      "tests": [
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic"
+      ]
+    },
+    "a-single-point-is-drawn-as-a-trend": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if kept.len() == 1 {",
+          "to": "    if kept.len() > 99 {"
+        }
+      ],
+      "expect_red": [
+        "one_commit_recorded_is_a_level_and_is_told_apart_from_a_trend"
+      ],
+      "tests": [
+        "one_commit_recorded_is_a_level_and_is_told_apart_from_a_trend"
       ]
     },
     "a-skipped-job-is-called-a-failure": {
@@ -190,7 +314,8 @@
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
-        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ],
       "tests": [
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
@@ -200,7 +325,8 @@
         "the_paginated_recording_reports_the_same_commit",
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
         "the_skipped_check_in_the_recording_is_not_read_as_a_failure",
-        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "a-step-conclusion-github-stops-sending-reads-as-a-step-still-running": {
@@ -344,10 +470,12 @@
         }
       ],
       "expect_red": [
-        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ],
       "tests": [
-        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "the-binary-never-asks-whether-the-run-was-retired": {
@@ -420,7 +548,7 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    if let Some(worst) = spent.iter().max_by_key(|one| one.percent()) {\n        lines.push(format!(\n            \"of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)\",\n            spent.len(),\n            worst.check,\n            clock(worst.took),\n            worst.budget_minutes,\n            worst.percent()\n        ));\n    }\n",
+          "from": "    if let Some(worst) = closest_to_budget(spent) {\n        lines.push(format!(\n            \"of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)\",\n            spent.len(),\n            worst.check,\n            clock(worst.took),\n            worst.budget_minutes,\n            worst.percent()\n        ));\n    }\n",
           "to": ""
         }
       ],
@@ -431,6 +559,21 @@
       "tests": [
         "the_closest_job_to_its_budget_is_printed_even_when_every_job_is_fine",
         "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+      ]
+    },
+    "the-commit-a-record-is-named-after-is-taken-on-trust": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if (7..=64).contains(&commit.len()) && commit.as_bytes().iter().all(hex) {",
+          "to": "    if !commit.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "a_commit_name_that_is_not_a_commit_is_refused_rather_than_joined_to_a_path"
+      ],
+      "tests": [
+        "a_commit_name_that_is_not_a_commit_is_refused_rather_than_joined_to_a_path"
       ]
     },
     "the-conclusion-this-reporter-treats-as-routine-is-misspelled": {
@@ -463,12 +606,42 @@
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
       ]
     },
+    "the-job-that-is-moving-is-only-looked-for-where-the-level-pointed": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        .max_by_key(|one| one.points());",
+          "to": "        .min_by_key(|one| one.points());"
+        }
+      ],
+      "expect_red": [
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget"
+      ],
+      "tests": [
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget"
+      ]
+    },
+    "the-jobs-a-later-push-ended-vanish-from-the-count": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if retired > 0 {",
+          "to": "    if retired > 99 {"
+        }
+      ],
+      "expect_red": [
+        "a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget"
+      ],
+      "tests": [
+        "a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget"
+      ]
+    },
     "the-jobs-that-have-not-finished-are-listed-one-by-one": {
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "        .filter(|why| !matches!(why, Unmeasured::NotFinished { .. }))\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));",
-          "to": "        .filter(|_| true)\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));"
+          "from": "            Unmeasured::NotFinished { .. } | Unmeasured::Retired { .. }",
+          "to": "            Unmeasured::Retired { .. }"
         }
       ],
       "expect_red": [
@@ -493,6 +666,51 @@
       "tests": [
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran"
+      ]
+    },
+    "the-record-directory-is-one-nothing-collects": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "pub const RECORDS: &str = \"target/ci-budgets\";",
+          "to": "pub const RECORDS: &str = \"target/ci-history\";"
+        }
+      ],
+      "expect_red": [
+        "the_directory_this_reporter_records_into_is_one_this_repository_collects"
+      ],
+      "tests": [
+        "the_directory_this_reporter_records_into_is_one_this_repository_collects"
+      ]
+    },
+    "the-record-is-ordered-by-the-file-and-not-by-the-run": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        epoch_seconds(&left.ran_at)\n            .cmp(&epoch_seconds(&right.ran_at))\n            .then_with(|| left.commit.cmp(&right.commit))",
+          "to": "        left.commit.cmp(&right.commit)"
+        }
+      ],
+      "expect_red": [
+        "the_record_is_ordered_by_when_the_run_happened_and_not_by_when_it_was_written"
+      ],
+      "tests": [
+        "the_record_is_ordered_by_when_the_run_happened_and_not_by_when_it_was_written"
+      ]
+    },
+    "the-reporter-measures-a-level-and-keeps-nothing": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    lines.extend(ci_state::history::kept_report(root, sha, &checks, &spent));",
+          "to": "    let _ = ci_state::history::kept_report(root, sha, &checks, &spent);"
+        }
+      ],
+      "expect_red": [
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ],
+      "tests": [
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "the-run-is-taken-from-the-jobs-number": {
@@ -550,5 +768,6 @@
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     }
-  }
+  },
+  "forgotten": {}
 }

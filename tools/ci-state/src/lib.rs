@@ -39,6 +39,10 @@
 
 use std::collections::BTreeSet;
 
+/// What a push learned about what CI cost, kept, so the next one can read a
+/// trend rather than a level (R1260).
+pub mod history;
+
 /// What GitHub calls a conclusion that means the commit did not pass.
 ///
 /// EXACTLY THE SET R890 CHOSE, kept whole rather than narrowed while the reading
@@ -597,7 +601,15 @@ pub fn seconds_between(started: &str, completed: &str) -> Option<u64> {
 }
 
 /// What one job took, against what it was allowed to take.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// SERIALISED SINCE R1260, because this is exactly what a record of a push keeps:
+/// the two raw numbers and the name they belong to, never the percentage between
+/// them. One spelling of that division means a record cannot come to disagree
+/// with the reporter that wrote it, and keeping the budget beside the duration is
+/// what makes a raised `timeout-minutes` visible as a moved denominator rather
+/// than as a job that got cheaper.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Spent {
     /// The check row's name, which is the job's `name:` or its id.
     pub check: String,
@@ -609,13 +621,39 @@ pub struct Spent {
 
 impl Spent {
     /// How much of the budget the job used, rounded down, as a whole percent.
+    ///
+    /// TOTAL ARITHMETIC, WHICH IT HAD NO NEED OF UNTIL R1260. While both numbers
+    /// came from one `gh` answer in this process, `took * 100` was a duration
+    /// GitHub had just stamped. They now also arrive off DISK, out of a record a
+    /// person can edit — and `took * 100` overflows a `u64` for a duration nobody
+    /// worked but somebody can type, which is a panic in a reporter that is not
+    /// allowed to block a push.
     #[must_use]
     pub fn percent(&self) -> u64 {
-        if self.budget_minutes == 0 {
-            return 0;
-        }
-        self.took * 100 / (self.budget_minutes * 60)
+        share_of(self.took, self.budget_minutes)
     }
+}
+
+/// What a duration is, as a share of a budget in minutes.
+///
+/// A FREE FUNCTION BECAUSE THE TREND HOLDS ONE JOB'S DURATIONS AGAINST A BUDGET
+/// THAT IS NOT EACH ROW'S OWN (R1260). Comparing what a job cost in June against
+/// what it costs now means holding both against ONE denominator — otherwise a
+/// raised `timeout-minutes` reads as the job getting cheaper. That comparison and
+/// [`Spent::percent`] must be the same arithmetic, so there is one of it.
+///
+/// TOTAL, over numbers that arrive off disk: see [`Spent::percent`]. Both
+/// products are taken in `u128`, where neither can overflow, so nothing here
+/// SATURATES either — a budget clamped to the largest representable number would
+/// answer `100%` for a job that used none of it, which is a wrong number in the
+/// direction that reads as alarming.
+#[must_use]
+pub fn share_of(took: u64, budget_minutes: u64) -> u64 {
+    let allowed = u128::from(budget_minutes) * 60;
+    if allowed == 0 {
+        return 0;
+    }
+    u64::try_from(u128::from(took) * 100 / allowed).unwrap_or(u64::MAX)
 }
 
 /// Why one check's cost could not be held against a budget.
@@ -637,6 +675,9 @@ pub enum Unmeasured {
     BudgetIsAnExpression { check: String, written: String },
     /// The job has not finished. A state, not a defect.
     NotFinished { check: String },
+    /// A later push ended the run this job was in, so the wall clock between its
+    /// two stamps is not what the job cost. A state, not a defect.
+    Retired { check: String },
     /// Two stamps this reader cannot turn into a duration.
     Unreadable {
         check: String,
@@ -670,6 +711,11 @@ impl std::fmt::Display for Unmeasured {
             Self::NotFinished { check } => {
                 write!(formatter, "`{check}` has not finished")
             }
+            Self::Retired { check } => write!(
+                formatter,
+                "`{check}` was ended by a LATER PUSH, so the time between its two \
+                 stamps is how long it waited to be cancelled and not what it cost"
+            ),
             Self::Unreadable {
                 check,
                 started,
@@ -693,7 +739,27 @@ impl std::fmt::Display for Unmeasured {
 /// the last fully green run before this was written, the worst job in this
 /// repository sat at 44% (`validate`, 40m24s of 90m), so seventy-five leaves room
 /// for an ordinary bad day and still speaks a round before the job dies.
+///
+/// AND IT IS NOT DERIVED FROM THE RECORD [`history`] KEEPS, WHICH IS A DECISION
+/// (R1260). A band read off this repository's own history — "warn above the
+/// ninetieth percentile of what jobs here actually do" — rises with the creep it
+/// exists to catch: every push that costs a little more raises the baseline the
+/// band is measured from, so a job that doubles over two months is inside it on
+/// every single push. This number is a share of the thing that ENDS the job, and
+/// the record answers the other question — whether the cost is moving — with no
+/// threshold at all.
 pub const CREEPING: u64 = 75;
+
+/// The job that used the largest share of its budget, of those that were measured.
+///
+/// ONE SPELLING, BECAUSE TWO READERS ASK IT. The report below names this job in
+/// its first line, and [`history::kept_report`] follows THAT job through the
+/// record — and a trend drawn about a different job than the level line named is
+/// worse than no trend, because both sentences read as being about one thing.
+#[must_use]
+pub fn closest_to_budget(spent: &[Spent]) -> Option<&Spent> {
+    spent.iter().max_by_key(|one| one.percent())
+}
 
 /// What each job took against what it declared, and what could not be compared.
 ///
@@ -708,14 +774,33 @@ pub const CREEPING: u64 = 75;
 /// silently shrinks is how a reader comes to believe every job was measured. A
 /// check no job declares, a job still running, a budget written as an expression
 /// and a stamp this cannot read are four different sentences.
+///
+/// AND A RUN A LATER PUSH RETIRED IS NOT A COST (R1260, paying for R1245). R1242
+/// taught the census that a cancelled run says nothing about the commit it is on;
+/// the block that reads what a job COST was written after it and never learned
+/// the same fact. Measured on the record this repository kept in the round that
+/// found it: commit `1ddeff31` reports NINE checks, every one of them `cancelled`
+/// by the next push, every one of them stamped 11:39:12 to 12:37:16 — one wall
+/// clock, shared by nine jobs that were mostly sitting in a queue. Against their
+/// budgets that reads as `MSRV` at 193% of thirty minutes, a job that would have
+/// been killed at thirty if it had ever been running. The number is not large
+/// because anything is wrong; it is a duration of a different thing, and keeping
+/// it would have written that into every trend for as long as the record lives.
 #[must_use]
 pub fn spent_against_budgets(
     checks: &[Check],
     budgets: &[(String, ci_plan::JobBudget)],
+    retired: &BTreeSet<String>,
 ) -> (Vec<Spent>, Vec<Unmeasured>) {
     let mut spent = Vec::new();
     let mut unread = Vec::new();
     for check in checks {
+        if retired.contains(&check.name) {
+            unread.push(Unmeasured::Retired {
+                check: check.name.clone(),
+            });
+            continue;
+        }
         let declaring: Vec<&(String, ci_plan::JobBudget)> = budgets
             .iter()
             .filter(|(_, job)| job.check_name() == check.name)
@@ -776,7 +861,7 @@ pub fn spent_against_budgets(
 }
 
 /// `40m24s`, as this reporter prints a duration.
-fn clock(seconds: u64) -> String {
+pub(crate) fn clock(seconds: u64) -> String {
     format!("{}m{:02}s", seconds / 60, seconds % 60)
 }
 
@@ -789,7 +874,7 @@ fn clock(seconds: u64) -> String {
 #[must_use]
 pub fn budget_report(spent: &[Spent], unread: &[Unmeasured]) -> Vec<String> {
     let mut lines = Vec::new();
-    if let Some(worst) = spent.iter().max_by_key(|one| one.percent()) {
+    if let Some(worst) = closest_to_budget(spent) {
         lines.push(format!(
             "of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)",
             spent.len(),
@@ -823,10 +908,26 @@ pub fn budget_report(spent: &[Spent], unread: &[Unmeasured]) -> Vec<String> {
              about this commit yet"
         ));
     }
-    for why in unread
+    // COUNTED FOR THE SAME REASON, and the case is even more ordinary: GitHub's
+    // concurrency group cancels a whole run at once, so a session that pushes
+    // twice in an hour retires NINE checks in one go, and nine lines saying so is
+    // a screen of alarm about the entirely normal.
+    let retired = unread
         .iter()
-        .filter(|why| !matches!(why, Unmeasured::NotFinished { .. }))
-    {
+        .filter(|why| matches!(why, Unmeasured::Retired { .. }))
+        .count();
+    if retired > 0 {
+        lines.push(format!(
+            "  {retired} job(s) were ended by a LATER PUSH, so the clock between their \
+             stamps is how long they waited to be cancelled and not what they cost"
+        ));
+    }
+    for why in unread.iter().filter(|why| {
+        !matches!(
+            why,
+            Unmeasured::NotFinished { .. } | Unmeasured::Retired { .. }
+        )
+    }) {
         lines.push(format!("  NOT MEASURED {why}"));
     }
     lines
@@ -890,7 +991,7 @@ fn outcome(check: &Check) -> &str {
 }
 
 /// The first eight characters of a sha, as everything here prints it.
-fn short(sha: &str) -> String {
+pub(crate) fn short(sha: &str) -> String {
     sha.chars().take(8).collect()
 }
 

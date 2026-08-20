@@ -93,7 +93,8 @@
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
-        "what_a_job_cost_is_held_against_its_budget_through_this_binary"
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     {
@@ -434,7 +435,10 @@
           "to": "    let (budgets, unreadable): (Vec<(String, ci_plan::JobBudget)>, Vec<String>) =\n        (Vec::new(), Vec::new());"
         }
       ],
-      "expect_red": ["what_a_job_cost_is_held_against_its_budget_through_this_binary"]
+      "expect_red": [
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ]
     },
     {
       "name": "the-closest-job-is-printed-only-when-it-is-already-bad",
@@ -442,7 +446,7 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    if let Some(worst) = spent.iter().max_by_key(|one| one.percent()) {\n        lines.push(format!(\n            \"of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)\",\n            spent.len(),\n            worst.check,\n            clock(worst.took),\n            worst.budget_minutes,\n            worst.percent()\n        ));\n    }\n",
+          "from": "    if let Some(worst) = closest_to_budget(spent) {\n        lines.push(format!(\n            \"of {} job(s) measured, the closest to its budget was `{}` — {} of {}m ({}%)\",\n            spent.len(),\n            worst.check,\n            clock(worst.took),\n            worst.budget_minutes,\n            worst.percent()\n        ));\n    }\n",
           "to": ""
         }
       ],
@@ -493,11 +497,185 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "        .filter(|why| !matches!(why, Unmeasured::NotFinished { .. }))\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));",
-          "to": "        .filter(|_| true)\n    {\n        lines.push(format!(\"  NOT MEASURED {why}\"));"
+          "from": "            Unmeasured::NotFinished { .. } | Unmeasured::Retired { .. }",
+          "to": "            Unmeasured::Retired { .. }"
         }
       ],
       "expect_red": ["a_job_near_its_budget_is_named_and_the_unfinished_are_counted"]
+    },
+    {
+      "name": "a-run-a-later-push-cancelled-is-held-against-a-budget",
+      "why": "MEASURED ON A REAL COMMIT OF THIS REPOSITORY, and it is what R1260 found by keeping the numbers. `1ddeff31` carries nine checks, every one of them `cancelled` by the next push, every one of them stamped 11:39:12 to 12:37:16 — ONE wall clock, shared by nine jobs that spent most of it queued. Against their budgets that reads as `MSRV` at 193% of thirty minutes, a job that would have been killed at thirty if it had ever been running. R1242 taught the census that a retired run says nothing about this commit; the block that reads what a job COST was written three rounds later and never learned it",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if retired.contains(&check.name) {",
+          "to": "        if retired.contains(\"a name no check of this repository carries\") {"
+        }
+      ],
+      "expect_red": ["a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget"]
+    },
+    {
+      "name": "the-jobs-a-later-push-ended-vanish-from-the-count",
+      "why": "a block that silently shrinks is how a reader comes to believe every job was measured. They are COUNTED rather than named one line each because a concurrency group cancels a whole run at once, so a session that pushes twice in an hour retires nine checks in one go",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if retired > 0 {",
+          "to": "    if retired > 99 {"
+        }
+      ],
+      "expect_red": ["a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget"]
+    },
+    {
+      "name": "a-share-off-disk-saturates-into-an-alarming-number",
+      "why": "these two numbers come off DISK since R1260, out of a file somebody can edit. A budget clamped to the largest representable number answers 100% for a job that used a sixtieth of it — a wrong number in the direction that reads as alarming, from a reporter that is not allowed to block a push",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let allowed = u128::from(budget_minutes) * 60;",
+          "to": "    let allowed = u128::from(budget_minutes.saturating_mul(60));"
+        }
+      ],
+      "expect_red": ["a_duration_nobody_worked_is_a_number_rather_than_a_panic"]
+    },
+    {
+      "name": "the-record-is-ordered-by-the-file-and-not-by-the-run",
+      "why": "a trend is a sentence about numbers nobody remembers, so an order that is subtly wrong is a paragraph nobody can contradict. The key is the RUN's own stamp because refilling a wiped history means reporting on old commits NOW — under any key that came from the file, a fortnight-old run would land as the newest point of every series and every trend would read as a collapse",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        epoch_seconds(&left.ran_at)\n            .cmp(&epoch_seconds(&right.ran_at))\n            .then_with(|| left.commit.cmp(&right.commit))",
+          "to": "        left.commit.cmp(&right.commit)"
+        }
+      ],
+      "expect_red": ["the_record_is_ordered_by_when_the_run_happened_and_not_by_when_it_was_written"]
+    },
+    {
+      "name": "a-commit-read-twice-becomes-two-points-on-its-own-curve",
+      "why": "the record is REPLACED per commit, which is what makes a re-read free: the jobs that had not finished have, and a finished job never changes what it took. A writer that left the older copy behind would turn every re-read into a second point for one run, and a trend that flattens itself the more often anybody looks is worse than none",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    fs::rename(&beside, &at)\n        .map_err(|why| format!(\"{} could not be put in place: {why}\", at.display()))?;",
+          "to": "    fs::copy(&beside, &at)\n        .map_err(|why| format!(\"{} could not be put in place: {why}\", at.display()))?;"
+        }
+      ],
+      "expect_red": ["reading_one_commit_twice_replaces_its_record_rather_than_adding_a_second"]
+    },
+    {
+      "name": "the-commit-a-record-is-named-after-is-taken-on-trust",
+      "why": "the name arrives on `argv` and a name is DATA — `<tree>/target/ci-budgets/<whatever>.json` with no guard writes wherever a `..` in it points. R1259 paid for the general form of this one round earlier, where a manifest field naming a directory was resolved against whoever ran the program and walked a whole home directory",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if (7..=64).contains(&commit.len()) && commit.as_bytes().iter().all(hex) {",
+          "to": "    if !commit.is_empty() {"
+        }
+      ],
+      "expect_red": ["a_commit_name_that_is_not_a_commit_is_refused_rather_than_joined_to_a_path"]
+    },
+    {
+      "name": "a-record-copied-under-another-name-is-placed-on-that-commit",
+      "why": "R1122's shape: format perfect, every field present, and the subject wrong. A record whose filename and whose `commit` disagree is a measurement this reporter would otherwise place on a commit that never ran it",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if named != kept.commit {",
+          "to": "    if named.is_empty() {"
+        }
+      ],
+      "expect_red": ["a_record_that_describes_another_commit_than_it_is_named_for_is_refused"]
+    },
+    {
+      "name": "a-record-that-will-not-read-is-dropped-in-silence",
+      "why": "a directory that quietly drops half its rows is a trend computed over a window nobody chose, and it reads exactly like a trend computed over all of them",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "            Err(why) => trouble.push(why),",
+          "to": "            Err(_) => {}"
+        }
+      ],
+      "expect_red": [
+        "a_record_that_will_not_read_is_named_and_the_others_are_still_read",
+        "a_record_that_describes_another_commit_than_it_is_named_for_is_refused"
+      ]
+    },
+    {
+      "name": "a-commit-nothing-measured-is-recorded-anyway",
+      "why": "an empty record is a row in every count and a point in no series — `against 9 commit(s) recorded here` would read as nine measurements while four of them were pushes made while CI was still running",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        if spent.is_empty() {\n            return None;\n        }",
+          "to": "        if checks.is_empty() {\n            return None;\n        }"
+        }
+      ],
+      "expect_red": ["a_commit_no_job_of_which_was_measured_is_not_recorded_at_all"]
+    },
+    {
+      "name": "a-raised-budget-reads-as-a-job-that-got-cheaper",
+      "why": "THE TRAP THE RECORD EXISTS TO MAKE VISIBLE. Raising `timeout-minutes` from 90 to 120 drops a job's raw share from 44% to 33% without making it one second cheaper, so a trend built from the shares as they were printed would report that as the steepest FALL in the repository. Both ends are held against ONE denominator for exactly this reason",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    pub fn against(&self) -> u64 {\n        self.last.budget_minutes\n    }",
+          "to": "    pub fn against(&self) -> u64 {\n        self.first.budget_minutes\n    }"
+        }
+      ],
+      "expect_red": [
+        "a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper",
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic"
+      ]
+    },
+    {
+      "name": "the-job-that-is-moving-is-only-looked-for-where-the-level-pointed",
+      "why": "the two questions this record separates. A job flat at 44% is the level line's subject and is not news; a job that went from 12% to 31% is news, and the level line will NEVER name it because it is nowhere near a budget",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        .max_by_key(|one| one.points());",
+          "to": "        .min_by_key(|one| one.points());"
+        }
+      ],
+      "expect_red": ["the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget"]
+    },
+    {
+      "name": "a-single-point-is-drawn-as-a-trend",
+      "why": "the first push after a `cargo clean` has one record, and a reporter that phrased that as a movement would be inventing the one thing it exists to measure",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if kept.len() == 1 {",
+          "to": "    if kept.len() > 99 {"
+        }
+      ],
+      "expect_red": ["one_commit_recorded_is_a_level_and_is_told_apart_from_a_trend"]
+    },
+    {
+      "name": "the-record-directory-is-one-nothing-collects",
+      "why": "R1199 found six record directories with no collector at all, and the reason nobody had looked is that a directory with no collector is indistinguishable from one whose collector has nothing to do. `target/` is gitignored, so nothing about its growth appears in a commit, and the build machine prunes its own copy so nothing appears in a remote run either",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "pub const RECORDS: &str = \"target/ci-budgets\";",
+          "to": "pub const RECORDS: &str = \"target/ci-history\";"
+        }
+      ],
+      "expect_red": ["the_directory_this_reporter_records_into_is_one_this_repository_collects"]
+    },
+    {
+      "name": "the-reporter-measures-a-level-and-keeps-nothing",
+      "why": "every law about the record can pass while this program measures a commit, prints a level and keeps nothing — which is exactly what it did before R1260, and what it would go back to doing the moment this call was dropped. A trend only a unit test can produce is not a trend anybody reads",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    lines.extend(ci_state::history::kept_report(root, sha, &checks, &spent));",
+          "to": "    let _ = ci_state::history::kept_report(root, sha, &checks, &spent);"
+        }
+      ],
+      "expect_red": ["what_this_push_measured_is_kept_and_read_back_through_this_binary"]
     }
   ]
 }

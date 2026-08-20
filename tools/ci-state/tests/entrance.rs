@@ -300,10 +300,12 @@ fn a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary() {
 /// THE WORKFLOW IS WRITTEN AND TRACKED HERE, because the budgets are read out of
 /// what a repository TRACKS. `validate` in the recording ran 13:40:53 to 14:00:50,
 /// which is 19m57s; against the 90 minutes this fixture declares that is 22%.
-#[test]
-fn what_a_job_cost_is_held_against_its_budget_through_this_binary() {
-    let stub = Stub::recording_beside_git();
-    let tree = stub.dir.path();
+/// A tree that TRACKS one workflow declaring `validate` with a 90-minute budget.
+///
+/// TRACKED, not merely written: the budgets are read out of what a repository
+/// tracks, so a file that only exists on disk is a workflow `ci-plan` will not
+/// read and every case built on it would pass for the wrong reason.
+fn declaring_validate(tree: &Path) {
     fs::create_dir_all(tree.join(".github/workflows")).expect("the workflow directory");
     fs::write(
         tree.join(".github/workflows/recorded.yml"),
@@ -324,6 +326,13 @@ fn what_a_job_cost_is_held_against_its_budget_through_this_binary() {
             .expect("git, which is how a repository is asked what it tracks");
         assert!(out.status.success(), "git {argv:?}: {out:?}");
     }
+}
+
+#[test]
+fn what_a_job_cost_is_held_against_its_budget_through_this_binary() {
+    let stub = Stub::recording_beside_git();
+    let tree = stub.dir.path();
+    declaring_validate(tree);
 
     let out = stub.run(&[SHA], &fixture("check-runs.one-page.json"));
     let said = said(&out);
@@ -341,6 +350,70 @@ fn what_a_job_cost_is_held_against_its_budget_through_this_binary() {
         said.contains("NOT MEASURED") && said.contains("no job of this repository"),
         "and the eight checks this one-job workflow does not declare are NAMED \
          rather than quietly left out of the count:\n{said}"
+    );
+}
+
+/// What this push measured is KEPT, and read back beside the next one (R1260).
+///
+/// THE WRITING AND THE READING ARE BOTH IN THE BINARY OR NEITHER IS. Every law
+/// about the record can pass while this program measures a commit, prints a
+/// level, and keeps nothing — which is exactly what it did before this round, and
+/// what it would go back to doing the moment the call in `main.rs` was dropped.
+/// A trend that only a unit test can produce is not a trend anybody reads.
+///
+/// THE OLDER RECORD IS SEEDED THROUGH THE WRITER UNDER TEST rather than written
+/// as JSON here, because a fixture that spelled the format itself would keep
+/// passing on the day the writer's spelling changed.
+#[test]
+fn what_this_push_measured_is_kept_and_read_back_through_this_binary() {
+    let stub = Stub::recording_beside_git();
+    let tree = stub.dir.path();
+    declaring_validate(tree);
+    ci_state::history::keep(
+        tree,
+        &ci_state::history::Kept {
+            commit: "0b5545bb5282707ff0e0bca68e2ce7fbb31f46f8".to_string(),
+            ran_at: "2026-08-01T09:00:00Z".to_string(),
+            jobs: vec![ci_state::Spent {
+                check: "validate".to_string(),
+                took: 540,
+                budget_minutes: 90,
+            }],
+        },
+    )
+    .expect("an earlier push's record");
+
+    let out = stub.run(&[SHA], &fixture("check-runs.one-page.json"));
+    let printed = said(&out);
+    assert_eq!(out.status.code(), Some(0), "{printed}");
+    assert!(
+        tree.join(ci_state::history::RECORDS)
+            .join(format!("{SHA}.json"))
+            .exists(),
+        "this commit's own measurement has to survive the process that made it, \
+         or the next push has nothing to compare against:\n{printed}"
+    );
+    assert!(
+        printed.contains("against 2 commit(s) recorded here, oldest 2026-08-01T09:00:00Z"),
+        "and the record is read back in the same run:\n{printed}"
+    );
+    assert!(
+        printed.contains(
+            "`validate` 10% → 22% (+12 points over 2 commit(s) that ran it; \
+                          10–22% across them)"
+        ),
+        "the job the level line named, followed through the record — 9m00s then \
+         19m57s, both of 90m:\n{printed}"
+    );
+
+    // AND RUNNING AGAIN LEAVES ONE ROW FOR ONE COMMIT. A reporter that appended
+    // would turn every re-read of a commit into a second point on its own curve,
+    // which is a trend that flattens itself the more often anybody looks.
+    let twice = stub.run(&[SHA], &fixture("check-runs.one-page.json"));
+    let again = said(&twice);
+    assert!(
+        again.contains("against 2 commit(s) recorded here"),
+        "{again}"
     );
 }
 

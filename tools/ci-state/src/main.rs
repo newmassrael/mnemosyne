@@ -175,8 +175,13 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
     // AND THE READING IS THE FALLIBLE ONE, because a reporter is not a law: the
     // asserting reader beside it is right to die where a repository tracks no
     // workflow at all, and this program runs in whatever tree a push happens in.
+    //
+    // AND THE RETIRED CHECKS ARE HANDED IN (R1260): a run a later push cancelled
+    // is nine jobs stamped with one wall clock, and holding that against nine
+    // budgets is a number about queueing wearing a number about cost's clothes.
+    // `retired` is the set R1242 already computes for the census above.
     let (budgets, unreadable) = ci_plan::readable_job_budgets(root);
-    let (spent, mut unread) = ci_state::spent_against_budgets(&checks, &budgets);
+    let (spent, mut unread) = ci_state::spent_against_budgets(&checks, &budgets, &retired);
     unread.extend(
         unreadable
             .into_iter()
@@ -199,6 +204,17 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
     } else {
         lines.extend(ci_state::budget_report(&spent, &unread));
     }
+
+    // AND WHAT IT COST LAST TIME (R1260). The block above is a LEVEL — a share of
+    // the budget, on this one commit — and nothing kept it, so asking whether that
+    // share is where the job has always sat meant a person holding two screens
+    // side by side. This keeps the number and reads the record back.
+    //
+    // OUTSIDE THE BRANCH ABOVE ON PURPOSE: a tree whose workflows would not read
+    // measures nothing new, and the history it already holds is still the answer
+    // to what earlier pushes cost. The recording declines itself when there is
+    // nothing measured to record.
+    lines.extend(ci_state::history::kept_report(root, sha, &checks, &spent));
     lines
 }
 

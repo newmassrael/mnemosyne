@@ -8,7 +8,7 @@
 //! a SUBSTRING of the failure output agreed with the output it existed to refuse.
 
 use ci_state::{
-    annotation_report, one_line, report, verdict, Annotation, Check, Output, Said, Verdict,
+    annotation_report, one_line, report, verdict, Annotation, Check, Output, Said, Spent, Verdict,
 };
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
@@ -218,6 +218,11 @@ fn job(id: &str, shown_as: Option<&str>, timeout: Option<&str>) -> (String, ci_p
     )
 }
 
+/// The ordinary commit, where no later push has retired anything.
+fn nothing_retired() -> std::collections::BTreeSet<String> {
+    std::collections::BTreeSet::new()
+}
+
 /// A check with its two stamps, which is what a cost is read out of.
 fn ran(name: &str, started: &str, completed: Option<&str>) -> Check {
     let mut row = check(1, name, Some("success"), 0);
@@ -335,7 +340,7 @@ fn a_jobs_cost_is_joined_to_its_budget_by_the_name_a_check_carries() {
         ),
         ran("validate", "2026-08-18T13:40:00Z", None),
     ];
-    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets);
+    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets, &nothing_retired());
 
     assert_eq!(spent.len(), 2, "{spent:?}");
     assert_eq!(spent[0].took, 1_197);
@@ -359,6 +364,73 @@ fn a_jobs_cost_is_joined_to_its_budget_by_the_name_a_check_carries() {
     assert!(
         said.iter().any(|why| why.contains("has not finished")),
         "and a job still running is a state of the world: {said:?}"
+    );
+}
+
+/// A run a later push cancelled is not a cost, and its jobs are counted rather
+/// than measured.
+///
+/// THE NUMBERS HERE ARE A REAL COMMIT OF THIS REPOSITORY. `1ddeff31` carries nine
+/// checks, every one of them `cancelled` by the next push, every one of them
+/// stamped 11:39:12 to 12:37:16 — ONE wall clock, shared by nine jobs that spent
+/// most of it queued. R1242 taught the census to call that no verdict; the block
+/// that reads what a job COST was written three rounds later and never learned
+/// it, so it held 3484 seconds against a thirty-minute budget and reported
+/// `MSRV` at 193% — a job that would have been killed at thirty if it had ever
+/// been running. R1260 found it by keeping the numbers, which is the whole
+/// argument for keeping them.
+#[test]
+fn a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget() {
+    let budgets = [
+        job(
+            "msrv",
+            Some("MSRV (workspace.package.rust-version)"),
+            Some("30"),
+        ),
+        job("validate", None, Some("90")),
+    ];
+    let checks = [
+        ran(
+            "MSRV (workspace.package.rust-version)",
+            "2026-08-19T11:39:12Z",
+            Some("2026-08-19T12:37:16Z"),
+        ),
+        ran(
+            "validate",
+            "2026-08-19T11:39:12Z",
+            Some("2026-08-19T12:37:16Z"),
+        ),
+    ];
+    let retired: std::collections::BTreeSet<String> =
+        checks.iter().map(|check| check.name.clone()).collect();
+
+    let (measured, _) = ci_state::spent_against_budgets(&checks, &budgets, &nothing_retired());
+    assert_eq!(
+        measured.iter().map(Spent::percent).collect::<Vec<_>>(),
+        vec![193, 64],
+        "the reading this replaces: a wall clock nine jobs shared, held against \
+         each of their budgets"
+    );
+
+    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets, &retired);
+    assert!(
+        spent.is_empty(),
+        "nothing a later push ended is a measurement: {spent:?}"
+    );
+    let said = ci_state::budget_report(&spent, &unread).join("\n");
+    assert!(
+        said.contains("2 job(s) were ended by a LATER PUSH"),
+        "counted, because a concurrency group cancels a whole run at once and \
+         nine lines about the entirely normal is a screen of alarm: {said}"
+    );
+    assert!(
+        !said.contains("closest to its budget"),
+        "and no job is named as closest to anything, because none was measured: \
+         {said}"
+    );
+    assert!(
+        !said.contains("193"),
+        "above all the number itself is gone: {said}"
     );
 }
 
@@ -386,7 +458,7 @@ fn a_name_two_workflows_declare_is_a_refusal_rather_than_the_first_one_found() {
         "2026-08-18T13:40:00Z",
         Some("2026-08-18T13:55:00Z"),
     )];
-    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets);
+    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets, &nothing_retired());
     assert!(spent.is_empty(), "{spent:?}");
     let said = unread
         .iter()
