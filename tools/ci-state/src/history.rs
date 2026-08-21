@@ -31,6 +31,27 @@
 //! job one second cheaper, and a record that had kept only the percentage would
 //! print that as an improvement.
 //!
+//! AND A JOB'S ROWS ARE TWO POPULATIONS, SO THERE ARE TWO READERS. R1261 split
+//! them — a duration is a fact about every run, a COST is a fact only about one
+//! that ran all of its steps — and wrote only the first reader, keeping the second
+//! population as a count and a maximum inside it. That is why nothing here could
+//! answer WHERE a job's failures land: four minutes in is a defect that fails
+//! fast and says nothing about cost, forty minutes in is a job that did a passing
+//! run's work and then threw it away, and both printed as `2 more did not
+//! complete`. [`crate::history::Landing`] is that reader, and the split it reads is
+//! spelled once (`series_in`) rather than once per question.
+//!
+//! THE TWO LINKS ABOVE ARE CRATE-QUALIFIED AND THE THIRD IS NOT A LINK AT ALL,
+//! which is a fact about where a `mod` item's documentation is RESOLVED rather than
+//! a style. This block documents `history`, the item is declared in `lib.rs`, and
+//! rustdoc resolves its links in the scope that declaration sits in — the crate
+//! root. That is why `[Spent::percent]` above resolves (`Spent` is a root item) and
+//! why an unqualified `[Landing]` does not, though it is defined in this very file:
+//! the gate caught both, and the message `no item named Landing in scope` reads as
+//! a typo until that is known. `series_in` is private, so a link to it would resolve
+//! only under `--document-private-items` — which is what the gate passes and not
+//! what a plain `cargo doc` does, so it is named in prose instead.
+//!
 //! LOSING THIS DIRECTORY LOSES NOTHING THAT CANNOT BE ASKED FOR AGAIN. It lives
 //! under `target/`, which `cargo clean` empties and which no commit carries — and
 //! that is affordable precisely because every row here is a PROJECTION of an
@@ -351,6 +372,173 @@ fn largest_adjacent_move(shares: &[u64]) -> u64 {
         .unwrap_or(0)
 }
 
+/// One run of one job, as the record holds it: the commit it ran on, when that
+/// run began, and what the job took.
+type Row<'a> = (&'a str, &'a str, &'a Spent);
+
+/// One job's rows, split into the two populations the record holds.
+///
+/// THE SPLIT IS SPELLED ONCE. R1261 established it — a duration is a fact about
+/// every run that happened, a COST is a fact only about one that ran all of its
+/// steps — and then wrote the comparison `conclusion == RAN_TO_COMPLETION` in each
+/// place that needed it. Three readers now ask about these two populations
+/// ([`movements`], [`Landing`], [`never_completed`]) and a fourth is a matter of
+/// time, so the partition is here and each of them takes a side of it.
+struct Series<'a> {
+    /// The check name, which is what a job's history is keyed by.
+    check: &'a str,
+    /// The rows that ran all of their steps, oldest run first.
+    completed: Vec<Row<'a>>,
+    /// The rows that did not, oldest run first.
+    stopped: Vec<Row<'a>>,
+    /// The budget every share of this job is held against: the NEWEST row's,
+    /// completed or not, because it is what the job DECLARES now — which a run
+    /// that failed declares just as well as one that passed.
+    against: u64,
+}
+
+/// Every job in the record, split, one entry per name.
+///
+/// A JOB WITH NO ROW AT ALL CANNOT ARISE — a name is in this map because a row
+/// carried it — so the only empty side possible is one of the two populations, and
+/// both of those are real states this reporter has sentences for.
+fn series_in(kept: &[Kept]) -> Vec<Series<'_>> {
+    // THE COMMIT TRAVELS WITH THE POINT since R1270, because a step is a PLACE:
+    // "the level rose here" is only worth printing if the reader is told where
+    // here is, and a timestamp is not something anybody can go and read. R1274
+    // needs it for the same reason on the other population — the run that got
+    // furthest before stopping is a commit somebody may want to open.
+    let mut rows: BTreeMap<&str, Vec<Row<'_>>> = BTreeMap::new();
+    for one in kept {
+        for job in &one.jobs {
+            rows.entry(job.check.as_str()).or_default().push((
+                one.commit.as_str(),
+                one.ran_at.as_str(),
+                job,
+            ));
+        }
+    }
+    rows.into_iter()
+        .filter_map(|(check, rows)| {
+            let (_, _, newest) = *rows.last()?;
+            let (completed, stopped) = rows
+                .iter()
+                .copied()
+                .partition(|(_, _, one)| one.conclusion == RAN_TO_COMPLETION);
+            Some(Series {
+                check,
+                completed,
+                stopped,
+                against: newest.budget_minutes,
+            })
+        })
+        .collect()
+}
+
+/// Where the runs of one job that did NOT complete STOPPED, as shares of the
+/// budget it declares now.
+///
+/// THE QUESTION THIS ANSWERS IS NOT WHAT THE JOB COSTS (R1274, closing what R1261
+/// left open). A run that stopped has no place on a cost curve and it did happen:
+/// the machine spent those minutes, and how many of them it spent before stopping
+/// is the difference between two findings a reader acts on differently. `validate`
+/// failing 331 s into a ninety-minute budget is a job that fell over before doing
+/// any of its work — nothing about the budget is implicated. The same job failing
+/// 2253 s in has done as much work as a run that PASSES sometimes does, and thrown
+/// it away; and at 5415 s its own budget ended it. All three read as `did not
+/// complete`, and until this type they printed as one count and one maximum.
+///
+/// IT IS ALSO THE SEPARATOR R1261 SAID WAS MISSING. A run a later push retired
+/// never reaches this record — [`crate::spent_against_budgets`] sets those aside as
+/// [`crate::Unmeasured::Retired`] — so a `cancelled` row HERE is a cancellation
+/// that was not a supersession, and the only thing that tells a job its timeout
+/// killed from one somebody stopped by hand is how near the budget it got. That is
+/// this reader's whole output.
+///
+/// THE SHARES ARE THE POPULATION AND EVERYTHING ELSE IS DERIVED from them, so
+/// there is no stored minimum to come to disagree with the list it was taken from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Landing {
+    /// The share each of those runs reached, in the order the runs happened.
+    pub shares: Vec<u64>,
+    /// The commit of the furthest of them — a place to go and read.
+    ///
+    /// THE NEWEST WHERE SEVERAL REACHED THE SAME SHARE. A reader sent to look at
+    /// why a job dies at its budget wants the most recent time it did, and the
+    /// older ones are in the record beside it either way.
+    pub furthest_at: String,
+}
+
+impl Landing {
+    /// What the runs that stopped landed at, or nothing when none did.
+    ///
+    /// `None` RATHER THAN AN EMPTY ONE, because a job every run of which completed
+    /// has no second population and a reader must not print a clause about it.
+    fn of(stopped: &[Row<'_>], against: u64) -> Option<Self> {
+        let (furthest_at, _, _) = stopped
+            .iter()
+            .max_by_key(|(_, _, one)| share_of(one.took, against))?;
+        Some(Self {
+            shares: stopped
+                .iter()
+                .map(|(_, _, one)| share_of(one.took, against))
+                .collect(),
+            furthest_at: (*furthest_at).to_string(),
+        })
+    }
+
+    /// How many runs of this job did not complete.
+    #[must_use]
+    pub fn runs(&self) -> usize {
+        self.shares.len()
+    }
+
+    /// The share the SOONEST of them stopped at.
+    #[must_use]
+    pub fn soonest(&self) -> u64 {
+        self.shares.iter().copied().min().unwrap_or(0)
+    }
+
+    /// The share the FURTHEST of them reached.
+    ///
+    /// THE CEILING SURVIVES THE EXCLUSION. `validate` on `cabcd5cf` is 5415 s of
+    /// its ninety minutes — its own budget ending it — and that is the single most
+    /// important row in this repository's record while being no part of any cost
+    /// curve. Dropping it silently would take the one number a reader most needs
+    /// out of the only sentence that looks back.
+    #[must_use]
+    pub fn furthest(&self) -> u64 {
+        self.shares.iter().copied().max().unwrap_or(0)
+    }
+
+    /// How many of them got at least as far as `floor`.
+    ///
+    /// THE FLOOR A CALLER PASSES IS THE CHEAPEST RUN THAT COMPLETED, which is the
+    /// most conservative reading available: a run that stopped BELOW the cheapest
+    /// pass cannot be called anything but an early failure, and one at or above it
+    /// had already spent what a passing run sometimes spends. Holding it against
+    /// the DEAREST pass instead would call four of `validate`'s six stoppages
+    /// early, when they sit inside the band its passing runs occupy.
+    #[must_use]
+    pub fn past(&self, floor: u64) -> usize {
+        self.shares.iter().filter(|share| **share >= floor).count()
+    }
+}
+
+/// Where one job's runs that did not complete stopped, whether or not that job has
+/// a cost curve.
+///
+/// THE JOB WITH NO CURVE IS THE ONE THIS MATTERS MOST FOR. [`movements`] produces
+/// nothing for a job that has never completed — there is no cost to draw — so
+/// before this the ONLY thing said about such a job was that there was nothing to
+/// say. Where its runs stop is the whole of what is known about it.
+fn landing_of(kept: &[Kept], check: &str) -> Option<Landing> {
+    series_in(kept)
+        .into_iter()
+        .find(|series| series.check == check)
+        .and_then(|series| Landing::of(&series.stopped, series.against))
+}
+
 /// Where one job's share of its budget has been across the record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Movement {
@@ -380,14 +568,17 @@ pub struct Movement {
     pub since: String,
     /// Every distinct budget this job has declared across the window.
     pub budgets: BTreeSet<u64>,
-    /// How many recorded runs of this job did NOT run all their steps, and are
-    /// therefore no part of the movement above (R1261).
+    /// The recorded runs of this job that did NOT run all their steps, and are
+    /// therefore no part of the movement above (R1261) — and WHERE they stopped
+    /// (R1274). `None` when every recorded run of this job completed.
     ///
-    /// COUNTED RATHER THAN DROPPED, and the sentence prints it. A job that fails
+    /// CARRIED RATHER THAN COUNTED, and the sentence prints it. A job that fails
     /// on half the commits it runs on has a movement drawn over the other half,
     /// and a reader who is not told that is reading a curve over a population
-    /// they did not choose.
-    pub set_aside: usize,
+    /// they did not choose. A reader told only how MANY is one who cannot tell a
+    /// job that falls over in four minutes from a job that burns forty and then
+    /// dies — see [`Landing`].
+    pub landing: Option<Landing>,
     /// The largest move between ADJACENT completed runs — how much this job
     /// swings on its own, from one commit to the next.
     ///
@@ -403,15 +594,6 @@ pub struct Movement {
     /// [`Step`]. `None` means the movement between the ends is what it looks
     /// like, which is the ordinary answer.
     pub step: Option<Step>,
-    /// The furthest any of those set-aside runs got, as a share of the budget the
-    /// job declares now.
-    ///
-    /// THE CEILING SURVIVES ITS EXCLUSION. `validate` on `cabcd5cf` is 90m02s of
-    /// its 90 minutes — its own budget ending it — and that is the single most
-    /// important row in this repository's record while being no part of any cost
-    /// curve. Dropping it silently would take the one number a reader most needs
-    /// out of the only sentence that looks back.
-    pub reached: u64,
 }
 
 impl Movement {
@@ -468,49 +650,32 @@ impl Movement {
     }
 }
 
-/// One [`Movement`] per job in the record, by name.
+/// One [`Movement`] per job in the record that has a cost curve, by name.
 ///
 /// THE INPUT IS ALREADY IN ORDER — [`kept_in`] sorts by the run's own stamp — and
-/// this walks it once, so "first" and "last" here mean oldest-run and newest-run
-/// rather than whatever order a directory listing came back in.
+/// `series_in` walks it once, so "first" and "last" here mean oldest-run and
+/// newest-run rather than whatever order a directory listing came back in.
 ///
 /// AND THE POPULATION IS THE RUNS THAT COMPLETED (R1261). A duration is a fact
 /// about every job that ran; a COST is a fact only about one that ran all of its
 /// steps, and a curve drawn through both is a curve through two different
-/// quantities. What is set aside is counted and its furthest reach is carried, so
-/// the exclusion is a sentence rather than a shorter list — see
-/// [`Movement::set_aside`] and [`Movement::reached`].
+/// quantities. The runs that did not complete are CARRIED rather than dropped, so
+/// the exclusion is a sentence rather than a shorter list, and where they stopped
+/// is part of it — see [`Movement::landing`] and [`Landing`].
 #[must_use]
 pub fn movements(kept: &[Kept]) -> Vec<Movement> {
-    // THE COMMIT TRAVELS WITH THE POINT since R1270, because a step is a PLACE:
-    // "the level rose here" is only worth printing if the reader is told where
-    // here is, and a timestamp is not something anybody can go and read.
-    let mut series: BTreeMap<&str, Vec<(&str, &str, &Spent)>> = BTreeMap::new();
-    for one in kept {
-        for job in &one.jobs {
-            series.entry(job.check.as_str()).or_default().push((
-                one.commit.as_str(),
-                one.ran_at.as_str(),
-                job,
-            ));
-        }
-    }
-    series
+    series_in(kept)
         .into_iter()
-        .filter_map(|(check, rows)| {
-            // THE BUDGET COMES OFF THE NEWEST ROW OF ALL, completed or not: it is
-            // what the job DECLARES now, which a run that failed declares just as
-            // well as one that passed. Reading it off the newest completed run
-            // instead would hold today's durations against a budget the workflow
-            // may have changed since.
-            let (_, _, newest) = *rows.last()?;
-            let against = newest.budget_minutes;
-            let (ran, stopped): (Vec<_>, Vec<_>) = rows
-                .iter()
-                .partition(|(_, _, one)| one.conclusion == RAN_TO_COMPLETION);
-            let (_, since, first) = *ran.first()?;
-            let (_, _, last) = *ran.last()?;
-            let shares: Vec<u64> = ran
+        .filter_map(|series| {
+            let Series {
+                check,
+                completed,
+                stopped,
+                against,
+            } = series;
+            let (_, since, first) = *completed.first()?;
+            let (_, _, last) = *completed.last()?;
+            let shares: Vec<u64> = completed
                 .iter()
                 .map(|(_, _, one)| share_of(one.took, against))
                 .collect();
@@ -519,8 +684,8 @@ pub fn movements(kept: &[Kept]) -> Vec<Movement> {
             // is a fact only about one that ran all its steps, and a level built
             // from both would be a level over two different quantities.
             let step = step_in(&shares).map(|at| Step {
-                at: ran[at].0.to_string(),
-                when: ran[at].1.to_string(),
+                at: completed[at].0.to_string(),
+                when: completed[at].1.to_string(),
                 before: at,
                 below: shares[..at].iter().copied().max().unwrap_or(0),
                 after: shares.len() - at,
@@ -532,35 +697,109 @@ pub fn movements(kept: &[Kept]) -> Vec<Movement> {
                 last: last.clone(),
                 low: shares.iter().copied().min()?,
                 high: shares.iter().copied().max()?,
-                commits: ran.len(),
+                commits: completed.len(),
                 since: since.to_string(),
-                budgets: ran.iter().map(|(_, _, one)| one.budget_minutes).collect(),
+                budgets: completed
+                    .iter()
+                    .map(|(_, _, one)| one.budget_minutes)
+                    .collect(),
                 jitter: largest_adjacent_move(&shares),
                 step,
-                set_aside: stopped.len(),
-                reached: stopped
-                    .iter()
-                    .map(|(_, _, one)| share_of(one.took, against))
-                    .max()
-                    .unwrap_or(0),
+                landing: Landing::of(&stopped, against),
             })
         })
         .collect()
 }
 
-/// What a movement leaves out, as the clause that follows it.
+/// Where a job's runs that did not complete stopped, as the phrase both readers of
+/// [`Landing`] share.
+///
+/// ONE RUN GETS `at` RATHER THAN A RANGE OF ONE, because `landing between 6% and
+/// 6%` is a number printed twice wearing the clothes of a spread.
+fn where_they_stopped(landing: &Landing) -> String {
+    if landing.soonest() == landing.furthest() {
+        return format!("landing at {}% of the budget", landing.furthest());
+    }
+    format!(
+        "landing between {}% and {}% of the budget",
+        landing.soonest(),
+        landing.furthest()
+    )
+}
+
+/// The share at which a run has used ALL of its budget, so what it wanted is not
+/// what it took.
+///
+/// A HUNDRED IS EXACT HERE RATHER THAN A ROUND NUMBER. [`share_of`] floors, so a
+/// run that used 99.6% of its budget answers 99 and only a run that used the whole
+/// of it answers 100 — which makes this the boundary between a measurement and a
+/// CENSORED one rather than a threshold anybody chose.
+const AT_THE_BUDGET: u64 = 100;
+
+/// What the furthest run wants, when the budget is what it ran out of.
+///
+/// A CENSORED MEASUREMENT IS A LOWER BOUND AND R1261 PRINTED IT AS A REACH. That
+/// round said so in its own carry: `the longest reaching 100%` is true and it is
+/// weaker than what happened — the job wanted MORE than its budget and nothing
+/// knows how much more — and it left the shape unbuilt because inventing a form for
+/// a fact this repository had met once would be a form for nothing.
+///
+/// IT HAS NOW BEEN MET TWICE, which is what took the argument away: `validate`
+/// 5415 s into a 5400 s budget on `cabcd5cf`, and `the server targets the workspace
+/// suite compiles to nothing` 2714 s into 2700 s. Both are jobs whose cost this
+/// record cannot state at all, and a reader who takes `100%` for a measurement will
+/// read a raised `timeout-minutes` as the fix and have no way to know whether it
+/// was enough.
+///
+/// EMPTY FOR EVERY OTHER RUN, including one that stopped at 95% — where the share
+/// IS the measurement and there is nothing censored about it.
+fn censored_clause(landing: &Landing) -> &'static str {
+    if landing.furthest() < AT_THE_BUDGET {
+        return "";
+    }
+    ", which is the whole budget — so what that run wanted is at least all of it and \
+     nothing here knows how much more"
+}
+
+/// What a movement leaves out AND WHERE THOSE RUNS STOPPED, as the clause that
+/// follows it.
 ///
 /// EMPTY WHEN NOTHING WAS LEFT OUT, and a sentence the moment anything was. A
 /// curve drawn over eleven of a job's twenty recorded runs is a curve over a
 /// population the reader did not choose, and the number that says so has to sit
 /// beside the number it qualifies rather than in a block below it.
-fn set_aside_clause(movement: &Movement) -> String {
-    if movement.set_aside == 0 {
+///
+/// AND THE READING IS PRINTED, NOT LEFT AS ARITHMETIC (R1274). `5 of them at or
+/// past 24%` is a fact and `not an early failure` is what a reader does with it;
+/// the two halves of this repository's own record read in opposite directions —
+/// `MSRV` stops at 17% of thirty minutes, below anything that passes, while four
+/// of `validate`'s six stoppages sit inside the band its passing runs occupy — and
+/// a sentence that gave only the count would leave the reader to do that
+/// comparison against a floor that is not on the page.
+fn landing_clause(movement: &Movement) -> String {
+    let Some(landing) = &movement.landing else {
         return String::new();
-    }
+    };
+    let floor = movement.low;
+    let past = landing.past(floor);
+    let reading = if past == 0 {
+        format!(
+            "none of them got as far as the {floor}% the cheapest run that completed took, so \
+             those are times to failure and say nothing about what the work costs"
+        )
+    } else {
+        format!(
+            "{past} of them at or past the {floor}% the cheapest run that completed took, so \
+             what ended those is no early failure but a run that did a passing run's work and \
+             then threw it away"
+        )
+    };
     format!(
-        "; {} more did not complete, the longest reaching {}%",
-        movement.set_aside, movement.reached
+        "; {} more did not complete, {} — {reading}, the furthest on {}{}",
+        landing.runs(),
+        where_they_stopped(landing),
+        short(&landing.furthest_at),
+        censored_clause(landing)
     )
 }
 
@@ -613,7 +852,7 @@ pub fn movement_line(movement: &Movement) -> String {
         "{}{}{}",
         jitter_clause(movement),
         step_clause(movement),
-        set_aside_clause(movement)
+        landing_clause(movement)
     );
     if movement.budget_steady() {
         return format!(
@@ -653,18 +892,10 @@ pub fn movement_line(movement: &Movement) -> String {
 /// word. It is the one case where "no trend" is itself the news.
 #[must_use]
 pub fn never_completed(kept: &[Kept]) -> BTreeSet<String> {
-    let mut all: BTreeSet<&str> = BTreeSet::new();
-    let mut completed: BTreeSet<&str> = BTreeSet::new();
-    for one in kept {
-        for job in &one.jobs {
-            all.insert(job.check.as_str());
-            if job.conclusion == RAN_TO_COMPLETION {
-                completed.insert(job.check.as_str());
-            }
-        }
-    }
-    all.difference(&completed)
-        .map(|check| (*check).to_string())
+    series_in(kept)
+        .into_iter()
+        .filter(|series| series.completed.is_empty())
+        .map(|series| series.check.to_string())
         .collect()
 }
 
@@ -714,11 +945,28 @@ pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
         // level line has just named it, and a block that then says nothing about
         // it reads as a job with an unremarkable history rather than one with no
         // history at all.
+        //
+        // AND WHERE ITS RUNS STOPPED IS THE WHOLE OF WHAT IS KNOWN ABOUT IT
+        // (R1274). "Nothing to compare it against" is true of the cost and it is
+        // not the end of the answer: a job that stops at 5% of its budget every
+        // time is failing before it does any work, and one that stops at 95% is
+        // one whose budget is about to be the thing that ends it. Both were this
+        // sentence, and it named neither.
         None => {
             if let Some(name) = closest.filter(|name| unfinished.contains(*name)) {
+                let stopped = match landing_of(kept, name) {
+                    Some(landing) => format!(
+                        " — its {} run(s) here stopped {}, the furthest on {}{}",
+                        landing.runs(),
+                        where_they_stopped(&landing),
+                        short(&landing.furthest_at),
+                        censored_clause(&landing)
+                    ),
+                    None => String::new(),
+                };
                 lines.push(format!(
                     "  `{name}` has no completed run in this record, so there is nothing to \
-                     compare what it cost against"
+                     compare what it cost against{stopped}"
                 ));
             }
         }

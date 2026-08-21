@@ -704,7 +704,7 @@
     },
     {
       "name": "a-time-to-failure-is-a-point-on-a-cost-curve",
-      "why": "a duration is a fact about every job that RAN; a cost is a fact only about one that ran all of its steps. `validate` took 331 s on `d412b06e` where it failed, against some 2400 s on the commits either side, and 5415 s on `cabcd5cf` where its own ninety-minute budget ended it. A curve through either is a curve through a quantity that is not cost — and the failure landing on the newest end prints a collapse",
+      "why": "a duration is a fact about every job that RAN; a cost is a fact only about one that ran all of its steps. `validate` took 331 s on `d412b06e` where it failed, against some 2400 s on the commits either side, and 5415 s on `cabcd5cf` where its own ninety-minute budget ended it. A curve through either is a curve through a quantity that is not cost — and the failure landing on the newest end prints a collapse. IT REDDENS FIVE CASES SINCE R1274 AND THEY ARE TWO HARMS: this predicate is the ONE spelling of the split, so calling every run completed both admits a time-to-failure to the cost curve and empties the second population — the three cases about where a job's stoppages LAND have nothing left to read. The sweep found the last three itself; they were not written down",
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
@@ -714,20 +714,178 @@
       ],
       "expect_red": [
         "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
-        "a_job_with_no_completed_run_is_named_rather_than_left_out"
+        "a_job_with_no_completed_run_is_named_rather_than_left_out",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
       ]
     },
     {
       "name": "the-runs-set-aside-from-a-curve-are-set-aside-in-silence",
-      "why": "a curve over eleven of a job's twenty recorded runs is a curve over a population the reader did not choose, and the ceiling is what the exclusion takes with it: `validate` at 100% of its budget on `cabcd5cf` is the most important number in this record and no part of any cost curve. The clause is what keeps both true at once",
+      "why": "a curve over eleven of a job's twenty recorded runs is a curve over a population the reader did not choose, and the ceiling is what the exclusion takes with it: `validate` at 100% of its budget on `cabcd5cf` is the most important number in this record and no part of any cost curve. The clause is what keeps both true at once. RE-AIMED BY R1274, which turned that count and maximum into the population itself: dropping it is now dropping the whole second population rather than suppressing one clause",
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
-          "from": "    if movement.set_aside == 0 {",
-          "to": "    if movement.set_aside < 99 {"
+          "from": "                landing: Landing::of(&stopped, against),",
+          "to": "                landing: None,"
         }
       ],
-      "expect_red": ["a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"]
+      "expect_red": [
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
+      ]
+    },
+    {
+      "name": "an-empty-second-population-is-a-landing-of-nothing",
+      "why": "R1274. A job every recorded run of which completed has no second population, and a clause reading `0 more did not complete, landing at 0% of the budget` on every green push is the noise this reporter exists to keep OUT of its own output — the same blindness it fights, arrived at from the other side. `None` rather than an empty landing is what makes the clause mean something on the pushes where it does appear",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                landing: Landing::of(&stopped, against),",
+          "to": "                landing: Landing::of(&stopped, against).or(Some(Landing {\n                    shares: Vec::new(),\n                    furthest_at: String::new(),\n                })),"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_has_always_completed_carries_no_second_population_at_all",
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ]
+    },
+    {
+      "name": "where-the-stopped-runs-landed-collapses-to-their-maximum",
+      "why": "R1274, and it is R1261's own sentence restored: `the longest reaching 100%` names the least representative row in the set, because a budget ends a job at exactly one number. `validate`'s six stoppages land at 6, 24, 26, 33, 41 and 100 per cent of ninety minutes — the first fell over before doing any work, and the four in the middle each burned as much of the budget as a run that PASSES does. A maximum tells a reader none of that",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if landing.soonest() == landing.furthest() {",
+          "to": "    if landing.soonest() <= landing.furthest() {"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ]
+    },
+    {
+      "name": "a-single-stopped-run-is-printed-as-a-spread-and-a-spread-as-a-point",
+      "why": "R1274. One flipped comparison and both readings go wrong at once: a job with one stoppage reports `landing between 17% and 17%`, which is one number printed twice wearing the clothes of a spread, and a job with six reports only the furthest of them. This is the drift a comparison operator actually makes rather than an invented one",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if landing.soonest() == landing.furthest() {",
+          "to": "    if landing.soonest() != landing.furthest() {"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
+      ]
+    },
+    {
+      "name": "a-stoppage-is-held-against-the-dearest-run-that-passed",
+      "why": "R1274. The floor a landing is read against is the CHEAPEST completed run, which is the most conservative reading available: a run that stopped below the cheapest pass cannot be called anything but an early failure. Held against the dearest pass instead, four of `validate`'s six stoppages read as early failures while they sit inside the very band its passing runs occupy — a wrong answer in the direction that reads as reassuring",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let floor = movement.low;",
+          "to": "    let floor = movement.high;"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
+      ]
+    },
+    {
+      "name": "a-run-that-stopped-exactly-at-the-cheapest-pass-is-called-early",
+      "why": "R1274. The boundary is inclusive and that is not a nicety: a run that got exactly as far as the cheapest run that completed has done a passing run's work, and calling it an early failure is the one direction of error that tells a reader to stop looking. `validate` stopped at 1341 s against a cheapest pass of 1296 s — adjacent numbers, opposite readings",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        self.shares.iter().filter(|share| **share >= floor).count()",
+          "to": "        self.shares.iter().filter(|share| **share > floor).count()"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
+    {
+      "name": "the-comparison-that-tells-a-late-stoppage-from-an-early-one-is-inverted",
+      "why": "R1274. This is the whole discrimination the reader exists for, and inverted it does not fall silent — it prints the OPPOSITE finding in the same words: `MSRV`, which stops at 17% of thirty minutes and has never passed in under 30%, would be reported as a job that did a passing run's work and threw it away, while `validate`'s four late stoppages would read as failing fast",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        self.shares.iter().filter(|share| **share >= floor).count()",
+          "to": "        self.shares.iter().filter(|share| **share <= floor).count()"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
+      ]
+    },
+    {
+      "name": "the-place-a-reader-is-sent-is-where-the-job-stopped-soonest",
+      "why": "R1274, and R1270's rule applied to the other population: a landing is a PLACE, and the run worth opening is the one that got FURTHEST — the ninety-minute `validate` on `cabcd5cf`, not the 331 s one beside it. Sent to the soonest instead, a reader opens the commit where the job fell over early and finds nothing about a budget there at all",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "            .max_by_key(|(_, _, one)| share_of(one.took, against))?;",
+          "to": "            .min_by_key(|(_, _, one)| share_of(one.took, against))?;"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ]
+    },
+    {
+      "name": "a-job-with-no-curve-says-nothing-about-where-it-stopped",
+      "why": "R1274. For a job that has never completed there is no cost to draw, so `movements` produces nothing for it and R1261's sentence said only that there was nothing to compare against. That is true of the cost and it is not the end of the answer: a job that stops at 4% of its budget every time is falling over before it does any work, and one that stops at 95% is one whose budget is about to be what ends it — and where its runs stop is the WHOLE of what is known about such a job",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                let stopped = match landing_of(kept, name) {",
+          "to": "                let stopped = match None::<Landing> {"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ]
+    },
+    {
+      "name": "a-run-its-own-budget-ended-is-reported-as-a-measurement",
+      "why": "R1274, closing R1261's second carry rather than restating it. `the longest reaching 100%` is true and weaker than what happened: the job wanted MORE than its budget and nothing knows how much more. R1261 left the shape unbuilt because a form for a fact met once is a form for nothing — and this record has now met it twice (`validate` 5415 s of 5400 on `cabcd5cf`, `the server targets the workspace suite compiles to nothing` 2714 s of 2700). Without the clause a reader takes the share for a measurement, raises `timeout-minutes`, and has no way to know whether it was enough",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if landing.furthest() < AT_THE_BUDGET {",
+          "to": "    if landing.furthest() < 1000 {"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
+    {
+      "name": "a-run-that-stopped-short-of-its-budget-is-called-censored",
+      "why": "R1274, the other direction and the one that reads as reassuring while being wrong: a run that used 95% of its budget is a MEASUREMENT — what it took is what it took — and calling it censored tells a reader that a number they can act on is a number nobody knows. `share_of` floors, so a hundred is the exact boundary rather than a round number somebody chose: 99.6% of a budget answers 99",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "const AT_THE_BUDGET: u64 = 100;",
+          "to": "const AT_THE_BUDGET: u64 = 90;"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ]
     },
     {
       "name": "a-job-with-no-curve-at-all-is-left-out-of-the-block",

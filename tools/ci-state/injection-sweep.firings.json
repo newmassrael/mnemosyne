@@ -142,6 +142,21 @@
         "a_job_with_no_completed_run_is_named_rather_than_left_out"
       ]
     },
+    "a-job-with-no-curve-says-nothing-about-where-it-stopped": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                let stopped = match landing_of(kept, name) {",
+          "to": "                let stopped = match None::<Landing> {"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ],
+      "tests": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ]
+    },
     "a-message-is-cut-by-bytes-instead-of-characters": {
       "edits": [
         {
@@ -315,6 +330,51 @@
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     },
+    "a-run-its-own-budget-ended-is-reported-as-a-measurement": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if landing.furthest() < AT_THE_BUDGET {",
+          "to": "    if landing.furthest() < 1000 {"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ],
+      "tests": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
+    "a-run-that-stopped-exactly-at-the-cheapest-pass-is-called-early": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        self.shares.iter().filter(|share| **share >= floor).count()",
+          "to": "        self.shares.iter().filter(|share| **share > floor).count()"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ],
+      "tests": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
+    "a-run-that-stopped-short-of-its-budget-is-called-censored": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "const AT_THE_BUDGET: u64 = 100;",
+          "to": "const AT_THE_BUDGET: u64 = 90;"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ],
+      "tests": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ]
+    },
     "a-series-that-separates-in-one-place-is-read-as-a-climb": {
       "edits": [
         {
@@ -381,6 +441,27 @@
         "one_commit_recorded_is_a_level_and_is_told_apart_from_a_trend"
       ]
     },
+    "a-single-stopped-run-is-printed-as-a-spread-and-a-spread-as-a-point": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if landing.soonest() == landing.furthest() {",
+          "to": "    if landing.soonest() != landing.furthest() {"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
+      ],
+      "tests": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
     "a-skipped-job-is-called-a-failure": {
       "edits": [
         {
@@ -427,6 +508,23 @@
         "a_step_field_this_reporter_cannot_find_is_a_refusal"
       ]
     },
+    "a-stoppage-is-held-against-the-dearest-run-that-passed": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let floor = movement.low;",
+          "to": "    let floor = movement.high;"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
+      ],
+      "tests": [
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
     "a-time-to-failure-is-a-point-on-a-cost-curve": {
       "edits": [
         {
@@ -437,11 +535,17 @@
       ],
       "expect_red": [
         "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
-        "a_job_with_no_completed_run_is_named_rather_than_left_out"
+        "a_job_with_no_completed_run_is_named_rather_than_left_out",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
       ],
       "tests": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
         "a_job_with_no_completed_run_is_named_rather_than_left_out",
-        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
       ]
     },
     "a-well-formed-answer-about-another-commit-is-printed-as-this-ones": {
@@ -474,6 +578,25 @@
       "tests": [
         "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_shorter_commit",
         "an_answer_the_reporter_cannot_read_is_printed_rather_than_swallowed"
+      ]
+    },
+    "an-empty-second-population-is-a-landing-of-nothing": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                landing: Landing::of(&stopped, against),",
+          "to": "                landing: Landing::of(&stopped, against).or(Some(Landing {\n                    shares: Vec::new(),\n                    furthest_at: String::new(),\n                })),"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_has_always_completed_carries_no_second_population_at_all",
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ],
+      "tests": [
+        "a_job_that_has_always_completed_carries_no_second_population_at_all",
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "an-inverted-pair-of-stamps-is-clamped-to-a-number": {
@@ -725,6 +848,23 @@
         "a_commit_name_that_is_not_a_commit_is_refused_rather_than_joined_to_a_path"
       ]
     },
+    "the-comparison-that-tells-a-late-stoppage-from-an-early-one-is-inverted": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        self.shares.iter().filter(|share| **share >= floor).count()",
+          "to": "        self.shares.iter().filter(|share| **share <= floor).count()"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
+      ],
+      "tests": [
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
     "the-conclusion-this-reporter-treats-as-routine-is-misspelled": {
       "edits": [
         {
@@ -849,6 +989,25 @@
         "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran"
       ]
     },
+    "the-place-a-reader-is-sent-is-where-the-job-stopped-soonest": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "            .max_by_key(|(_, _, one)| share_of(one.took, against))?;",
+          "to": "            .min_by_key(|(_, _, one)| share_of(one.took, against))?;"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ],
+      "tests": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
+      ]
+    },
     "the-record-directory-is-one-nothing-collects": {
       "edits": [
         {
@@ -915,15 +1074,19 @@
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
-          "from": "    if movement.set_aside == 0 {",
-          "to": "    if movement.set_aside < 99 {"
+          "from": "                landing: Landing::of(&stopped, against),",
+          "to": "                landing: None,"
         }
       ],
       "expect_red": [
-        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast"
       ],
       "tests": [
-        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped"
+        "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
       ]
     },
     "the-same-annotation-from-nine-jobs-is-printed-nine-times": {
@@ -962,6 +1125,25 @@
         "a_failure_in_another_run_is_still_red_beside_a_retired_one",
         "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    "where-the-stopped-runs-landed-collapses-to-their-maximum": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if landing.soonest() == landing.furthest() {",
+          "to": "    if landing.soonest() <= landing.furthest() {"
+        }
+      ],
+      "expect_red": [
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+      ],
+      "tests": [
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
       ]
     }
   },

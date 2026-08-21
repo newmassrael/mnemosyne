@@ -578,8 +578,12 @@ fn a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped() 
         .into_iter()
         .find(|one| one.check == "validate")
         .expect("the job");
+    let landing = movement
+        .landing
+        .as_ref()
+        .expect("the runs that did not complete are carried, not counted away");
     assert_eq!(
-        (movement.commits, movement.set_aside),
+        (movement.commits, landing.runs()),
         (2, 2),
         "two runs completed and two did not: {movement:?}"
     );
@@ -597,7 +601,8 @@ fn a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped() 
          widen it: {movement:?}"
     );
     assert_eq!(
-        movement.reached, 100,
+        landing.furthest(),
+        100,
         "while the run its own budget ended is carried as how far it got: \
          {movement:?}"
     );
@@ -611,9 +616,207 @@ fn a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped() 
         "{said}"
     );
     assert!(
-        said.contains("2 more did not complete, the longest reaching 100%"),
+        said.contains("2 more did not complete, landing between 6% and 100% of the budget")
+            && said.contains("the furthest on bbbbbbb"),
         "the exclusion is a sentence and the ceiling survives it — a reader who \
          saw only the movement would not know this job has hit its budget: {said}"
+    );
+}
+
+/// WHERE A JOB'S FAILURES LAND IS A DIFFERENT FACT FROM HOW MANY THERE WERE.
+///
+/// R1274, and the numbers are this repository's own `validate`: six recorded runs
+/// of it did not complete, at 331 s, 1341 s, 1449 s, 1819 s, 2253 s and 5415 s of
+/// a ninety-minute budget. R1261 printed that as `6 more did not complete, the
+/// longest reaching 100%`, and from those eleven words a reader cannot tell the
+/// first row — a job that fell over before doing any work — from the four in the
+/// middle, which each burned as much of the budget as a run that PASSES does and
+/// then threw it away. The maximum is the least representative row in the set: it
+/// is there because a budget ends a job at exactly one number.
+#[test]
+fn where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence() {
+    // The completed side is `validate`'s own band, 24–48% of ninety minutes, in an
+    // order that does not separate — a step would be a second finding in a case
+    // about one.
+    let mut kept = series_of("validate", &[24, 44, 27, 48, 33, 43], 90);
+    for (n, (took, how)) in [
+        (331, "failure"),
+        (1341, "failure"),
+        (1449, "failure"),
+        (1819, "cancelled"),
+        (2253, "failure"),
+        (5415, "cancelled"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        // NAMED SO THE PREFIXES DIFFER. `nth_commit` numbers a series from one, so
+        // eight characters of any of them is `00000000` — and an assertion that the
+        // sentence names the furthest run would pass while it named any other.
+        kept.push(record(
+            &format!("d000000{}", n + 1),
+            &format!("2026-09-{:02}T00:00:00Z", n + 1),
+            &[concluded("validate", took, 90, how)],
+        ));
+    }
+    let movement = only_movement(&kept);
+    let landing = movement.landing.as_ref().expect("the second population");
+    assert_eq!(
+        landing.shares,
+        vec![6, 24, 26, 33, 41, 100],
+        "the population is the shares themselves, in the order the runs happened, \
+         and everything else is derived from them: {landing:?}"
+    );
+    assert_eq!(
+        (landing.soonest(), landing.furthest()),
+        (6, 100),
+        "{landing:?}"
+    );
+    assert_eq!(
+        landing.past(movement.low),
+        5,
+        "five of the six got at least as far as the cheapest run that PASSED, \
+         which is what makes them something other than early failures: \
+         {movement:?}"
+    );
+    assert_eq!(
+        landing.past(movement.high),
+        1,
+        "and held against the DEAREST pass instead only the budget kill survives \
+         — which is why the floor is the cheapest one: {movement:?}"
+    );
+    assert_eq!(
+        landing.furthest_at, "d0000006",
+        "the furthest run is a PLACE, and it is the one to go and read: {landing:?}"
+    );
+
+    let said = ci_state::history::movement_line(&movement);
+    assert!(
+        said.contains("6 more did not complete, landing between 6% and 100% of the budget"),
+        "the range is on the page, not just the maximum: {said}"
+    );
+    assert!(
+        said.contains("5 of them at or past the 24% the cheapest run that completed took")
+            && said.contains("no early failure but a run that did a passing run's work"),
+        "and the READING is printed rather than left as arithmetic against a floor \
+         that is nowhere on the page: {said}"
+    );
+    assert!(
+        said.contains("the furthest on d0000006"),
+        "with the commit of the furthest one, which is the one a reader opens — and \
+         not the commit of any of the other five: {said}"
+    );
+    assert!(
+        said.contains(
+            "which is the whole budget — so what that run wanted is at least all of it \
+             and nothing here knows how much more"
+        ),
+        "AND THE ONE AT THE BUDGET IS A CENSORED MEASUREMENT, not a measurement of \
+         100%: R1261 printed `the longest reaching 100%` and said in its own carry \
+         that this was weaker than what happened. A reader who takes it for a \
+         measurement reads a raised `timeout-minutes` as the fix with no way to know \
+         whether it was enough: {said}"
+    );
+}
+
+/// AND A JOB WHOSE FAILURES ARE ALL EARLY READS THE OTHER WAY.
+///
+/// R1274. This is the half that makes the sentence above a finding rather than a
+/// decoration: `MSRV (workspace.package.rust-version)` stopped 320 s into a
+/// thirty-minute budget, which is 17% — below anything that job has ever taken to
+/// pass. Nothing about its budget is implicated and the reader has to be told so,
+/// because the same clause with a different number would otherwise read as the
+/// same alarm.
+#[test]
+fn a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast() {
+    let mut kept = series_of("MSRV", &[30, 34, 31], 30);
+    kept.push(record(
+        &nth_commit(100),
+        "2026-09-01T00:00:00Z",
+        &[concluded("MSRV", 320, 30, "failure")],
+    ));
+    let movement = only_movement(&kept);
+    let landing = movement.landing.as_ref().expect("the second population");
+    assert_eq!(landing.shares, vec![17], "{landing:?}");
+    assert_eq!(
+        landing.past(movement.low),
+        0,
+        "it stopped sooner than the cheapest run that passed: {movement:?}"
+    );
+
+    let said = ci_state::history::movement_line(&movement);
+    assert!(
+        said.contains("1 more did not complete, landing at 17% of the budget"),
+        "one run gets a point rather than a range of one: {said}"
+    );
+    assert!(
+        said.contains("none of them got as far as the 30% the cheapest run that completed took")
+            && said.contains("times to failure and say nothing about what the work costs"),
+        "and the opposite reading is spelled out, because the same clause with a \
+         different number would otherwise read as the same alarm: {said}"
+    );
+}
+
+/// AND FOR A JOB THAT HAS NEVER PASSED, WHERE IT STOPS IS ALL THERE IS.
+///
+/// R1274. `movements` produces nothing for such a job — there is no cost to draw —
+/// so R1261's sentence for it said only that there was nothing to compare against.
+/// That is true of the cost and it is not the end of the answer: a job that stops
+/// at 4% of its budget every time is falling over before it does any work, and one
+/// that stops at 95% is one whose budget is about to be what ends it. Both were
+/// that one sentence.
+#[test]
+fn a_job_that_has_never_completed_still_says_where_its_runs_stopped() {
+    let kept = [
+        record(
+            "aaaaaaa",
+            "2026-08-17T18:26:06Z",
+            &[
+                spent("healthy", 600, 90),
+                concluded("doomed", 4590, 90, "failure"),
+            ],
+        ),
+        record(
+            "bbbbbbb",
+            "2026-08-19T23:50:46Z",
+            &[
+                spent("healthy", 900, 90),
+                concluded("doomed", 5130, 90, "cancelled"),
+            ],
+        ),
+    ];
+    let said = trend_report(&kept, Some("doomed")).join("\n");
+    assert!(
+        said.contains("`doomed` has no completed run in this record"),
+        "{said}"
+    );
+    assert!(
+        said.contains("its 2 run(s) here stopped landing between 85% and 95% of the budget")
+            && said.contains("the furthest on bbbbbbb"),
+        "and a job that dies at 95% of its budget is not the same news as one that \
+         dies at 4%, which is all that sentence used to say: {said}"
+    );
+    assert!(
+        !said.contains("whole budget"),
+        "and 95% is a MEASUREMENT — the censored clause belongs only to a run that \
+         used all of its budget, where what it wanted is not what it took: {said}"
+    );
+}
+
+/// A job every run of which completed gets no clause about the ones that did not.
+///
+/// THE EMPTY POPULATION IS `None` AND NOT A LANDING OF NOTHING, because a clause
+/// reading `0 more did not complete, landing between 0% and 0%` on every green
+/// push is the noise this reporter exists to keep out of its own output.
+#[test]
+fn a_job_that_has_always_completed_carries_no_second_population_at_all() {
+    let kept = series_of("clean", &[40, 41, 42], 90);
+    let movement = only_movement(&kept);
+    assert!(movement.landing.is_none(), "{movement:?}");
+    let said = ci_state::history::movement_line(&movement);
+    assert!(
+        !said.contains("did not complete") && !said.contains("landing"),
+        "{said}"
     );
 }
 
