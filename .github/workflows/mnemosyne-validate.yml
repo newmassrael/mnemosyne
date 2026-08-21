@@ -116,6 +116,17 @@ jobs:
   # because a job that runs out of minutes is a red CI nobody can read a result
   # from. `unrun-tests`, the heaviest job here, is budgeted 90 and has measured
   # 23m45s to 28m29s. The first run under this number is what measures it.
+  #
+  # R1276 — AND THE THING THAT NUMBER WAS ARGUED FOR HAS LEFT THIS JOB. The
+  # census moved to `outside-reach` below, so the paragraphs above describe a
+  # shape this job no longer has: what they measured was `strace` on the suite
+  # step, and R1275 put a figure on it — about sixty per cent, the same tests
+  # run slower. The number STAYS AT 90 anyway and that is deliberate rather than
+  # neglect. Lowering it now would be arguing from the traced runs, which are
+  # the only ones this record holds for this shape; the first runs after this
+  # commit are what measure the untraced job, and `tools/ci-state` prints that
+  # share on every push. A budget that is generous is not a defect; a number
+  # nobody can say the provenance of is.
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -135,45 +146,14 @@ jobs:
           # first: two defects stacked, and fixing the outer one uncovered this.
           fetch-depth: 0
 
-      # R1229 — `strace` is not in the runner image: checked against
-      # `actions/runner-images`' own Ubuntu 24.04 readme, where it appears in no
-      # section. The census wrapping this job's suite step is what needs it, and
-      # `tools/undeclared-requirement` requires a package CI installs to be
-      # named in `.claude/remote-build.toml`, which this one is.
-      #
-      # R1252 — AND IT IS THE ONLY PACKAGE LEFT. This step used to install
-      # `protobuf-compiler` too, in this job and five others, because
-      # `mnemosyne-server`'s build script shelled out to `protoc` (R888). The
-      # schema compiler is now a crate — `protox`, pinned by `Cargo.lock` — so
-      # nothing is fetched to build this repository's own code, and the other
-      # five copies of this step are gone. What that arc cost is worth writing
-      # down: R1236 bounded the step at five minutes after it stalled for 45,
-      # R1251 gave apt retries and a twenty-second timeout after the bound fired
-      # for real, and on 2026-08-19 four consecutive runs of `main` died here
-      # anyway — the last of them WITH the retries, which is the measurement
-      # that a fetch you do not make is the only one that cannot stall.
-      #
-      # R1236 — BOUNDED, AND THE BOUND IS MEASURED. On 2026-08-18 this step in
-      # `server-features` did not fail: it STALLED, for 45m09s, until the job's
-      # own 45-minute timeout killed it. Every step behind it — the clippy, the
-      # suite, the wrapper this repository verifies through — was then skipped,
-      # and what a reader saw was a job of this repository `cancelled` after
-      # forty-five minutes, which is also exactly what the change being pushed
-      # hanging the job would look like. The same step on the previous green run
-      # of the same job took TWELVE SECONDS, and the whole job takes about seven
-      # minutes. Five is twenty-five times the measured cost and still fails
-      # forty minutes before the job's own bound, so a stalled archive is a
-      # named step rather than a whole job's budget spent on nothing.
-      #
-      # R1251 — the retries and the timeout live in `.github/apt-retries.conf`,
-      # copied in first, with the reasoning and the numbers in that file, once.
-      - name: Install strace (the outward-reach census)
-        timeout-minutes: 5
-        run: |
-          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
-          sudo apt-get update
-          sudo apt-get install -y strace
-
+      # R1276 — THIS JOB FETCHES NOTHING FROM AN ARCHIVE ANY MORE. The `strace`
+      # install that stood here belonged to the census, and the census now has a
+      # job of its own (`outside-reach` below), so the step went with it. That is
+      # worth naming rather than leaving as an absence: on 2026-08-19 four
+      # consecutive runs of `main` died in this step, the last of them with
+      # R1251's retries — the measurement that a fetch you do not make is the
+      # only one that cannot stall — and the job on every push is now one of the
+      # jobs that makes none.
       - name: Install rust toolchain (rust-toolchain.toml)
         # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
         # there, so this is a network fetch and not a report. Measured on the
@@ -222,10 +202,6 @@ jobs:
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
-          # R1229 — the census reader, an instrument for R1118's reason: this
-          # job's suite step runs it, and a program a job runs must not live
-          # under a path a cache restore can overwrite.
-          cargo build --release -q --locked --manifest-path tools/outside-reach/Cargo.toml
 
       # ONE OF THE TWO JOBS IN THIS FILE THAT KEEPS A `target`, and R1090
       # measured which two. GitHub gives a repository 10 GB of cache and deletes,
@@ -350,93 +326,53 @@ jobs:
       # says so instead of reporting one target's number. `--no-fresh` because a
       # runner's checkout has no uncommitted change for the freshness pass to
       # clean.
-      # R1229 — AND THE RUN IS CENSUSED FOR WHAT IT READS OUTSIDE THIS TREE.
+      # R1276 — AND THE CENSUS THAT WRAPPED THIS STEP HAS ITS OWN JOB NOW.
       #
-      # WHY IT WRAPS THIS STEP AND NOT A SECOND ONE: a census needs a RUN, and
-      # the only run that exercises every law is this one. A separate job would
-      # compile the whole workspace again, which is the duplication
-      # `twice-compiled` exists to forbid, and it would pay for it twice over.
+      # THE REASON R1229 GAVE FOR NOT DOING THAT WAS NEVER TRUE. It read: "a
+      # separate job would compile the whole workspace again, which is the
+      # duplication `tools/twice-compiled` exists to forbid". That gate forbids
+      # no such thing — its own header says the duplication is "REPORTED rather
+      # than refused, because the number is what licenses the repair", and seven
+      # jobs in this file build this workspace today while it passes. What it
+      # refuses is a job that compiles and leaves no record, a job that records
+      # counts and no seconds, and a job with a cache that did not say what the
+      # cache brought. Nobody asked the machine, and a false sentence about a
+      # gate in this repository sat in a load-bearing comment for forty-seven
+      # rounds.
       #
-      # WHY IT COSTS NOTHING ON DISK: `strace -o "|program"` hands the trace to
-      # the reader through a PIPE. Measured on this repository's whole suite —
-      # 611 MB passes through and ZERO bytes are written, against the 2.8 GB
-      # across 155,072 files that Round 1228 wrote when it took the same census
-      # into files and recorded that as the price of asking.
+      # WHAT IT COST WHILE IT STOOD HERE, measured in R1275: `strace -f` over
+      # this suite is a MULTIPLIER, and it multiplied this job by about sixty per
+      # cent — `crates/mnemosyne-cli/tests/all.rs` 856 s → 1369 s with its test
+      # count going 374 → 377, and the workspace's other `tests/all.rs` +163%
+      # with its 42 tests unchanged. The same tests, run slower.
       #
-      # RELATIVE, AND NOT `${{ github.workspace }}`, for R1117's reason one step
-      # over: a GitHub expression in a step's script makes the whole job
-      # unreplayable, and `tools/twice-compiled` refuses a census that cannot
-      # replay it. The first draft of this step wrote the expression and took
-      # `validate` straight out of that census — the gate said so by name. Every
-      # step in this file runs with the checkout root as its working directory,
-      # so `$PWD` is the same path and a local replay can resolve it.
+      # AND THE OBSERVER WAS INSIDE THE MEASUREMENT, which is the reason this
+      # move is a correctness repair and not a saving. Rounds 1245, 1260, 1261,
+      # 1270, 1274 and 1275 built an apparatus whose whole subject is what this
+      # workflow's jobs cost, and every one of its numbers is read off this job's
+      # budget share. Under the tracer that share was mostly instrument — and the
+      # tracer moved the NOISE further than the level: across this repository's
+      # own record the completed runs of `validate` go from a coefficient of
+      # variation of 3.8% (n=4, so read the direction rather than the figure) to
+      # 10.7% (n=26), spread 151 s → 832 s. R1270's "adjacent commits move it by
+      # as much as 13 point(s) on their own" was largely `strace`.
       #
-      # `%file` IS THE REQUIREMENT AND NARROWING IT IS THE TRAP: the sibling
-      # checkout is reached by `newfstatat` — cargo asking whether a path
-      # dependency's directory is THERE, never opening it — so a census watching
-      # `openat` answers zero, and zero is what a hermetic tree looks like.
-      # `%process` is the other half: a Rust test is a thread, and only the
-      # clone lines lead a reach back to the binary that made it.
-      # `status=successful` is the one free cut — a failed call reached nothing.
+      # THE PRECEDENT IS IN THIS FILE. `item-citations` is its own job for the
+      # same argument, written there: "Run beside `validate` it costs wall-clock
+      # nothing and carries its own budget; run inside it, it would be the thing
+      # that eventually turns the whole gate red by running out of minutes."
+      # R1230 records that happening — the census took the 30-minute budget and
+      # the whole verdict with it.
       #
-      # R1233 — AND THE SEVEN BY NAME, WHICH IS WIDENING RATHER THAN NARROWING.
-      # None of `close`, `close_range`, `dup`, `dup2`, `dup3`, `fchdir`, `fcntl`
-      # takes a filename, so none is in `%file`; without them a descriptor NUMBER
-      # can be re-pointed where the reader cannot see it, and the model that
-      # resolves `openat(3, "…")` would answer WRONG instead of UNKNOWN. Named
-      # individually rather than as `%desc`, which would add every `read` and
-      # `write` the run makes. THE COST IS MEASURED, not assumed — the numbers
-      # are in R1233's ledger entry beside the resolution they bought.
-      #
-      # `fcntl` IS THE ONE NOBODY WOULD HAVE GUESSED, and it was not guessed:
-      # the census reported its residue by kind and by example, and the example
-      # was `newfstatat(5, "src")` from a `find(1)` that had reached 5 through
-      # `fcntl(4, F_DUPFD_CLOEXEC, 3)` — which is how `fdopendir`, and so every
-      # tree walk, gets its descriptor.
-      #
-      # `--cwd` is the one fact about a run its own syscalls never state. Every
-      # step in this file runs with the checkout root as its working directory,
-      # so `$PWD` is what the traced command starts in — and without it every
-      # bare name (`cd /etc && cat hostname`) is unresolvable.
+      # WHAT MOVED IS THE WRAP AND NOTHING ELSE. Every argument the census makes
+      # for its own shape — the pipe that writes no bytes, the seven descriptor
+      # syscalls named individually, why `%file` must not be narrowed, why the
+      # verdict is read from a file — is unchanged and now lives with the step
+      # that carries it, in `outside-reach` below.
       - name: cargo test --workspace
         run: >
-          strace -f -qq
-          -e trace=%file,%process,close,close_range,dup,dup2,dup3,fchdir,fcntl
-          -e status=successful
-          -o "|./instruments/release/outside-reach
-          --repo \"$PWD\" --build \"$PWD/target\"
-          --fixture \"${TMPDIR:-/tmp}\" --cwd \"$PWD\"
-          > \"${TMPDIR:-/tmp}/outside-reach.txt\" 2>&1;
-          echo \$? > \"${TMPDIR:-/tmp}/outside-reach.rc\""
           ./scripts/verify.sh --no-fresh --label ci-workspace --
           cargo test --workspace --locked --no-fail-fast
-
-      # THE READER'S VERDICT IS READ FROM A FILE, and that is a requirement
-      # rather than a style. `strace` returns the WRAPPED command's status and
-      # says nothing at all about the program on the other end of its `-o` pipe,
-      # so a census that failed would leave the step above green. This
-      # repository has paid for reading a wrapper's exit code instead of the
-      # one that matters; the file is what cannot be forged.
-      #
-      # `if: always()` because the census is about the run that HAPPENED. A
-      # suite that went red still read whatever it read, and a reach that only
-      # appears on a failing run is exactly the one nobody would otherwise see.
-      # R1230 — AND THE READING IS THE PROGRAM'S, not four lines of shell. This
-      # step was `verdict=$(cat …); exit "$verdict"`, and the first hosted run
-      # measured what that costs: the job hit its budget, was CANCELLED before
-      # the reader wrote anything, and `exit ""` failed with a message about
-      # `exit`. A census that never answered and a census that answered `no` came
-      # out of this step looking the same — including for the one question this
-      # gate has open, whether `ptrace` attaches on a runner at all.
-      #
-      # `|| true` ON THE `cat` AND NOT ON THE VERDICT: the census's own prose is
-      # worth printing when it exists and is not the thing that decides, so its
-      # absence must not mask the program's answer below it.
-      - name: what that run read outside this repository
-        if: always()
-        run: |
-          cat "${TMPDIR:-/tmp}/outside-reach.txt" || true
-          ./instruments/release/outside-reach --verdict-of "${TMPDIR:-/tmp}/outside-reach.rc"
 
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace
@@ -486,6 +422,231 @@ jobs:
       # gate report an absence on top of the real failure. `if-no-files-found:
       # error` is a second, independent guard on the same silence the gate's own
       # law covers: a job that recorded nothing must not upload nothing quietly.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
+
+  # R1276 — EVERY PATH THIS SUITE READS OUTSIDE THIS TREE, CENSUSED IN A JOB OF
+  # ITS OWN.
+  #
+  # WHY A JOB. R1229 put this census inside `validate`, wrapping that job's
+  # longest step, and gave one reason for not giving it a job: "a separate job
+  # would compile the whole workspace again, which is the duplication
+  # `tools/twice-compiled` exists to forbid". That gate forbids no such thing.
+  # Its own header says the duplication is "REPORTED rather than refused,
+  # because the number is what licenses the repair"; what it refuses is a job
+  # that compiles and leaves no record, one that records counts and no seconds,
+  # and one with a cache that did not say what the cache brought. Seven jobs in
+  # this file build this workspace while it passes. The sentence was never
+  # asked of the machine.
+  #
+  # WHAT IT COST WHILE IT STOOD THERE. R1275 measured it: about sixty per cent
+  # on the suite step — the same tests run slower, `tests/all.rs` 856 s → 1369 s
+  # while its test count went 374 → 377, and the workspace's other `tests/all.rs`
+  # +163% with its 42 unchanged. And the observer was inside the measurement:
+  # six rounds of instrument (R1245, R1260, R1261, R1270, R1274, R1275) read
+  # `validate`'s budget share, and under the tracer that share was mostly
+  # tracer. The noise moved further than the level — coefficient of variation
+  # 3.8% (n=4) to 10.7% (n=26), spread 151 s → 832 s.
+  #
+  # SO THE DUPLICATION IS THE POINT AND IS PAID FOR DELIBERATELY. This job
+  # compiles what `validate` compiles and runs what `validate` runs. That is
+  # visible in `twice-compiled`'s report as duplication, which is the honest
+  # place for it — the alternative was a tracer hidden inside the number this
+  # repository uses to watch its own cost.
+  #
+  # NO CACHE OF ITS OWN, and that is a decision with two reasons rather than an
+  # omission. The 10 GB this repository is given is nearly spent (`cache-budget`
+  # is the gate that says so), and a job that restores nothing has a CONSTANT
+  # cache state — which makes its duration comparable across runs without the
+  # control variable `twice-compiled`'s header spends four paragraphs on. It
+  # costs a cold fetch and compile every push, and cost is what this job is
+  # explicitly not optimising.
+  #
+  # ITS VERDICT IS THIS JOB'S, which is the attribution that was missing. A
+  # reach found here used to turn `validate` red — the same colour as a failing
+  # test, a failing clippy and a failing store validation — and `ci-state` now
+  # names the job and the step that ended it.
+  outside-reach:
+    name: what this run reads outside this tree
+    runs-on: ubuntu-latest
+    # THE SAME 90 AND THE SAME ARGUMENT AS `validate` CARRIED WHILE IT HELD
+    # THIS: an upper bound argued from the other jobs rather than measured on a
+    # runner, because a job that runs out of minutes is a red CI nobody can read
+    # a result from. The traced suite has been observed at 29m32s inside
+    # `validate`; this job adds a cold compile and no cache to restore, and the
+    # first runs under this number are what measure it.
+    timeout-minutes: 90
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/outside-reach.log
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # R889, and it applies here for the same reason it applies to
+          # `validate`: this job runs that suite, and the evidence-replay
+          # declaration gates in it resolve pinned historical commits that a
+          # shallow clone does not have.
+          fetch-depth: 0
+
+      # R1229 — `strace` is not in the runner image: checked against
+      # `actions/runner-images`' own Ubuntu 24.04 readme, where it appears in no
+      # section. The census this job takes is what needs it, and
+      # `tools/undeclared-requirement` requires a package CI installs to be
+      # named in `.claude/remote-build.toml`, which this one is.
+      #
+      # R1276 — AND THIS IS NOW THE ONLY JOB IN THIS FILE THAT FETCHES FROM AN
+      # ARCHIVE AT ALL, which is where the arc below lands. R1252 removed
+      # `protobuf-compiler` from six jobs when the schema compiler became a
+      # crate; this step is what was left, and it is here rather than on the
+      # push-critical job. On 2026-08-19 four consecutive runs of `main` died in
+      # this step — the last of them WITH R1251's retries — and the measurement
+      # that came out of it is that a fetch you do not make is the only one that
+      # cannot stall. `validate` now makes none.
+      #
+      # R1236 — BOUNDED, AND THE BOUND IS MEASURED. On 2026-08-18 this step in
+      # `server-features` did not fail: it STALLED, for 45m09s, until the job's
+      # own 45-minute timeout killed it. Every step behind it was then skipped,
+      # and what a reader saw was a job `cancelled` after forty-five minutes,
+      # which is also exactly what the change being pushed hanging the job would
+      # look like. The same step on the previous green run of the same job took
+      # TWELVE SECONDS. Five minutes is twenty-five times the measured cost and
+      # still fails well before the job's own bound, so a stalled archive is a
+      # named step rather than a whole job's budget spent on nothing.
+      #
+      # R1251 — the retries and the timeout live in `.github/apt-retries.conf`,
+      # copied in first, with the reasoning and the numbers in that file, once.
+      - name: Install strace (the outward-reach census)
+        timeout-minutes: 5
+        run: |
+          sudo cp .github/apt-retries.conf /etc/apt/apt.conf.d/99-mnemosyne
+          sudo apt-get update
+          sudo apt-get install -y strace
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. See `validate`'s
+        # copy of this step, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
+        run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs.
+      #
+      # NO `restored` HERE, unlike every other job's copy of this step: that
+      # instrument reports what a cache restore put on disk, and this job takes
+      # no cache. R1118's rule is the one that still binds — a program a job
+      # RUNS must not live under a path a cache restore can overwrite — and with
+      # no cache at all there is nothing that could.
+      - name: Build the instruments
+        env:
+          RUSTC_WRAPPER: ""
+          # RELATIVE AND NOT `${{ github.workspace }}/instruments`, for R1117's
+          # reason: a GitHub expression makes a step unreplayable, and putting
+          # one here took all nine jobs out of the local replay's census at once.
+          CARGO_TARGET_DIR: instruments
+        run: |
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/outside-reach/Cargo.toml
+
+      # WHY IT COSTS NOTHING ON DISK: `strace -o "|program"` hands the trace to
+      # the reader through a PIPE. Measured on this repository's whole suite —
+      # 611 MB passes through and ZERO bytes are written, against the 2.8 GB
+      # across 155,072 files that Round 1228 wrote when it took the same census
+      # into files and recorded that as the price of asking.
+      #
+      # RELATIVE, AND NOT `${{ github.workspace }}`, for R1117's reason: a
+      # GitHub expression in a step's script makes the whole job unreplayable,
+      # and `tools/twice-compiled` refuses a census that cannot replay it. The
+      # first draft of this step wrote the expression and took `validate`
+      # straight out of that census — the gate said so by name. Every step in
+      # this file runs with the checkout root as its working directory, so
+      # `$PWD` is the same path and a local replay can resolve it.
+      #
+      # `%file` IS THE REQUIREMENT AND NARROWING IT IS THE TRAP: the sibling
+      # checkout is reached by `newfstatat` — cargo asking whether a path
+      # dependency's directory is THERE, never opening it — so a census watching
+      # `openat` answers zero, and zero is what a hermetic tree looks like.
+      # `%process` is the other half: a Rust test is a thread, and only the
+      # clone lines lead a reach back to the binary that made it.
+      # `status=successful` is the one free cut — a failed call reached nothing.
+      #
+      # R1233 — AND THE SEVEN BY NAME, WHICH IS WIDENING RATHER THAN NARROWING.
+      # None of `close`, `close_range`, `dup`, `dup2`, `dup3`, `fchdir`, `fcntl`
+      # takes a filename, so none is in `%file`; without them a descriptor NUMBER
+      # can be re-pointed where the reader cannot see it, and the model that
+      # resolves `openat(3, "…")` would answer WRONG instead of UNKNOWN. Named
+      # individually rather than as `%desc`, which would add every `read` and
+      # `write` the run makes. THE COST IS MEASURED, not assumed — the numbers
+      # are in R1233's ledger entry beside the resolution they bought.
+      #
+      # `fcntl` IS THE ONE NOBODY WOULD HAVE GUESSED, and it was not guessed:
+      # the census reported its residue by kind and by example, and the example
+      # was `newfstatat(5, "src")` from a `find(1)` that had reached 5 through
+      # `fcntl(4, F_DUPFD_CLOEXEC, 3)` — which is how `fdopendir`, and so every
+      # tree walk, gets its descriptor.
+      #
+      # `--cwd` is the one fact about a run its own syscalls never state. Every
+      # step in this file runs with the checkout root as its working directory,
+      # so `$PWD` is what the traced command starts in — and without it every
+      # bare name (`cd /etc && cat hostname`) is unresolvable.
+      #
+      # THROUGH `scripts/verify.sh`, the same wrapper `validate` runs the suite
+      # through (R1196): a target that fails to COMPILE stops cargo whatever
+      # `--no-fail-fast` says, and the wrapper holds the log against what cargo
+      # says the command compiles, so a run that covered less than it looks like
+      # says so. A census taken over a suite that quietly stopped early is a
+      # census of a shorter run.
+      - name: cargo test --workspace, censused
+        run: >
+          strace -f -qq
+          -e trace=%file,%process,close,close_range,dup,dup2,dup3,fchdir,fcntl
+          -e status=successful
+          -o "|./instruments/release/outside-reach
+          --repo \"$PWD\" --build \"$PWD/target\"
+          --fixture \"${TMPDIR:-/tmp}\" --cwd \"$PWD\"
+          > \"${TMPDIR:-/tmp}/outside-reach.txt\" 2>&1;
+          echo \$? > \"${TMPDIR:-/tmp}/outside-reach.rc\""
+          ./scripts/verify.sh --no-fresh --label ci-census --
+          cargo test --workspace --locked --no-fail-fast
+
+      # THE READER'S VERDICT IS READ FROM A FILE, and that is a requirement
+      # rather than a style. `strace` returns the WRAPPED command's status and
+      # says nothing at all about the program on the other end of its `-o` pipe,
+      # so a census that failed would leave the step above green. This
+      # repository has paid for reading a wrapper's exit code instead of the
+      # one that matters; the file is what cannot be forged.
+      #
+      # `if: always()` because the census is about the run that HAPPENED. A
+      # suite that went red still read whatever it read, and a reach that only
+      # appears on a failing run is exactly the one nobody would otherwise see.
+      # R1230 — AND THE READING IS THE PROGRAM'S, not four lines of shell. This
+      # step was `verdict=$(cat …); exit "$verdict"`, and the first hosted run
+      # measured what that costs: the job hit its budget, was CANCELLED before
+      # the reader wrote anything, and `exit ""` failed with a message about
+      # `exit`. A census that never answered and a census that answered `no` came
+      # out of this step looking the same — including for the one question this
+      # gate has open, whether `ptrace` attaches on a runner at all.
+      #
+      # `|| true` ON THE `cat` AND NOT ON THE VERDICT: the census's own prose is
+      # worth printing when it exists and is not the thing that decides, so its
+      # absence must not mask the program's answer below it.
+      - name: what that run read outside this repository
+        if: always()
+        run: |
+          cat "${TMPDIR:-/tmp}/outside-reach.txt" || true
+          ./instruments/release/outside-reach --verdict-of "${TMPDIR:-/tmp}/outside-reach.rc"
+
+      # R1092 — what this job compiled, for `twice-compiled` to join with every
+      # other job's. `always()` because a job that failed still compiled
+      # everything up to the point it failed, and a missing log would have the
+      # gate report an absence on top of the real failure.
       - name: Keep what this job compiled
         if: always()
         uses: actions/upload-artifact@v7
@@ -1347,6 +1508,7 @@ jobs:
     name: every cache declared is one CI keeps
     needs:
       - validate
+      - outside-reach
       - item-citations
       - side-workspaces
       - server-features
@@ -1488,6 +1650,7 @@ jobs:
     name: every compilation is one job's
     needs:
       - validate
+      - outside-reach
       - item-citations
       - side-workspaces
       - server-features
