@@ -1,0 +1,88 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1272's MEASUREMENT IS A MEASUREMENT — run it from the",
+    "repository root:",
+    "    cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml \\",
+    "        -- sweep tools/ci-plan/compiling-subcommands-sweep.json",
+    "",
+    "WHAT THE TABLE IS. `ci_plan::compiles` says which cargo subcommands leave",
+    "artifacts a targeted `cargo clean` removes, and `tools/stale-artifacts` reads",
+    "it to decide whether cleaning in front of a run buys anything. Half of that",
+    "table makes a caller SKIP work, so an entry nobody measured is R743's stale",
+    "binary surviving into the run the freshening exists to make trustworthy.",
+    "",
+    "A SWEEP OF ITS OWN BECAUSE IT WATCHES A DIFFERENT SUITE. The consumer's",
+    "manifest next door runs `tools/stale-artifacts`' suite; this one runs the",
+    "measurement, which lives beside the other experiment that asks cargo rather",
+    "than the documentation (`locked_resolution_smoke`).",
+    "",
+    "EVERY INJECTION HERE LEAVES A MEASUREMENT THAT STILL PRINTS A TABLE. None of",
+    "them errors; each one makes the experiment agree with the table for a reason",
+    "that is not the tree's."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--locked",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "compiling_subcommands::"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "red_set": "exhaustive",
+  "injections": [
+    {
+      "name": "a-subcommand-the-table-forgot-is-not-noticed",
+      "why": "the table is the thing under measurement, so a name missing from it has to stop the run rather than pass quietly — `cargo check` renamed here is a subcommand this repository issues and nothing classifies",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    \"bench\", \"build\", \"check\", \"clippy\", \"doc\", \"fix\", \"run\", \"rustc\", \"rustdoc\", \"test\",",
+          "to": "    \"bench\", \"build\", \"cheque\", \"clippy\", \"doc\", \"fix\", \"run\", \"rustc\", \"rustdoc\", \"test\","
+        }
+      ],
+      "expect_red": ["what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"]
+    },
+    {
+      "name": "a-name-the-table-says-compiles-nothing-is-never-put-to-cargo",
+      "why": "R1272's sharpest clause. The population is the TREE's, so a `false` the tree does not issue — `package` and `tree` are both — is never run and never complained about; and `false` is the answer that makes a caller skip a clean. Dropping the sweep leaves those entries asserted on nobody's authority, and every other assertion here still passes",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+          "from": "    issued.extend(\n        ci_plan::COMPILES_NOTHING\n            .iter()\n            .map(|name| (*name).to_string()),\n    );",
+          "to": "    let _ = &ci_plan::COMPILES_NOTHING;"
+        }
+      ],
+      "expect_red": ["what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"]
+    },
+    {
+      "name": "every-arm-shares-one-build-directory",
+      "why": "the fingerprints of the previous subcommand answer for this one, so every subcommand after the first measures as compiling — a result that looks like a finding and would reclassify `metadata`, `fmt` and `tree` as commands worth cleaning in front of",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+          "from": "    let _ = std::fs::remove_dir_all(&target);",
+          "to": "    let _ = &target;"
+        }
+      ],
+      "expect_red": ["what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"]
+    },
+    {
+      "name": "a-fingerprint-below-the-first-level-is-not-counted",
+      "why": "cargo writes `.fingerprint` under a profile directory rather than at the root of the build directory, so a walk that does not recurse counts zero for everything — and a measurement that answers `false` for every subcommand agrees with the half of the table that makes a caller skip",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+          "from": "        found += fingerprints_under(&path);",
+          "to": "        found += 0;"
+        }
+      ],
+      "expect_red": ["what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"]
+    }
+  ]
+}

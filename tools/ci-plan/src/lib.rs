@@ -1639,6 +1639,65 @@ pub fn resolves_the_lockfile(subcommand: &str) -> Option<bool> {
     }
 }
 
+/// Does this cargo subcommand COMPILE — produce or read the artifacts
+/// `cargo clean` removes?
+///
+/// `None` for a subcommand this table does not know, and the caller's
+/// conservative answer to that is to assume it does: the cost of freshening a
+/// command that did not need it is a rebuild, and the cost of NOT freshening one
+/// that did is R743's stale binary passing a suite.
+///
+/// THE AXIS IS `cargo clean`'s OWN, which is why this is measured by watching
+/// `.fingerprint`. That directory is what a targeted clean removes, so "makes a
+/// fingerprint" and "has anything for a clean to remove" are the same question
+/// asked once — not a proxy for it. Every answer here is measured against the
+/// cargo on this machine by `compiling_subcommands`, in a workspace built for
+/// the purpose, so a cargo release that changes one of them turns that test red
+/// rather than quietly widening the hole. That is the discipline
+/// [`resolves_the_lockfile`] set one function down, and R1257 asked for this
+/// table in the same words: a recording of an experiment, not a reading of the
+/// documentation.
+///
+/// WHAT IT IS FOR. `tools/stale-artifacts` cleans the packages a run's workspace
+/// has changed BEFORE the run, so no stale artifact survives into it. It did
+/// that whatever the run was going to do — `cargo metadata` and `cargo fmt`
+/// included, neither of which can meet an artifact at all — and a clean before
+/// one of those buys nothing and costs whoever compiles next a full rebuild.
+#[must_use]
+pub fn compiles(subcommand: &str) -> Option<bool> {
+    if COMPILES.contains(&subcommand) {
+        return Some(true);
+    }
+    if COMPILES_NOTHING.contains(&subcommand) {
+        return Some(false);
+    }
+    None
+}
+
+/// The subcommands measured to leave artifacts a targeted clean removes.
+pub const COMPILES: [&str; 10] = [
+    "bench", "build", "check", "clippy", "doc", "fix", "run", "rustc", "rustdoc", "test",
+];
+
+/// The subcommands measured to leave NOTHING a targeted clean removes.
+///
+/// A LIST RATHER THAN A MATCH ARM, AND THIS HALF IS WHY. These are the answers
+/// that make a caller SKIP work: an entry here is a freshening pass deciding not
+/// to run, so an unmeasured one is R743's stale artifact surviving into the run
+/// that was supposed to be clean. The measurement therefore runs EVERY name on
+/// this list against cargo whether this repository issues it or not, which it can
+/// only do because the list is a value — the population of the other half is the
+/// tree's, and a subcommand nobody issues needs no answer at all.
+pub const COMPILES_NOTHING: [&str; 7] = [
+    "clean",
+    "fmt",
+    "generate-lockfile",
+    "metadata",
+    "package",
+    "sweep",
+    "tree",
+];
+
 /// Does THIS COMMAND resolve the lockfile of the workspace it points at?
 ///
 /// R1262, and the reason it is a second function rather than a wider table: the
@@ -2140,8 +2199,9 @@ pub fn commands_this_repository_issues(root: &Path) -> IssuedCommands {
 ///   it runs over — this repository's, a fixture the run built, or wherever its
 ///   caller points. A law about what this repository's own commands must do is
 ///   a law about the first of those.
-pub const LAWS_OVER_THIS_POPULATION: [&str; 4] = [
+pub const LAWS_OVER_THIS_POPULATION: [&str; 5] = [
     "crates/mnemosyne-cli/tests/build_width.rs",
+    "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
     "crates/mnemosyne-cli/tests/judged_test_runs.rs",
     "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
     "tools/ci-plan/tests/reading.rs",

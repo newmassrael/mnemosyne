@@ -155,6 +155,28 @@ pub fn plan(at: &Path, command: &[String]) -> Plan {
         declared: None,
         uncounted: Vec::new(),
     };
+    // AND A COMMAND THAT MEETS NO ARTIFACT NEEDS NO CLEAN IN FRONT OF IT
+    // (R1272). This pass exists for R743's stale binary — a run reading a
+    // compiled artifact older than the source it was built from — and a
+    // subcommand that neither produces nor reads one cannot have that problem.
+    // Cleaning in front of it buys nothing and costs whoever compiles next a
+    // full rebuild of every package the tree has changed.
+    //
+    // ONLY A MEASURED `false` SKIPS. `ci_plan::compiles` answers `None` for a
+    // subcommand nobody measured, and the conservative reading of that is to
+    // clean: the price of freshening a command that did not need it is a
+    // rebuild, and the price of skipping one that did is the artifact this
+    // program exists to remove surviving into the run it was supposed to make
+    // trustworthy.
+    if let Some(subcommand) = read.subcommand() {
+        if ci_plan::compiles(subcommand) == Some(false) {
+            return Plan::Nothing(format!(
+                "`cargo {subcommand}` leaves nothing a targeted clean removes, \
+                 measured against cargo rather than read out of its \
+                 documentation, so there is no artifact this run could find stale"
+            ));
+        }
+    }
     let manifest = read
         .value(&["--manifest-path"])
         .map_or_else(|| at.join("Cargo.toml"), |written| at.join(written));

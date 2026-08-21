@@ -92,6 +92,9 @@ mod build_width;
 #[path = "commit_ledger_gate_smoke.rs"]
 mod commit_ledger_gate_smoke;
 
+#[path = "compiling_subcommands.rs"]
+mod compiling_subcommands;
+
 // The law that judges this list is IN it, and that is the point rather than a
 // curiosity: it used to be the one file that could not be judged by its own
 // rule, because it names the constructs it hunts and matched every one of them

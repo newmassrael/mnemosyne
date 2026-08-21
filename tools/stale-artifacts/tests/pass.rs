@@ -536,6 +536,73 @@ fn a_command_that_runs_no_cargo_is_a_stated_nothing_rather_than_a_silence() {
     );
 }
 
+/// A COMMAND THAT MEETS NO ARTIFACT NEEDS NO CLEAN IN FRONT OF IT.
+///
+/// R1272. This pass exists for R743's stale binary, and a subcommand that
+/// neither produces nor reads a compiled artifact cannot have that problem —
+/// `cargo metadata` and `cargo fmt` are the cases. Cleaning in front of one buys
+/// nothing and costs whoever compiles next a full rebuild of every package the
+/// tree has changed, which on this repository is most of them.
+///
+/// THE TABLE IS MEASURED, WHICH IS WHY THE SKIP IS SAFE. `ci_plan::compiles`
+/// records what cargo did in a workspace built for the purpose
+/// (`compiling_subcommands`), and only a measured `false` skips: `None` means
+/// nobody asked, and the conservative reading of that is to clean.
+#[test]
+fn a_command_that_leaves_no_artifact_is_not_cleaned_in_front_of() {
+    let tree = Tree::new();
+    tree.write(
+        "crates/in-crates/src/lib.rs",
+        "pub fn committed() { /* changed */ }\n",
+    );
+    for line in [
+        &["cargo", "metadata", "--format-version", "1"][..],
+        &["cargo", "fmt", "--check"][..],
+        &["cargo", "tree"][..],
+    ] {
+        let plan = plan(tree.at(), &words(line));
+        let Plan::Nothing(reason) = &plan else {
+            panic!("`{}` meets no artifact: {plan:?}", line.join(" "))
+        };
+        assert!(
+            reason.contains("leaves nothing a targeted clean removes"),
+            "and the reason says which of the nothings it is: {reason}"
+        );
+    }
+
+    // AND THE SAME TREE IS STILL FRESHENED FOR A COMMAND THAT DOES COMPILE,
+    // which is what says the clause above is about the subcommand and not about
+    // the tree having nothing changed.
+    let freshen = freshening(plan(tree.at(), &words(&["cargo", "test"])));
+    assert!(
+        !freshen.packages.is_empty(),
+        "the tree has a changed package and a compiling command finds it: {freshen:?}"
+    );
+}
+
+/// AND A SUBCOMMAND NOBODY MEASURED IS CLEANED IN FRONT OF.
+///
+/// R1272, the conservative half. An unknown subcommand answers `None`, and the
+/// price of the two mistakes is not symmetric: freshening a command that did not
+/// need it costs a rebuild, and skipping one that did costs R743's stale binary
+/// passing a suite.
+#[test]
+fn a_subcommand_this_repository_has_not_measured_is_still_cleaned_in_front_of() {
+    let tree = Tree::new();
+    tree.write(
+        "crates/in-crates/src/lib.rs",
+        "pub fn committed() { /* changed */ }\n",
+    );
+    let freshen = freshening(plan(
+        tree.at(),
+        &words(&["cargo", "not-a-subcommand-anybody-measured"]),
+    ));
+    assert!(
+        !freshen.packages.is_empty(),
+        "an unmeasured subcommand is assumed to compile: {freshen:?}"
+    );
+}
+
 #[test]
 fn a_tree_that_is_not_a_repository_is_a_reason_and_not_a_refusal() {
     // What differs from HEAD is a question about a repository, and a tree

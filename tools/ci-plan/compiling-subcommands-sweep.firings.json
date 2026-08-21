@@ -1,0 +1,70 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-fingerprint-below-the-first-level-is-not-counted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+          "from": "        found += fingerprints_under(&path);",
+          "to": "        found += 0;"
+        }
+      ],
+      "expect_red": [
+        "what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ],
+      "tests": [
+        "compiling_subcommands::what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ]
+    },
+    "a-name-the-table-says-compiles-nothing-is-never-put-to-cargo": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+          "from": "    issued.extend(\n        ci_plan::COMPILES_NOTHING\n            .iter()\n            .map(|name| (*name).to_string()),\n    );",
+          "to": "    let _ = &ci_plan::COMPILES_NOTHING;"
+        }
+      ],
+      "expect_red": [
+        "what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ],
+      "tests": [
+        "compiling_subcommands::what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ]
+    },
+    "a-subcommand-the-table-forgot-is-not-noticed": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    \"bench\", \"build\", \"check\", \"clippy\", \"doc\", \"fix\", \"run\", \"rustc\", \"rustdoc\", \"test\",",
+          "to": "    \"bench\", \"build\", \"cheque\", \"clippy\", \"doc\", \"fix\", \"run\", \"rustc\", \"rustdoc\", \"test\","
+        }
+      ],
+      "expect_red": [
+        "what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ],
+      "tests": [
+        "compiling_subcommands::what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ]
+    },
+    "every-arm-shares-one-build-directory": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+          "from": "    let _ = std::fs::remove_dir_all(&target);",
+          "to": "    let _ = &target;"
+        }
+      ],
+      "expect_red": [
+        "what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ],
+      "tests": [
+        "compiling_subcommands::what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo"
+      ]
+    }
+  },
+  "forgotten": {}
+}
