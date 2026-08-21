@@ -214,8 +214,48 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
     // measures nothing new, and the history it already holds is still the answer
     // to what earlier pushes cost. The recording declines itself when there is
     // nothing measured to record.
-    lines.extend(ci_state::history::kept_report(root, sha, &checks, &spent));
+    lines.extend(ci_state::history::kept_report(
+        root,
+        sha,
+        &checks,
+        &spent,
+        &Github { root },
+    ));
     lines
+}
+
+/// GitHub, asked what one job of one commit did step by step.
+///
+/// THE WHOLE OF WHAT THIS HOLDS IS THE TWO CALLS. Which commits to ask about,
+/// what the answer means and every sentence built from it live in
+/// [`ci_state::history`], where a test can reach them — the rule this file's own
+/// header states and the reason `ci_state::history::StepsOf` is a trait.
+///
+/// TWO CALLS BECAUSE A COMMIT DOES NOT NAME A JOB. The check rows carry the job
+/// in their `details_url`, which is the same route [`steps_of`] takes for the
+/// commit being reported on; that one has its rows in hand already and this one
+/// is asking about a commit from the record, which may be weeks back.
+struct Github<'a> {
+    root: &'a Path,
+}
+
+impl ci_state::history::StepsOf for Github<'_> {
+    fn steps_of(&self, commit: &str, check: &str) -> Result<Vec<ci_state::Step>, String> {
+        let answer = gh(self.root, &checks_query(commit))?;
+        let checks = checks_in(commit, &answer)?;
+        let row = checks
+            .iter()
+            .find(|row| row.name == check)
+            .ok_or_else(|| format!("that commit has no check named `{check}`"))?;
+        let job = job_of(&row.details_url).ok_or_else(|| {
+            format!(
+                "`{check}` on that commit is behind no Actions job — its details are at {}",
+                row.details_url
+            )
+        })?;
+        let body = gh(self.root, &steps_query(job))?;
+        steps_in(job, &body)
+    }
 }
 
 /// What one failing check's own steps say about where its job stopped.

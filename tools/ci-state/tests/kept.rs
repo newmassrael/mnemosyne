@@ -12,11 +12,70 @@ use std::fs;
 use std::path::Path;
 
 use ci_state::history::{
-    keep, kept_in, kept_report, movements, never_completed, trend_report, Kept, Movement, RECORDS,
+    keep, kept_in, kept_report, movements, never_completed, trend_report, Kept, Movement, StepsOf,
+    RECORDS,
 };
 use ci_state::{Check, Output, Spent};
 
 use tempfile::TempDir;
+
+/// A source of job steps that must never be asked.
+///
+/// THE COST CLAIM, ASSERTED RATHER THAN DESCRIBED. `StepsOf` costs two `gh` calls
+/// per side and the block that uses it is documented as asking only when a record
+/// holds a STEP — of the ten jobs in this repository's record, nine do not. Every
+/// case whose record has no step reports through this, so the day that changes,
+/// the suite says so instead of the next push being two seconds slower for ever.
+struct Unasked;
+
+impl StepsOf for Unasked {
+    fn steps_of(&self, commit: &str, check: &str) -> Result<Vec<ci_state::Step>, String> {
+        panic!("asked what `{check}` did on {commit}, and this record holds no step to attribute")
+    }
+}
+
+/// A source that answers from a table and refuses everything else.
+struct Recorded(Vec<(String, Result<Vec<ci_state::Step>, String>)>);
+
+impl StepsOf for Recorded {
+    fn steps_of(&self, commit: &str, _check: &str) -> Result<Vec<ci_state::Step>, String> {
+        self.0
+            .iter()
+            .find(|(at, _)| at == commit)
+            .map(|(_, answer)| answer.clone())
+            .unwrap_or_else(|| Err(format!("nothing was recorded for {commit}")))
+    }
+}
+
+/// One step of one job, as GitHub stamps it.
+fn job_step(number: u64, name: &str, from: &str, to: &str) -> ci_state::Step {
+    ci_state::Step {
+        name: name.to_string(),
+        number,
+        status: "completed".to_string(),
+        conclusion: Some("success".to_string()),
+        started_at: Some(from.to_string()),
+        completed_at: Some(to.to_string()),
+    }
+}
+
+/// A step the job never reached, IN THE SHAPE GITHUB ACTUALLY SENDS.
+///
+/// THE STAMPS ARE THE STOPPAGE'S AND THEY ARE EQUAL — this is the recorded shape
+/// of all five skipped steps of `validate` on `a3005567`, not a shape invented
+/// for a case. A reader that went by the stamps would call this a step that took
+/// no time, which is a measurement of work that did not happen; only the
+/// conclusion says otherwise.
+fn never_reached(number: u64, name: &str, at: &str) -> ci_state::Step {
+    ci_state::Step {
+        name: name.to_string(),
+        number,
+        status: "completed".to_string(),
+        conclusion: Some("skipped".to_string()),
+        started_at: Some(at.to_string()),
+        completed_at: Some(at.to_string()),
+    }
+}
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 
@@ -304,7 +363,7 @@ fn a_tree_with_no_record_at_all_is_no_history_rather_than_an_error() {
         "every clone is in this state on its first push: {trouble:?}"
     );
     assert!(
-        trend_report(&kept, Some("validate")).is_empty(),
+        trend_report(&kept, Some("validate"), &Unasked).is_empty(),
         "and the block above has already said no job was measured"
     );
 }
@@ -341,7 +400,7 @@ fn one_commit_recorded_is_a_level_and_is_told_apart_from_a_trend() {
         "2026-08-18T13:40:00Z",
         &[spent("validate", 60, 90)],
     )];
-    let said = trend_report(&kept, Some("validate")).join("\n");
+    let said = trend_report(&kept, Some("validate"), &Unasked).join("\n");
     assert!(
         said.contains("1 commit is recorded here") && said.contains("not yet a trend"),
         "{said}"
@@ -413,7 +472,7 @@ fn the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget(
             &[spent("validate", 2376, 90), spent("replay", 1674, 90)],
         ),
     ];
-    let said = trend_report(&kept, Some("validate")).join("\n");
+    let said = trend_report(&kept, Some("validate"), &Unasked).join("\n");
     assert!(
         said.contains("against 2 commit(s) recorded here, oldest 2026-08-01T09:00:00Z"),
         "{said}"
@@ -448,7 +507,7 @@ fn a_job_that_is_both_closest_and_steepest_is_not_printed_twice() {
             &[spent("validate", 2376, 90)],
         ),
     ];
-    let said = trend_report(&kept, Some("validate")).join("\n");
+    let said = trend_report(&kept, Some("validate"), &Unasked).join("\n");
     assert_eq!(
         said.matches("`validate`").count(),
         1,
@@ -472,7 +531,7 @@ fn no_job_rising_is_said_out_loud_rather_than_left_as_a_missing_line() {
             &[spent("validate", 2214, 90)],
         ),
     ];
-    let said = trend_report(&kept, Some("validate")).join("\n");
+    let said = trend_report(&kept, Some("validate"), &Unasked).join("\n");
     assert!(
         said.contains("no job's share of its budget is above where it was first recorded"),
         "a reader who sees only the header cannot tell a fall from a block that \
@@ -522,7 +581,7 @@ fn a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper() {
          the repository: {movement:?}"
     );
 
-    let said = trend_report(&kept, Some("validate")).join("\n");
+    let said = trend_report(&kept, Some("validate"), &Unasked).join("\n");
     assert!(
         said.contains("40m00s → 41m00s") && said.contains("2 distinct budget(s) (90m → 120m)"),
         "the duration leads, because it is the half of the comparison a budget \
@@ -607,7 +666,7 @@ fn a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped() 
          {movement:?}"
     );
 
-    let said = trend_report(&kept, Some("validate")).join("\n");
+    let said = trend_report(&kept, Some("validate"), &Unasked).join("\n");
     assert!(
         said.contains(
             "`validate` 44% → 43% (-1 points over 2 commit(s) it completed; 43–44% \
@@ -785,7 +844,7 @@ fn a_job_that_has_never_completed_still_says_where_its_runs_stopped() {
             ],
         ),
     ];
-    let said = trend_report(&kept, Some("doomed")).join("\n");
+    let said = trend_report(&kept, Some("doomed"), &Unasked).join("\n");
     assert!(
         said.contains("`doomed` has no completed run in this record"),
         "{said}"
@@ -855,7 +914,7 @@ fn a_job_with_no_completed_run_is_named_rather_than_left_out() {
             .collect()
     );
 
-    let said = trend_report(&kept, Some("broken")).join("\n");
+    let said = trend_report(&kept, Some("broken"), &Unasked).join("\n");
     assert!(
         said.contains("`broken` has no completed run in this record"),
         "the job the level line named is answered rather than passed over: {said}"
@@ -892,7 +951,7 @@ fn a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty() {
         )
         .expect("a record of a shape this reader does not know");
     }
-    let said = kept_report(tree.path(), SHA, &[], &[]).join("\n");
+    let said = kept_report(tree.path(), SHA, &[], &[], &Unasked).join("\n");
     assert_eq!(
         said.matches("NOTE").count(),
         4,
@@ -942,7 +1001,7 @@ fn a_duration_nobody_worked_is_a_number_rather_than_a_panic() {
         i64::MAX,
         "the movement saturates rather than wrapping into a fall: {movement:?}"
     );
-    assert!(!trend_report(&kept, Some("job")).is_empty());
+    assert!(!trend_report(&kept, Some("job"), &Unasked).is_empty());
 }
 
 /// The directory this reporter writes records into is one this repository
@@ -1158,5 +1217,585 @@ fn a_series_that_separates_twice_is_not_narrowed_to_one_of_them() {
     assert!(
         movement.step.is_none(),
         "two separations and neither is THE place: {movement:?}"
+    );
+}
+
+/// A series where each run carries GitHub's own word for how it ended — the
+/// population a RISE is read over, which is not the one a level is.
+fn series_ending(check: &str, runs: &[(u64, &str)], budget_minutes: u64) -> Vec<Kept> {
+    runs.iter()
+        .enumerate()
+        .map(|(n, (share, conclusion))| {
+            record(
+                &nth_commit(n + 1),
+                &format!("2026-08-{:02}T00:00:00Z", n + 1),
+                &[concluded(
+                    check,
+                    share * budget_minutes * 60 / 100,
+                    budget_minutes,
+                    conclusion,
+                )],
+            )
+        })
+        .collect()
+}
+
+/// WHERE A COST ROSE IS NOT WHERE ITS LEVEL SPLITS, AND THE DIFFERENCE IS A
+/// COMMIT NOBODY WOULD OTHERWISE READ.
+///
+/// R1275, closing N198, and the shape is this repository's own `validate`: four
+/// runs at 24–27% of ninety minutes, then a run CANCELLED at 34% and a run that
+/// FAILED at 42%, then twenty completed runs at 33–48%. R1270 printed the split
+/// — the oldest COMPLETED run above the level, `4eccb3d4` — with the words "what
+/// to ask is what changed at that commit". Nothing changed at that commit: its
+/// diff is a path-normalisation in one gate. The job had been expensive since two
+/// runs earlier, and both runs in between are exactly the ones a cost curve
+/// cannot hold.
+#[test]
+fn where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (28, "success"),
+            (26, "success"),
+            (26, "success"),
+            (34, "cancelled"),
+            (42, "failure"),
+            (39, "success"),
+            (33, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let movement = only_movement(&kept);
+    let step = movement
+        .step
+        .as_ref()
+        .unwrap_or_else(|| panic!("this series separates and nothing said so: {movement:?}"));
+    assert_eq!(
+        (step.at.as_str(), step.above),
+        (nth_commit(7).as_str(), 33),
+        "the SPLIT is the oldest completed run above the level, which is the only \
+         thing a cost curve can say: {step:?}"
+    );
+    assert_eq!(
+        (step.rose.commit.as_str(), step.earlier_by),
+        (nth_commit(5).as_str(), 2),
+        "and the RISE is two runs earlier — the cancelled one — because a duration \
+         is a fact about every run that happened: {step:?}"
+    );
+    assert_eq!(
+        step.under.as_ref().map(|run| run.commit.as_str()),
+        Some(nth_commit(4).as_str()),
+        "and the last run below the level is the other end of any comparison: {step:?}"
+    );
+
+    let said = ci_state::history::movement_line(&movement);
+    assert!(
+        said.contains(&format!(
+            "what to ask is what changed at {}",
+            &nth_commit(5)[..8]
+        )),
+        "the sentence sends a reader to the rise: {said}"
+    );
+    assert!(
+        said.contains("rather than at the split")
+            && said.contains("every run in between is one that did not complete"),
+        "and says why the split is not it — a reader who is only given the earlier \
+         commit has no way to tell this reporter from one that is confused: {said}"
+    );
+}
+
+/// AND WHEN THE SPLIT IS THE RISE, THE SENTENCE IS THE ONE IT ALWAYS WAS.
+///
+/// R1275. The ordinary series has no run that failed to complete anywhere near
+/// its step, so there is nothing earlier to name and the extra clause must not
+/// appear. A reporter that printed "rather than at the split" on every step would
+/// be telling its reader that the number it just gave them is wrong.
+#[test]
+fn a_step_whose_run_before_it_is_below_the_level_is_its_own_rise() {
+    let kept = series_of("stepped", &[24, 27, 26, 44, 39, 42, 46], 100);
+    let movement = only_movement(&kept);
+    let step = movement.step.as_ref().expect("this series separates");
+    assert_eq!(
+        (step.rose.commit.as_str(), step.earlier_by),
+        (step.at.as_str(), 0),
+        "nothing sits between the level and its split: {step:?}"
+    );
+    let said = ci_state::history::movement_line(&movement);
+    assert!(
+        said.contains("what changed at that commit rather than when the budget is reached")
+            && !said.contains("rather than at the split"),
+        "{said}"
+    );
+}
+
+/// ONE EXPENSIVE RUN IN THE CHEAP ERA IS NOT WHERE THE COST ROSE.
+///
+/// R1275, and this is the clause that keeps the rise from being a lie. A job that
+/// hung once months ago has an old row at 100% of its budget, and "the earliest
+/// run at or above the expensive level" would name it — sending a reader to a
+/// commit weeks before anything changed, with a sentence claiming the level has
+/// been there ever since. What is asserted instead is contiguity: the level has
+/// held from here, with no run below it in between.
+#[test]
+fn an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (100, "cancelled"),
+            (26, "success"),
+            (26, "success"),
+            (34, "failure"),
+            (33, "success"),
+            (43, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let movement = only_movement(&kept);
+    let step = movement.step.as_ref().expect("this series separates");
+    assert_eq!(
+        (step.rose.commit.as_str(), step.earlier_by),
+        (nth_commit(5).as_str(), 1),
+        "the run that hung at 100% is older than four runs at the CHEAP level, so \
+         the level did not hold from there: {step:?}"
+    );
+}
+
+/// WHAT MOVED INSIDE THE JOB IS A STEP OF IT, NAMED.
+///
+/// R1275, closing N198. "The cost rose at this commit" sends somebody to a diff;
+/// which of the job's seventeen steps got dearer is what tells them whether they
+/// are reading a defect or the weather. Measured by hand for `validate` across
+/// its own rise before this was written: `cargo test --workspace` 1276 s → 1772 s
+/// and every other step of that job within eight seconds of where it was — so
+/// the answer is this repository's suite, not the runner's toolchain install.
+#[test]
+fn which_step_of_the_job_the_rise_belongs_to_is_named() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (28, "success"),
+            (26, "success"),
+            (26, "success"),
+            (34, "cancelled"),
+            (33, "success"),
+            (43, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let steps = Recorded(vec![
+        (
+            // The last cheap run: 1429 s of job, 1276 s of it the suite.
+            nth_commit(4),
+            Ok(vec![
+                job_step(
+                    1,
+                    "Set up job",
+                    "2026-08-04T00:00:00Z",
+                    "2026-08-04T00:00:09Z",
+                ),
+                job_step(
+                    2,
+                    "cargo test --workspace",
+                    "2026-08-04T00:00:09Z",
+                    "2026-08-04T00:21:25Z",
+                ),
+                job_step(
+                    3,
+                    "mnemosyne-cli validate-workspace",
+                    "2026-08-04T00:21:25Z",
+                    "2026-08-04T00:23:01Z",
+                ),
+            ]),
+        ),
+        (
+            // The rise: the same job, the same steps, one of them 496 s dearer.
+            nth_commit(5),
+            Ok(vec![
+                job_step(
+                    1,
+                    "Set up job",
+                    "2026-08-05T00:00:00Z",
+                    "2026-08-05T00:00:11Z",
+                ),
+                job_step(
+                    2,
+                    "cargo test --workspace",
+                    "2026-08-05T00:00:11Z",
+                    "2026-08-05T00:29:43Z",
+                ),
+                job_step(
+                    3,
+                    "mnemosyne-cli validate-workspace",
+                    "2026-08-05T00:29:43Z",
+                    "2026-08-05T00:31:21Z",
+                ),
+            ]),
+        ),
+    ]);
+    let said = trend_report(&kept, Some("validate"), &steps).join("\n");
+    assert!(
+        said.contains("`cargo test --workspace` moved +8m16s (21m16s → 29m32s)"),
+        "the step is named with both of its durations and the move between them: {said}"
+    );
+    assert!(
+        said.contains("the other 2 step(s) that ran in both moved by at most 0m02s either way"),
+        "and the rest are bounded, which is what makes the first number an \
+         attribution rather than a large number beside some others: {said}"
+    );
+}
+
+/// A STEP THAT NEVER RAN IS NO PART OF THE ARITHMETIC.
+///
+/// R1275. A cancelled run reports every step after its stoppage with null stamps,
+/// and a comparison that read those as nought seconds would print the job's
+/// remaining steps as having become free — a fall large enough to hide the rise
+/// it is sitting inside. It is not a comparison, it is said to be one, and the
+/// reason is said with it.
+#[test]
+fn a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (28, "success"),
+            (26, "success"),
+            (26, "success"),
+            (34, "cancelled"),
+            (33, "success"),
+            (43, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let steps = Recorded(vec![
+        (
+            nth_commit(4),
+            Ok(vec![
+                job_step(
+                    1,
+                    "cargo test --workspace",
+                    "2026-08-04T00:00:00Z",
+                    "2026-08-04T00:21:16Z",
+                ),
+                job_step(
+                    2,
+                    "mnemosyne-cli validate-workspace",
+                    "2026-08-04T00:21:16Z",
+                    "2026-08-04T00:22:52Z",
+                ),
+            ]),
+        ),
+        (
+            nth_commit(5),
+            Ok(vec![
+                job_step(
+                    1,
+                    "cargo test --workspace",
+                    "2026-08-05T00:00:00Z",
+                    "2026-08-05T00:29:32Z",
+                ),
+                never_reached(
+                    2,
+                    "mnemosyne-cli validate-workspace",
+                    "2026-08-05T00:29:32Z",
+                ),
+                job_step(
+                    3,
+                    "what that run read outside this repository",
+                    "2026-08-05T00:29:32Z",
+                    "2026-08-05T00:29:32Z",
+                ),
+            ]),
+        ),
+    ]);
+    let said = trend_report(&kept, Some("validate"), &steps).join("\n");
+    assert!(
+        said.contains("`cargo test --workspace` moved +8m16s")
+            && said.contains("and it is the only step that ran in both"),
+        "the one real comparison is the one printed: {said}"
+    );
+    assert!(
+        said.contains("2 step(s) there are no comparison")
+            && said.contains("`mnemosyne-cli validate-workspace` (never ran in the later run)")
+            && said
+                .contains("`what that run read outside this repository` (only in the later run)"),
+        "a step the run never reached and a step the workflow gained read in \
+         opposite directions and must not be one category: {said}"
+    );
+}
+
+/// THE BOUND ON THE OTHER STEPS IS A MAGNITUDE AND MUST NOT WEAR A `+`.
+///
+/// R1275, and the defect was in this block's own first output. The sentence
+/// exists to say that nothing else in the job rose, and it printed the largest
+/// move among the rest — taken as an absolute value — through the same formatter
+/// as the rise itself. `moved by at most +1m36s` was a step that had got
+/// ninety-six seconds CHEAPER, and a reader adding those numbers up would have
+/// concluded the job's growth was spread across it.
+#[test]
+fn the_bound_on_the_steps_that_did_not_rise_carries_no_sign() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (28, "success"),
+            (26, "success"),
+            (26, "success"),
+            (34, "cancelled"),
+            (33, "success"),
+            (43, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let steps = Recorded(vec![
+        (
+            nth_commit(4),
+            Ok(vec![
+                job_step(
+                    1,
+                    "cargo test --workspace",
+                    "2026-08-04T00:00:00Z",
+                    "2026-08-04T00:21:16Z",
+                ),
+                job_step(
+                    2,
+                    "restore the cache",
+                    "2026-08-04T00:21:16Z",
+                    "2026-08-04T00:23:16Z",
+                ),
+            ]),
+        ),
+        (
+            nth_commit(5),
+            Ok(vec![
+                job_step(
+                    1,
+                    "cargo test --workspace",
+                    "2026-08-05T00:00:00Z",
+                    "2026-08-05T00:29:32Z",
+                ),
+                // A REAL FALL, and larger than any other step's rise.
+                job_step(
+                    2,
+                    "restore the cache",
+                    "2026-08-05T00:29:32Z",
+                    "2026-08-05T00:29:42Z",
+                ),
+            ]),
+        ),
+    ]);
+    let said = trend_report(&kept, Some("validate"), &steps).join("\n");
+    assert!(
+        said.contains("the other 1 step(s) that ran in both moved by at most 1m50s either way"),
+        "a bound is a distance from where it was and has no direction: {said}"
+    );
+    assert!(
+        !said.contains("at most +1m50s"),
+        "and printing it as a rise would have a reader adding it to the rise \
+         above: {said}"
+    );
+}
+
+/// STEPS ARE COMPARED BY NAME, BECAUSE INSERTING ONE RENUMBERS THE REST.
+///
+/// R1275. R1229 added a step to `validate`, so every step after it carries a
+/// different number in the later run than in the earlier one. A comparison by
+/// number would hold each step against its neighbour and report all of them as
+/// having moved — a page of findings, none of them true, on the one commit where
+/// a reader most needs the answer.
+#[test]
+fn steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (28, "success"),
+            (26, "success"),
+            (26, "success"),
+            (34, "cancelled"),
+            (33, "success"),
+            (43, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let steps = Recorded(vec![
+        (
+            nth_commit(4),
+            Ok(vec![
+                job_step(
+                    1,
+                    "checkout",
+                    "2026-08-04T00:00:00Z",
+                    "2026-08-04T00:00:11Z",
+                ),
+                job_step(
+                    2,
+                    "cargo test --workspace",
+                    "2026-08-04T00:00:11Z",
+                    "2026-08-04T00:21:27Z",
+                ),
+            ]),
+        ),
+        (
+            nth_commit(5),
+            Ok(vec![
+                job_step(
+                    1,
+                    "checkout",
+                    "2026-08-05T00:00:00Z",
+                    "2026-08-05T00:00:11Z",
+                ),
+                // The new step, INSERTED AHEAD of the one that actually moved.
+                job_step(
+                    2,
+                    "install protoc",
+                    "2026-08-05T00:00:11Z",
+                    "2026-08-05T00:00:20Z",
+                ),
+                job_step(
+                    3,
+                    "cargo test --workspace",
+                    "2026-08-05T00:00:20Z",
+                    "2026-08-05T00:29:52Z",
+                ),
+            ]),
+        ),
+    ]);
+    let said = trend_report(&kept, Some("validate"), &steps).join("\n");
+    assert!(
+        said.contains("`cargo test --workspace` moved +8m16s (21m16s → 29m32s)"),
+        "the suite is held against the suite, though it is step 2 in one run and \
+         step 3 in the other: {said}"
+    );
+    assert!(
+        said.contains("the other 1 step(s) that ran in both moved by at most 0m00s either way")
+            && said.contains("`install protoc` (only in the later run)"),
+        "the step that did not move is reported as not having moved and the \
+         inserted one as new — a comparison by number would have held the suite \
+         against `install protoc` and called it a 21-minute saving: {said}"
+    );
+}
+
+/// A RUN WHOSE STEPS CANNOT BE READ IS A LINE AND NOT A SILENCE.
+///
+/// R1275. GitHub ages runs out, and the rise this block goes looking for is by
+/// construction the OLDEST interesting row in the record — the side most likely
+/// to have gone. A reader given a step with no attribution under it concludes the
+/// step has no cause inside the job, which is the one conclusion the evidence
+/// does not support.
+#[test]
+fn a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (28, "success"),
+            (26, "success"),
+            (26, "success"),
+            (34, "cancelled"),
+            (33, "success"),
+            (43, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let steps = Recorded(vec![(
+        nth_commit(5),
+        Ok(vec![job_step(
+            1,
+            "cargo test --workspace",
+            "2026-08-05T00:00:00Z",
+            "2026-08-05T00:29:32Z",
+        )]),
+    )]);
+    let said = trend_report(&kept, Some("validate"), &steps).join("\n");
+    assert!(
+        said.contains("what `validate` did on 00000000 cannot be read")
+            && said.contains("is unattributed"),
+        "the side that could not be read is named, and so is what that costs: {said}"
+    );
+    assert!(
+        !said.contains("moved +"),
+        "and no attribution is printed off one side of a comparison: {said}"
+    );
+}
+
+/// THE JOB'S MOVE AND ITS STEP'S MOVE ARE TWO NUMBERS AND ARE ALLOWED TO
+/// DISAGREE.
+///
+/// R1275, and this repository's own rise is the worked example: the job moved
+/// +390 s while its dearest step moved +496 s, because the later run was
+/// cancelled and never reached the steps that would have made up the difference.
+/// A block that reconciled them would have to invent a duration for a step that
+/// did not run.
+#[test]
+fn the_job_and_the_step_are_printed_as_two_numbers() {
+    let kept = series_ending(
+        "validate",
+        &[
+            (25, "success"),
+            (28, "success"),
+            (26, "success"),
+            (26, "success"),
+            (34, "cancelled"),
+            (33, "success"),
+            (43, "success"),
+            (45, "success"),
+        ],
+        90,
+    );
+    let steps = Recorded(vec![
+        (
+            nth_commit(4),
+            Ok(vec![
+                job_step(
+                    1,
+                    "cargo test --workspace",
+                    "2026-08-04T00:00:00Z",
+                    "2026-08-04T00:21:16Z",
+                ),
+                job_step(
+                    2,
+                    "mnemosyne-cli validate-workspace",
+                    "2026-08-04T00:21:16Z",
+                    "2026-08-04T00:22:52Z",
+                ),
+            ]),
+        ),
+        (
+            nth_commit(5),
+            Ok(vec![
+                job_step(
+                    1,
+                    "cargo test --workspace",
+                    "2026-08-05T00:00:00Z",
+                    "2026-08-05T00:29:32Z",
+                ),
+                never_reached(
+                    2,
+                    "mnemosyne-cli validate-workspace",
+                    "2026-08-05T00:29:32Z",
+                ),
+            ]),
+        ),
+    ]);
+    let said = trend_report(&kept, Some("validate"), &steps).join("\n");
+    assert!(
+        said.contains("the job took 23m24s on 00000000 and 30m36s on 00000000 (+7m12s)"),
+        "the job's own move is on the page beside the step's: {said}"
+    );
+    assert!(
+        said.contains("`cargo test --workspace` moved +8m16s"),
+        "and the step moved by MORE than the job did, which is the shape a \
+         cancelled run makes and not an arithmetic error: {said}"
     );
 }

@@ -296,7 +296,14 @@ fn read_record(path: &Path) -> Result<Kept, String> {
 /// runs differ by that much routinely.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Step {
-    /// The commit of the OLDEST run on the expensive side — the place to look.
+    /// The commit of the OLDEST COMPLETED run on the expensive side — where the
+    /// LEVEL splits.
+    ///
+    /// NOT NECESSARILY WHERE THE COST ROSE, which is what R1275 measured and what
+    /// [`Step::rose`] carries. This field is a fact about the cost curve, and the
+    /// cost curve is drawn over completed runs only; the runs a rise lands on are
+    /// disproportionately runs that did NOT complete, because a change that makes
+    /// a job dearer is often the change that breaks it.
     pub at: String,
     /// When that run went.
     pub when: String,
@@ -308,6 +315,56 @@ pub struct Step {
     pub after: usize,
     /// The LOWEST share among those.
     pub above: u64,
+    /// The oldest run of ANY conclusion from which the expensive level has held
+    /// unbroken up to the split — THE PLACE TO LOOK.
+    ///
+    /// EQUAL TO THE SPLIT IN THE ORDINARY CASE, and this repository's own record
+    /// is not the ordinary case: `validate` splits at `4eccb3d4` and had already
+    /// reached the expensive level two runs earlier, on `a300556` — R1229, the
+    /// commit whose own round left a comment saying it "changed the work of a
+    /// job's longest step". The two runs between are a cancellation and a
+    /// failure, so neither is on the cost curve, and a reader sent to the split
+    /// is a reader reading a diff that contains no cause. See [`Step::earlier_by`].
+    pub rose: Run,
+    /// How many recorded runs sit between the rise and the split — `0` when the
+    /// split IS the rise, which is what makes the distinction printable without
+    /// a second field saying whether it applies.
+    pub earlier_by: usize,
+    /// The last run below the expensive level: the other end of any comparison.
+    ///
+    /// `None` ONLY WHEN THE RISE IS THE OLDEST ROW OF THE RECORD, which a step
+    /// cannot ordinarily be — [`A_LEVEL`] completed runs sit below the split — but
+    /// which a hand-edited record can be, and a reporter that indexed backwards
+    /// from a bound it had only argued for would panic on a push.
+    pub under: Option<Run>,
+}
+
+/// One recorded run of one job: a commit to go and read, when it went, and what
+/// the job took there.
+///
+/// A TYPE BECAUSE A PLACE TO LOOK IS THREE FACTS AND NOT ONE. R1270 printed a
+/// commit, which sends a reader to a diff; the duration beside it is what tells
+/// them whether the diff they are reading accounts for the whole move or a tenth
+/// of it, and the stamp is what lets them find the run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Run {
+    /// The commit this run went on.
+    pub commit: String,
+    /// When it went.
+    pub when: String,
+    /// What the job took, in seconds.
+    pub took: u64,
+}
+
+impl Run {
+    /// One recorded row, as a place to look.
+    fn of((commit, when, spent): Row<'_>) -> Self {
+        Self {
+            commit: commit.to_string(),
+            when: when.to_string(),
+            took: spent.took,
+        }
+    }
 }
 
 /// How many completed runs a side needs before it is a LEVEL rather than a
@@ -363,6 +420,43 @@ pub fn step_in(shares: &[u64]) -> Option<usize> {
     only
 }
 
+/// Where the expensive level of a step actually BEGINS, read over every run
+/// rather than over the completed ones.
+///
+/// THE DEFECT THIS CLOSES IS R1270'S OWN OUTPUT (N198). That round built the
+/// detector, named `validate`'s split at `4eccb3d4`, and printed "what to ask is
+/// what changed at that commit". Reading `4eccb3d4` answers nothing: it is a
+/// change to one gate's path handling. The job's `cargo test --workspace` step
+/// went from 1276 s to 1772 s two runs EARLIER, on `a300556`, and the two runs
+/// between are a cancellation and a failure — which is exactly why the split
+/// could not see them. The completed population is the right population for a
+/// LEVEL and the wrong one for a BEGINNING, and the two questions had one answer.
+///
+/// AND THE WALK IS CONTIGUOUS RATHER THAN A SEARCH FOR THE EARLIEST EXPENSIVE
+/// RUN, which is the whole of what keeps it from lying. A job that hung once in
+/// its cheap era has one old row at 100% of its budget, and "the earliest run at
+/// or above the expensive level" would name that row and send a reader to a
+/// commit three weeks before anything changed. What is asserted here is narrower
+/// and is what a reader acts on: the level has held from HERE, without a single
+/// run below it since.
+///
+/// Answers the pair `(the rise, the last run under it)`. The second is `None`
+/// only when the rise is the oldest row this record holds.
+fn rise_of(all: &[Row<'_>], against: u64, split: &str, above: u64) -> (Option<Run>, Option<Run>) {
+    let Some(split_at) = all.iter().position(|(commit, _, _)| *commit == split) else {
+        // A SPLIT THAT IS NOT IN THE POPULATION IT WAS DRAWN FROM cannot arise
+        // from `movements`, which takes both from one `Series`. It is total
+        // because the alternative is an index this function argued for.
+        return (None, None);
+    };
+    let mut first = split_at;
+    while first > 0 && share_of(all[first - 1].2.took, against) >= above {
+        first -= 1;
+    }
+    let under = first.checked_sub(1).map(|at| Run::of(all[at]));
+    (Some(Run::of(all[first])), under)
+}
+
 /// The largest move between adjacent entries, or zero when there is no pair.
 fn largest_adjacent_move(shares: &[u64]) -> u64 {
     shares
@@ -387,6 +481,17 @@ type Row<'a> = (&'a str, &'a str, &'a Spent);
 struct Series<'a> {
     /// The check name, which is what a job's history is keyed by.
     check: &'a str,
+    /// Every row of this job, oldest run first — the population the two below
+    /// are a partition of.
+    ///
+    /// KEPT BESIDE THE PARTITION RATHER THAN REBUILT FROM IT (R1275). A DURATION
+    /// is a fact about every run, and the question "when did this job start
+    /// costing this much" is a duration question even though the LEVEL either
+    /// side of it is a cost. Merging `completed` and `stopped` back together at
+    /// the point of asking would be a second spelling of the order this function
+    /// already established, and the two would disagree the first time two runs
+    /// shared a stamp.
+    all: Vec<Row<'a>>,
     /// The rows that ran all of their steps, oldest run first.
     completed: Vec<Row<'a>>,
     /// The rows that did not, oldest run first.
@@ -427,6 +532,7 @@ fn series_in(kept: &[Kept]) -> Vec<Series<'_>> {
                 .partition(|(_, _, one)| one.conclusion == RAN_TO_COMPLETION);
             Some(Series {
                 check,
+                all: rows,
                 completed,
                 stopped,
                 against: newest.budget_minutes,
@@ -669,6 +775,7 @@ pub fn movements(kept: &[Kept]) -> Vec<Movement> {
         .filter_map(|series| {
             let Series {
                 check,
+                all,
                 completed,
                 stopped,
                 against,
@@ -683,13 +790,32 @@ pub fn movements(kept: &[Kept]) -> Vec<Movement> {
             // runs that completed. A duration is a fact about every run; a COST
             // is a fact only about one that ran all its steps, and a level built
             // from both would be a level over two different quantities.
-            let step = step_in(&shares).map(|at| Step {
-                at: completed[at].0.to_string(),
-                when: completed[at].1.to_string(),
-                before: at,
-                below: shares[..at].iter().copied().max().unwrap_or(0),
-                after: shares.len() - at,
-                above: shares[at..].iter().copied().min().unwrap_or(0),
+            //
+            // AND WHERE IT BEGAN IS DRAWN OVER EVERY RUN (R1275). The level is a
+            // cost and the beginning is a duration, and `rise_of` is the one
+            // place that difference is spelled — see its own comment for the
+            // record that made the distinction cost something.
+            let step = step_in(&shares).map(|at| {
+                let split = completed[at].0;
+                let above = shares[at..].iter().copied().min().unwrap_or(0);
+                let (rose, under) = rise_of(&all, against, split, above);
+                let rose = rose.unwrap_or_else(|| Run::of(completed[at]));
+                let earlier_by = all
+                    .iter()
+                    .position(|(commit, _, _)| *commit == split)
+                    .zip(all.iter().position(|(commit, _, _)| *commit == rose.commit))
+                    .map_or(0, |(split_at, rose_at)| split_at.saturating_sub(rose_at));
+                Step {
+                    at: split.to_string(),
+                    when: completed[at].1.to_string(),
+                    before: at,
+                    below: shares[..at].iter().copied().max().unwrap_or(0),
+                    after: shares.len() - at,
+                    above,
+                    rose,
+                    earlier_by,
+                    under,
+                }
             });
             Some(Movement {
                 check: check.to_string(),
@@ -803,6 +929,327 @@ fn landing_clause(movement: &Movement) -> String {
     )
 }
 
+/// Where the steps of one job on one commit come from.
+///
+/// A TRAIT AND NOT A `gh` CALL, for the reason this crate's `main.rs` header
+/// gives: what is decided here has to be reachable by a test, and a process is
+/// the one thing a test cannot reach. The implementation that talks to GitHub is
+/// ten lines in `main.rs` and holds no decision; every case about WHICH step a
+/// rise belongs to runs against a fixture.
+///
+/// WHAT IT COSTS, STATED RATHER THAN HIDDEN. Answering this means two `gh` calls
+/// — the commit's check rows, then that job's steps — and the block below asks it
+/// twice, for the two runs either side of a rise. Measured on this machine at
+/// ~0.6 s a call, so ~2.4 s on a push that already spends minutes in clippy and
+/// the workspace validate, and ONLY on a push whose record holds a step at all:
+/// of the ten jobs in this repository's record, nine have no step and make no
+/// call. A cache keyed by the pair was considered and left unbuilt — it would buy
+/// two seconds and add a second record shape to keep working.
+pub trait StepsOf {
+    /// Every step of `check`'s job on `commit`, or why it could not be read.
+    ///
+    /// # Errors
+    ///
+    /// Whatever stopped the answer arriving: no such check on that commit, a run
+    /// GitHub has aged out, a `gh` that cannot reach it. The caller prints it as
+    /// a line — a step nobody could attribute is a fact, and falling silent there
+    /// would read as a step with no cause inside the job.
+    fn steps_of(&self, commit: &str, check: &str) -> Result<Vec<crate::Step>, String>;
+}
+
+/// What one step of a job did on ONE side of a rise.
+///
+/// THREE STATES BECAUSE TWO OF THEM ARE ROUTINELY CONFUSED and read in opposite
+/// directions. A step ABSENT from a run's answer is a step the workflow did not
+/// have yet — R1229 added one to `validate` and it is absent from every earlier
+/// run — and a step that is present and NEVER RAN is one the job did not reach,
+/// which is what every step after a stoppage is. Collapsing either into `0 s`
+/// would let this block report a job's steps as having become free on the run
+/// where the job died.
+///
+/// AND THE SECOND ONE IS NOT VISIBLE IN THE STAMPS, which R1275 found by running
+/// this against the record rather than by reading GitHub's documentation. A
+/// skipped step carries the start and end of the STOPPAGE, equal to each other,
+/// so it reads as a step that took no time. Five steps of the cancelled run
+/// either side of this repository's own rise read that way, and the first output
+/// of this block reported `mnemosyne-cli validate-workspace` as ninety-six
+/// seconds cheaper on the run where it did not run. [`crate::NEVER_RAN`] is the
+/// only thing that says so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    /// No step of that name is in that run's answer at all.
+    Absent,
+    /// A step of that name is there and did not run — GitHub's own `skipped`, or
+    /// a row with no readable pair of stamps.
+    NeverRan,
+    /// It took this long.
+    Took(u64),
+}
+
+/// One named step of a job, and what it took on either side of a rise.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Moved {
+    /// The step's name, which is what a step is identified BY.
+    ///
+    /// NOT ITS NUMBER, and that is the whole of why this compares by name.
+    /// Inserting a step renumbers every step after it: R1229 added one to
+    /// `validate`, so the run before the rise numbers `cargo test --workspace` 9
+    /// and the run after numbers it 9 as well while four later steps shifted —
+    /// and on any insert nearer the top, a comparison by number would hold each
+    /// step against its neighbour and report every one of them as having moved.
+    pub name: String,
+    /// What it took on the last run below the level.
+    pub under: Side,
+    /// And on the run the level rose at.
+    pub risen: Side,
+}
+
+impl Moved {
+    /// How much this step moved, when both sides are a measurement.
+    ///
+    /// `None` WHENEVER EITHER SIDE IS NOT ONE, which is what keeps a step that
+    /// never ran out of the arithmetic instead of in it as a large negative.
+    #[must_use]
+    pub fn seconds(&self) -> Option<i64> {
+        match (self.under, self.risen) {
+            (Side::Took(under), Side::Took(risen)) => {
+                Some(i64::try_from(i128::from(risen) - i128::from(under)).unwrap_or(i64::MAX))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// What one named step took across one run, summed.
+///
+/// A NAME THAT APPEARS TWICE IS SUMMED because both rows are that name's cost in
+/// that run, and a workflow is free to run the same-named step more than once. A
+/// row among them that did not run takes the whole name down to [`Side::NeverRan`]
+/// rather than contributing nothing: a partial sum is a number smaller than the
+/// truth wearing a measurement's clothes, and this block would print it as the
+/// step having got cheaper.
+fn side_of(steps: &[crate::Step], name: &str) -> Side {
+    let mut total: u64 = 0;
+    let mut seen = false;
+    for step in steps.iter().filter(|step| step.name == name) {
+        seen = true;
+        // THE CONCLUSION IS ASKED BEFORE THE STAMPS, because a skipped step has
+        // stamps and they are the stoppage's — see [`Side`].
+        if step.conclusion.as_deref() == Some(crate::NEVER_RAN) {
+            return Side::NeverRan;
+        }
+        let Some(seconds) = crate::step_seconds(step) else {
+            return Side::NeverRan;
+        };
+        total = total.saturating_add(seconds);
+    }
+    if seen {
+        Side::Took(total)
+    } else {
+        Side::Absent
+    }
+}
+
+/// Every step of one job across two runs, biggest mover first.
+///
+/// THE UNION OF THE TWO ANSWERS, never one side's list walked against the other.
+/// A step present only in the later run is the shape a workflow change makes and
+/// is exactly what a reader is looking for here; iterating the earlier run's
+/// steps would drop it in silence.
+#[must_use]
+pub fn moved_steps(under: &[crate::Step], risen: &[crate::Step]) -> Vec<Moved> {
+    let mut names: Vec<&str> = under
+        .iter()
+        .chain(risen)
+        .map(|step| step.name.as_str())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    let mut moved: Vec<Moved> = names
+        .into_iter()
+        .map(|name| Moved {
+            name: name.to_string(),
+            under: side_of(under, name),
+            risen: side_of(risen, name),
+        })
+        .collect();
+    // BIGGEST MOVE FIRST, IN EITHER DIRECTION, and the steps that are not a
+    // comparison last — `None` sorts below every `Some`, which is the order this
+    // block prints in and the reason it needs no second partition.
+    moved.sort_by(|left, right| {
+        right
+            .seconds()
+            .map(i64::abs)
+            .cmp(&left.seconds().map(i64::abs))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    moved
+}
+
+/// How many one-sided steps are named before the rest are counted.
+///
+/// THE SAME RULE AS [`NAMED_TROUBLE`] AND FOR THE SAME REASON: a cancelled run
+/// leaves every step after the stoppage unstamped, so this list is one item long
+/// on an ordinary comparison and a dozen on the interesting one — and a dozen
+/// lines of the same shape is a block a reader learns to skip past.
+const NAMED_STEPS: usize = 3;
+
+/// Why one step is not a comparison, in the words its two sides make true.
+fn one_sided(moved: &Moved) -> &'static str {
+    match (moved.under, moved.risen) {
+        (Side::Absent, _) => "only in the later run",
+        (_, Side::Absent) => "only in the earlier run",
+        (Side::NeverRan, Side::NeverRan) => "never ran in either",
+        (Side::NeverRan, _) => "never ran in the earlier run",
+        (_, Side::NeverRan) => "never ran in the later run",
+        (Side::Took(_), Side::Took(_)) => "a comparison after all",
+    }
+}
+
+/// What moved INSIDE a job, between the two runs either side of where its cost
+/// rose.
+///
+/// THE QUESTION R1270 LEFT ITS READER HOLDING (N198). "The level rose at this
+/// commit" sends somebody to a diff; what they need next is which of the job's
+/// seventeen steps got dearer, because that is the difference between "this
+/// repository's suite grew" and "the runner's toolchain install is slower this
+/// week" — a defect and the weather, printed identically until this block.
+/// Measured by hand for `validate` before it was written: `cargo test
+/// --workspace` 1276 s → 1772 s, and every other step of that job inside eight
+/// seconds of where it was.
+///
+/// THE TWO SUMS ARE PRINTED SEPARATELY AND ARE ALLOWED TO DISAGREE. The job moved
+/// +390 s across that rise while its dearest step moved +496 s, and the gap is the
+/// steps the later run never reached because it was cancelled. A block that
+/// reconciled them would have to invent a duration for a step that did not run.
+fn attribution_lines(
+    step: &Step,
+    under: &Run,
+    cheap: &[crate::Step],
+    dear: &[crate::Step],
+) -> Vec<String> {
+    let moved = moved_steps(cheap, dear);
+    let job =
+        i64::try_from(i128::from(step.rose.took) - i128::from(under.took)).unwrap_or(i64::MAX);
+    let movers: Vec<&Moved> = moved.iter().filter(|one| one.seconds().is_some()).collect();
+    let mut lines = Vec::new();
+    let inside = match movers.split_first() {
+        None => "no step of it ran in both runs, so nothing inside it is a comparison".to_string(),
+        Some((worst, rest)) => {
+            // A BOUND IS A MAGNITUDE AND CARRIES NO SIGN (R1275 measured what
+            // pretending otherwise says). This is the largest move among the
+            // rest IN EITHER DIRECTION, and the first output of this block ran it
+            // through `clock_signed` — printing `+1m36s` for a step that had got
+            // ninety-six seconds CHEAPER, in the sentence whose whole job is to
+            // say that nothing else here rose.
+            let others = match rest
+                .iter()
+                .filter_map(|one| one.seconds().map(i64::abs))
+                .max()
+            {
+                None => "and it is the only step that ran in both".to_string(),
+                Some(most) => format!(
+                    "while the other {} step(s) that ran in both moved by at most {} either way",
+                    rest.len(),
+                    clock(most.unsigned_abs())
+                ),
+            };
+            format!(
+                "`{}` moved {} ({} → {}) {others}",
+                worst.name,
+                clock_signed(worst.seconds().unwrap_or(0)),
+                side_line(worst.under),
+                side_line(worst.risen)
+            )
+        }
+    };
+    lines.push(format!(
+        "      inside it, the job took {} on {} and {} on {} ({}), and {inside}",
+        clock(under.took),
+        short(&under.commit),
+        clock(step.rose.took),
+        short(&step.rose.commit),
+        clock_signed(job),
+    ));
+    let odd: Vec<&Moved> = moved.iter().filter(|one| one.seconds().is_none()).collect();
+    if !odd.is_empty() {
+        let named: Vec<String> = odd
+            .iter()
+            .take(NAMED_STEPS)
+            .map(|one| format!("`{}` ({})", one.name, one_sided(one)))
+            .collect();
+        let rest = odd.len().saturating_sub(named.len());
+        let more = if rest > 0 {
+            format!(", +{rest} more")
+        } else {
+            String::new()
+        };
+        lines.push(format!(
+            "      and {} step(s) there are no comparison: {}{more} — a run that stopped \
+             reaches fewer steps, so a step missing on one side is not always a step that \
+             was added or taken away",
+            odd.len(),
+            named.join(", ")
+        ));
+    }
+    lines
+}
+
+/// One side of a comparison, as it prints.
+fn side_line(side: Side) -> String {
+    match side {
+        Side::Absent => "not in that run".to_string(),
+        Side::NeverRan => "never ran".to_string(),
+        Side::Took(seconds) => clock(seconds),
+    }
+}
+
+/// A DIFFERENCE, which carries its sign — `+8m16s`, `-45s`.
+///
+/// SEPARATE FROM [`clock`] BECAUSE A DURATION HAS NO SIGN and every other number
+/// this file prints is one. `clock` on a negative would need an `i64` it never
+/// takes, and a difference printed without its sign is the same string for a job
+/// that got dearer and one that got cheaper.
+fn clock_signed(seconds: i64) -> String {
+    let sign = if seconds < 0 { "-" } else { "+" };
+    format!("{sign}{}", clock(seconds.unsigned_abs()))
+}
+
+/// What accounts for a job's step, asked of the two runs either side of where it
+/// rose.
+///
+/// EVERY WAY THIS CAN COME BACK EMPTY IS A LINE, the rule `main.rs`'s own
+/// `steps_of` states: a reader who is told nothing concludes there was nothing to
+/// see, and the whole value of this block is that a reader stops guessing.
+#[must_use]
+pub fn attribution(steps: &dyn StepsOf, check: &str, step: &Step) -> Vec<String> {
+    let Some(under) = &step.under else {
+        return vec![format!(
+            "      no run of `{check}` below that level is recorded here, so there is nothing \
+             to hold the expensive side against"
+        )];
+    };
+    let mut trouble = Vec::new();
+    let mut ask = |run: &Run| match steps.steps_of(&run.commit, check) {
+        Ok(steps) => Some(steps),
+        Err(why) => {
+            trouble.push(format!(
+                "      NOTE what `{check}` did on {} cannot be read, so what moved inside it \
+                 is unattributed — {why}",
+                short(&run.commit)
+            ));
+            None
+        }
+    };
+    let (cheap, dear) = (ask(under), ask(&step.rose));
+    let mut lines = match (cheap, dear) {
+        (Some(cheap), Some(dear)) => attribution_lines(step, under, &cheap, &dear),
+        _ => Vec::new(),
+    };
+    lines.extend(trouble);
+    lines
+}
+
 /// How much the job swings on its own, as the clause that follows the movement.
 ///
 /// EMPTY UNTIL THERE ARE THREE COMPLETED RUNS, and that is not a threshold for
@@ -833,14 +1280,38 @@ fn step_clause(movement: &Movement) -> String {
     format!(
         "; and that movement is a STEP rather than a climb — the {} completed run(s) before \
          {} ({}) are all at or below {}% and the {} from there on are all at or above {}%, \
-         and the series separates nowhere else, so what to ask is what changed at that \
-         commit rather than when the budget is reached",
+         and the series separates nowhere else, so what to ask is what changed{}",
         step.before,
         short(&step.at),
         step.when,
         step.below,
         step.after,
-        step.above
+        step.above,
+        rise_clause(step)
+    )
+}
+
+/// WHERE to ask it, which is not always the split — the clause that ends
+/// [`step_clause`].
+///
+/// THE ORDINARY ANSWER IS THE SPLIT and this repository's own record is not the
+/// ordinary case. R1270 shipped the split with the words "what changed at that
+/// commit"; the commit was `4eccb3d4`, whose diff is a path-normalisation in one
+/// gate, and the job had been expensive since `a300556` two runs before. Both
+/// runs between failed to complete, so neither could be on a curve drawn over
+/// completed runs — see [`rise_of`].
+fn rise_clause(step: &Step) -> String {
+    if step.earlier_by == 0 {
+        return " at that commit rather than when the budget is reached".to_string();
+    }
+    format!(
+        " at {} ({}) rather than at the split — the expensive level was already there {} \
+         run(s) earlier and has not been below it since, and every run in between is one \
+         that did not complete, so no cost of theirs could be on the series above while \
+         what they TOOK is a fact all the same",
+        short(&step.rose.commit),
+        step.rose.when,
+        step.earlier_by
     )
 }
 
@@ -911,8 +1382,22 @@ pub fn never_completed(kept: &[Kept]) -> BTreeSet<String> {
 /// forty-four per cent is not news; a job that went from twelve to thirty-one is,
 /// and it is nowhere near the budget that would have made the level line name it.
 /// That is the whole difference between the two questions this file separates.
+/// One movement's line, and what accounts for its step when it has one.
+///
+/// THE ATTRIBUTION FOLLOWS THE LINE IT EXPLAINS rather than being a block of its
+/// own at the bottom. Both movement lines this report can print may carry a step,
+/// and two attributions gathered under one heading would leave a reader matching
+/// them back to their jobs by name.
+fn movement_block(movement: &Movement, steps: &dyn StepsOf, preamble: &str) -> Vec<String> {
+    let mut lines = vec![format!("  {preamble}{}", movement_line(movement))];
+    if let Some(step) = &movement.step {
+        lines.extend(attribution(steps, &movement.check, step));
+    }
+    lines
+}
+
 #[must_use]
-pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
+pub fn trend_report(kept: &[Kept], closest: Option<&str>, steps: &dyn StepsOf) -> Vec<String> {
     let Some(oldest) = kept.first() else {
         // NO LINE, AND THIS IS THE ONE PLACE SILENCE IS RIGHT: an empty record
         // means no job of any commit was ever measured here, which the block
@@ -935,7 +1420,7 @@ pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
     )];
     let unfinished = never_completed(kept);
     match closest.and_then(|name| movements.iter().find(|one| one.check == name)) {
-        Some(one) if one.commits > 1 => lines.push(format!("  {}", movement_line(one))),
+        Some(one) if one.commits > 1 => lines.extend(movement_block(one, steps, "")),
         Some(one) => lines.push(format!(
             "  `{}` has completed on 1 commit only, so the job closest to its budget has no \
              trend yet",
@@ -977,10 +1462,11 @@ pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
         .max_by_key(|one| one.points());
     match steepest {
         Some(one) if one.points() > 0 && Some(one.check.as_str()) != closest => {
-            lines.push(format!(
-                "  and the steepest rise is not that job — {}",
-                movement_line(one)
-            ))
+            lines.extend(movement_block(
+                one,
+                steps,
+                "and the steepest rise is not that job — ",
+            ));
         }
         // The steepest rise IS the job the line above already followed; saying so
         // twice would be the same sentence with a different preamble.
@@ -1027,7 +1513,13 @@ pub fn trend_report(kept: &[Kept], closest: Option<&str>) -> Vec<String> {
 const NAMED_TROUBLE: usize = 3;
 
 #[must_use]
-pub fn kept_report(tree: &Path, commit: &str, checks: &[Check], spent: &[Spent]) -> Vec<String> {
+pub fn kept_report(
+    tree: &Path,
+    commit: &str,
+    checks: &[Check],
+    spent: &[Spent],
+    steps: &dyn StepsOf,
+) -> Vec<String> {
     let mut lines = Vec::new();
     if let Some(kept) = Kept::of(commit, checks, spent) {
         if let Err(why) = keep(tree, &kept) {
@@ -1055,6 +1547,7 @@ pub fn kept_report(tree: &Path, commit: &str, checks: &[Check], spent: &[Spent])
     lines.extend(trend_report(
         &kept,
         crate::closest_to_budget(spent).map(|one| one.check.as_str()),
+        steps,
     ));
     lines
 }

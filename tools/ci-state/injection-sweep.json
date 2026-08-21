@@ -672,8 +672,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/main.rs",
-          "from": "    lines.extend(ci_state::history::kept_report(root, sha, &checks, &spent));",
-          "to": "    let _ = ci_state::history::kept_report(root, sha, &checks, &spent);"
+          "from": "    lines.extend(ci_state::history::kept_report(\n        root,\n        sha,\n        &checks,\n        &spent,\n        &Github { root },\n    ));",
+          "to": "    let _ = ci_state::history::kept_report(root, sha, &checks, &spent, &Github { root });"
         }
       ],
       "expect_red": ["what_this_push_measured_is_kept_and_read_back_through_this_binary"]
@@ -717,7 +717,9 @@
         "a_job_with_no_completed_run_is_named_rather_than_left_out",
         "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
         "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
-        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones"
       ]
     },
     {
@@ -959,11 +961,22 @@
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
-          "from": "    let step = step_in(&shares).map(|at| Step {",
-          "to": "    let step = None.map(|at: usize| Step {"
+          "from": "            let step = step_in(&shares).map(|at| {",
+          "to": "            let step = None.map(|at: usize| {"
         }
       ],
-      "expect_red": ["a_series_that_separates_in_exactly_one_place_is_named_a_step"]
+      "expect_red": [
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
+        "the_job_and_the_step_are_printed_as_two_numbers"
+      ]
     },
     {
       "name": "one-clean-cut-is-enough-to-call-a-series-a-step",
@@ -982,7 +995,7 @@
     },
     {
       "name": "a-side-of-one-run-is-read-as-a-level",
-      "why": "R1270. `every run before is cheaper than every run after` is trivially true of any series whose first measurement happened to be its lowest, and this record's jobs move by eight to thirteen points between adjacent commits — so a one-run side is a claim about noise wearing the clothes of a claim about a level. IT REDDENS FOUR CASES AND ALL FOUR ARE THE SAME HARM: a window of TWO runs becomes able to step at all, which is why the two records built from two commits break; and a seven-run series gains a second separation at its first run, which is why the step case breaks with it",
+      "why": "R1270. `every run before is cheaper than every run after` is trivially true of any series whose first measurement happened to be its lowest, and this record's jobs move by eight to thirteen points between adjacent commits — so a one-run side is a claim about noise wearing the clothes of a claim about a level. IT REDDENS EIGHTEEN CASES AND THEY ARE ALL THE SAME HARM: a window of TWO runs becomes able to step at all, which is why the records built from two commits break, and a seven-run series gains a second separation at its first run, which is why the step case breaks with it. R1275 is why so many of them now say so out loud — a series that can step is a series this reporter goes to GitHub about, and every case whose record ought to hold no step reports through an `Unasked` source that PANICS when it is asked. The eleven extra reds are that fixture naming the cost this constant was silently buying",
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
@@ -994,7 +1007,142 @@
         "a_side_too_short_to_be_a_level_is_not_read_as_one",
         "a_series_that_separates_in_exactly_one_place_is_named_a_step",
         "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
-        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary",
+        "a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper",
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_job_that_is_both_closest_and_steepest_is_not_printed_twice",
+        "a_job_with_no_completed_run_is_named_rather_than_left_out",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
+      ]
+    },
+    {
+      "name": "where-a-cost-rose-is-looked-for-among-the-completed-runs",
+      "why": "R1275, and this is the defect N198 was open about. The LEVEL either side of a step is a cost, so it is drawn over runs that completed; WHERE the cost rose is a duration, and a change that makes a job dearer is often the change that breaks it — so the runs a rise lands on are disproportionately the ones a cost curve cannot hold. On this repository's own record the two populations answer two commits apart: the split is `4eccb3d4`, whose diff is a path-normalisation in one gate, and the level had been there since `a3005567` two runs earlier",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                let (rose, under) = rise_of(&all, against, split, above);",
+          "to": "                let (rose, under) = rise_of(&completed, against, split, above);"
+        }
+      ],
+      "expect_red": [
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign"
+      ]
+    },
+    {
+      "name": "the-walk-back-to-the-rise-is-not-contiguous",
+      "why": "R1275, and this is what keeps the rise from being a lie. A job that hung once in its cheap era has one old row at 100% of its budget, and `the earliest run at or above the expensive level` names that row — sending a reader to a commit weeks before anything changed, under a sentence claiming the level has held ever since. What is asserted is narrower and is the thing a reader acts on: no run has been BELOW the level since",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    while first > 0 && share_of(all[first - 1].2.took, against) >= above {",
+          "to": "    while first > 0 && share_of(all[first - 1].2.took, against) < u64::MAX {"
+        }
+      ],
+      "expect_red": [
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
+      ]
+    },
+    {
+      "name": "the-run-below-is-taken-from-the-split-rather-than-from-the-rise",
+      "why": "R1275. The other end of the comparison has to be the last run at the CHEAP level; taking the row before the split instead lands inside the expensive band, and on this repository's record it lands on the rise itself — so the attribution compares a run against itself and reports that nothing inside the job moved, in the sentence whose whole purpose is to say what did",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let under = first.checked_sub(1).map(|at| Run::of(all[at]));",
+          "to": "    let under = split_at.checked_sub(1).map(|at| Run::of(all[at]));"
+        }
+      ],
+      "expect_red": [
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
+      ]
+    },
+    {
+      "name": "a-skipped-step-is-read-as-a-step-that-took-no-time",
+      "why": "R1275, and the injection is this block's own first output rather than an imagined defect. GitHub does not send a skipped step with null stamps: it sends the START AND END OF THE STOPPAGE, equal to each other, so a duration read off the stamps is a well-formed `0 s`. Five steps of the cancelled run beside this repository's rise read that way, and the reporter said `mnemosyne-cli validate-workspace` had got ninety-six seconds CHEAPER on the run where it did not run at all — a fall, in the direction that offsets the rise being attributed",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        if step.conclusion.as_deref() == Some(crate::NEVER_RAN) {\n            return Side::NeverRan;\n        }",
+          "to": "        if false {\n            return Side::NeverRan;\n        }"
+        }
+      ],
+      "expect_red": [
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time"
+      ]
+    },
+    {
+      "name": "the-bound-on-the-steps-that-did-not-rise-is-printed-with-a-sign",
+      "why": "R1275, and this too was the block's own first output. The clause exists to say that nothing ELSE in the job rose, and it printed the largest move among the rest — an absolute value — through the formatter that carries a sign. `moved by at most +1m36s` was a step that had got ninety-six seconds cheaper, and a reader adding the numbers up concludes the growth is spread across the job rather than sitting in one step",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                    clock(most.unsigned_abs())",
+          "to": "                    clock_signed(most)"
+        }
+      ],
+      "expect_red": [
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number"
+      ]
+    },
+    {
+      "name": "a-step-is-identified-by-where-it-sits-in-the-list",
+      "why": "R1275. A step is identified by its NAME, and R1229 is why: it inserted a step into `validate`, so every step after it carries a different number in the later run than in the earlier one. Any comparison that lets position into the identity holds each step against its neighbour — a page of findings, none of them true, on the one commit where a reader most needs the answer",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    for step in steps.iter().filter(|step| step.name == name) {",
+          "to": "    for step in steps.iter().filter(|step| step.name == name && step.number <= 2) {"
+        }
+      ],
+      "expect_red": [
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number"
+      ]
+    },
+    {
+      "name": "a-run-whose-steps-cannot-be-read-is-passed-over-in-silence",
+      "why": "R1275. The rise this block goes looking for is by construction the OLDEST interesting row in the record, which is the side most likely to have been aged out of GitHub. A reader given a step with no attribution under it concludes the step has no cause inside the job — the one conclusion the evidence does not support, and the same silence R1136's whole crate exists to remove",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    lines.extend(trouble);\n    lines\n}",
+          "to": "    let _ = trouble;\n    lines\n}"
+        }
+      ],
+      "expect_red": [
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
       ]
     }
   ]

@@ -375,19 +375,52 @@
         "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
       ]
     },
+    "a-run-whose-steps-cannot-be-read-is-passed-over-in-silence": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    lines.extend(trouble);\n    lines\n}",
+          "to": "    let _ = trouble;\n    lines\n}"
+        }
+      ],
+      "expect_red": [
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
+      ],
+      "tests": [
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
+      ]
+    },
     "a-series-that-separates-in-one-place-is-read-as-a-climb": {
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
-          "from": "    let step = step_in(&shares).map(|at| Step {",
-          "to": "    let step = None.map(|at: usize| Step {"
+          "from": "            let step = step_in(&shares).map(|at| {",
+          "to": "            let step = None.map(|at: usize| {"
         }
       ],
       "expect_red": [
-        "a_series_that_separates_in_exactly_one_place_is_named_a_step"
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
+        "the_job_and_the_step_are_printed_as_two_numbers"
       ],
       "tests": [
-        "a_series_that_separates_in_exactly_one_place_is_named_a_step"
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
       ]
     },
     "a-share-off-disk-saturates-into-an-alarming-number": {
@@ -417,13 +450,41 @@
         "a_side_too_short_to_be_a_level_is_not_read_as_one",
         "a_series_that_separates_in_exactly_one_place_is_named_a_step",
         "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
-        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary",
+        "a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper",
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_job_that_is_both_closest_and_steepest_is_not_printed_twice",
+        "a_job_with_no_completed_run_is_named_rather_than_left_out",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
       ],
       "tests": [
+        "a_budget_that_moved_is_named_rather_than_read_as_a_job_that_got_cheaper",
+        "a_duration_nobody_worked_is_a_number_rather_than_a_panic",
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "a_job_that_is_both_closest_and_steepest_is_not_printed_twice",
+        "a_job_with_no_completed_run_is_named_rather_than_left_out",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
         "a_series_that_separates_in_exactly_one_place_is_named_a_step",
         "a_side_too_short_to_be_a_level_is_not_read_as_one",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "the_job_and_the_step_are_printed_as_two_numbers",
         "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
-        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
       ]
     },
     "a-single-point-is-drawn-as-a-trend": {
@@ -493,6 +554,21 @@
         "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
+    "a-skipped-step-is-read-as-a-step-that-took-no-time": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        if step.conclusion.as_deref() == Some(crate::NEVER_RAN) {\n            return Side::NeverRan;\n        }",
+          "to": "        if false {\n            return Side::NeverRan;\n        }"
+        }
+      ],
+      "expect_red": [
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time"
+      ],
+      "tests": [
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time"
+      ]
+    },
     "a-step-conclusion-github-stops-sending-reads-as-a-step-still-running": {
       "edits": [
         {
@@ -506,6 +582,23 @@
       ],
       "tests": [
         "a_step_field_this_reporter_cannot_find_is_a_refusal"
+      ]
+    },
+    "a-step-is-identified-by-where-it-sits-in-the-list": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    for step in steps.iter().filter(|step| step.name == name) {",
+          "to": "    for step in steps.iter().filter(|step| step.name == name && step.number <= 2) {"
+        }
+      ],
+      "expect_red": [
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number"
+      ],
+      "tests": [
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
       ]
     },
     "a-stoppage-is-held-against-the-dearest-run-that-passed": {
@@ -538,13 +631,17 @@
         "a_job_with_no_completed_run_is_named_rather_than_left_out",
         "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence",
         "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
-        "a_job_that_has_never_completed_still_says_where_its_runs_stopped"
+        "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones"
       ],
       "tests": [
         "a_job_that_has_never_completed_still_says_where_its_runs_stopped",
         "a_job_whose_stoppages_are_all_earlier_than_any_pass_is_said_to_fail_fast",
         "a_job_with_no_completed_run_is_named_rather_than_left_out",
         "a_run_that_did_not_complete_is_no_point_on_a_cost_curve_and_is_not_dropped",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
         "where_the_runs_that_did_not_complete_stopped_is_part_of_the_sentence"
       ]
     },
@@ -763,6 +860,25 @@
       ],
       "tests": [
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    "the-bound-on-the-steps-that-did-not-rise-is-printed-with-a-sign": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                    clock(most.unsigned_abs())",
+          "to": "                    clock_signed(most)"
+        }
+      ],
+      "expect_red": [
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number"
+      ],
+      "tests": [
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
       ]
     },
     "the-calendar-forgets-that-a-century-is-not-a-leap-year": {
@@ -1042,8 +1158,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/main.rs",
-          "from": "    lines.extend(ci_state::history::kept_report(root, sha, &checks, &spent));",
-          "to": "    let _ = ci_state::history::kept_report(root, sha, &checks, &spent);"
+          "from": "    lines.extend(ci_state::history::kept_report(\n        root,\n        sha,\n        &checks,\n        &spent,\n        &Github { root },\n    ));",
+          "to": "    let _ = ci_state::history::kept_report(root, sha, &checks, &spent, &Github { root });"
         }
       ],
       "expect_red": [
@@ -1051,6 +1167,33 @@
       ],
       "tests": [
         "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ]
+    },
+    "the-run-below-is-taken-from-the-split-rather-than-from-the-rise": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let under = first.checked_sub(1).map(|at| Run::of(all[at]));",
+          "to": "    let under = split_at.checked_sub(1).map(|at| Run::of(all[at]));"
+        }
+      ],
+      "expect_red": [
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
+      ],
+      "tests": [
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
       ]
     },
     "the-run-is-taken-from-the-jobs-number": {
@@ -1125,6 +1268,64 @@
         "a_failure_in_another_run_is_still_red_beside_a_retired_one",
         "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    "the-walk-back-to-the-rise-is-not-contiguous": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    while first > 0 && share_of(all[first - 1].2.took, against) >= above {",
+          "to": "    while first > 0 && share_of(all[first - 1].2.took, against) < u64::MAX {"
+        }
+      ],
+      "expect_red": [
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
+      ],
+      "tests": [
+        "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "a_step_whose_run_before_it_is_below_the_level_is_its_own_rise",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
+      ]
+    },
+    "where-a-cost-rose-is-looked-for-among-the-completed-runs": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "                let (rose, under) = rise_of(&all, against, split, above);",
+          "to": "                let (rose, under) = rise_of(&completed, against, split, above);"
+        }
+      ],
+      "expect_red": [
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "which_step_of_the_job_the_rise_belongs_to_is_named",
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign"
+      ],
+      "tests": [
+        "a_step_that_never_ran_is_told_apart_from_a_step_that_took_no_time",
+        "an_isolated_expensive_run_in_the_cheap_era_is_not_read_as_the_rise",
+        "steps_are_held_against_the_step_of_the_same_name_and_not_the_same_number",
+        "the_bound_on_the_steps_that_did_not_rise_carries_no_sign",
+        "the_job_and_the_step_are_printed_as_two_numbers",
+        "where_a_cost_rose_is_read_over_every_run_and_not_only_the_completed_ones",
+        "which_step_of_the_job_the_rise_belongs_to_is_named"
       ]
     },
     "where-the-stopped-runs-landed-collapses-to-their-maximum": {

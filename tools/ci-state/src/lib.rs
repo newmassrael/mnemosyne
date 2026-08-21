@@ -367,7 +367,17 @@ pub struct Stoppage<'a> {
 }
 
 /// What GitHub calls a step that was never reached.
-const NEVER_RAN: &str = "skipped";
+///
+/// AND IT IS THE ONLY THING THAT SAYS SO, which R1275 measured the hard way. A
+/// skipped step does not arrive with null stamps — GitHub gives it the START AND
+/// END OF THE STOPPAGE, equal to each other — so a duration read off its stamps
+/// is `0 s`, a well-formed measurement of work that never happened. On the
+/// cancelled run either side of this repository's own rise, five steps read that
+/// way, and the attribution block reported the job's `validate-workspace` step as
+/// having got ninety-six seconds CHEAPER on the run where it did not run at all.
+/// Every reader of this vocabulary must ask the conclusion; the stamps do not
+/// carry the fact.
+pub(crate) const NEVER_RAN: &str = "skipped";
 
 /// Where this job stopped, if any step says so.
 ///
@@ -625,6 +635,20 @@ pub fn epoch_seconds(stamp: &str) -> Option<i64> {
 pub fn seconds_between(started: &str, completed: &str) -> Option<u64> {
     let (from, to) = (epoch_seconds(started)?, epoch_seconds(completed)?);
     u64::try_from(to - from).ok()
+}
+
+/// How long one STEP of a job took, or `None` when it carries no readable pair of
+/// stamps.
+///
+/// `None` IS THE ANSWER FOR A STEP THAT NEVER RAN, and it is not the same answer
+/// as zero. A job that stopped leaves every later step in its answer with both
+/// stamps null, and a duration of nought seconds sitting where a step was skipped
+/// would let a comparison across two runs report that step as having got faster —
+/// see [`history::Side`], which is where that distinction is kept rather than
+/// flattened.
+#[must_use]
+pub fn step_seconds(step: &Step) -> Option<u64> {
+    seconds_between(step.started_at.as_deref()?, step.completed_at.as_deref()?)
 }
 
 /// What one job took, against what it was allowed to take.
