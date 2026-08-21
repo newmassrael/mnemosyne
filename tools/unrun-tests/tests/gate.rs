@@ -80,7 +80,7 @@ fn command(manifest: &Path, extra: &[&str], harness: &[&str]) -> CargoCommand {
         // A fixture written as words, so the manifest path is what says whose
         // lockfile it resolves — the reading every command written as data gets.
         declared: None,
-        uncounted: 0,
+        uncounted: Vec::new(),
     }
 }
 

@@ -1,0 +1,114 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1269's DECLARATION IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml \\",
+    "        -- sweep tools/ci-plan/declared-words-sweep.json",
+    "",
+    "A THIRD SWEEP BESIDE `injection-sweep.json` AND `locked-resolution-sweep.json`",
+    "BECAUSE IT WATCHES A THIRD SUITE. `injection-sweep` watches `ci-plan`'s own",
+    "reading tests and `locked-resolution-sweep` watches the lockfile law; this one",
+    "watches `build_width`, the ABSENCE law R1269 was about. Until that round it",
+    "answered \"does not decide how wide it runs\" for the two commands in this",
+    "repository whose words it had read only part of — a claim about a list nobody",
+    "can count, made in silence.",
+    "",
+    "WHAT THE ANSWER IS. A hole cannot TAKE a word away, so presence survives it and",
+    "only absence is unclaimable. What may be IN the hole is a fact only the site",
+    "has, so the site declares it (`ci_plan::issue::runtime_words`) and",
+    "`CargoCommand::spells_a_flag` is the one reader of the declaration.",
+    "",
+    "BOTH DIRECTIONS ARE INJECTED, which is what says the declaration cannot buy",
+    "silence: a site that stops declaring loses its verdict, and a site that",
+    "declares MORE loses it too."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--locked",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "build_width::"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "red_set": "exhaustive",
+  "injections": [
+    {
+      "name": "a-site-stops-saying-what-its-runtime-words-may-hold",
+      "why": "the defect itself, on the tree rather than on a fixture: `list_harness` hands over one selector per target and their number is a fact about the package, so without the declaration this law goes back to answering for words it never read",
+      "edits": [
+        {
+          "file": "tools/item-citations/src/main.rs",
+          "from": "    argv.extend(issue::runtime_words(\n        target.kind.selector(&target.name),\n        &[\"--lib\", \"--bin\", \"--test\", \"--bench\", \"--example\"],\n        \"one selector for this target's kind, and the name in it comes from \\\n         cargo's own metadata\",\n    ));",
+          "to": "    argv.extend(target.kind.selector(&target.name));"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs"
+      ]
+    },
+    {
+      "name": "a-declaration-is-widened-to-the-flag-the-law-is-about",
+      "why": "DECLARING MORE COSTS MORE, which is the half that makes the declaration something other than a way to buy silence. A site that admits `--jobs` may be among its runtime words has told this law it cannot answer, and the law must say so rather than pass",
+      "edits": [
+        {
+          "file": "tools/item-citations/src/main.rs",
+          "from": "\n            &[\"--lib\", \"--bin\", \"--test\", \"--bench\", \"--example\"],",
+          "to": "\n            &[\"--jobs\", \"--lib\", \"--bin\", \"--test\", \"--bench\", \"--example\"],"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs"
+      ]
+    },
+    {
+      "name": "the-wrapper-a-site-declares-through-stops-being-recognised",
+      "why": "the site's half and the reader's half are different things to lose: the tree can say everything right and this law still be blind, which is the state it was in before R1269",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if !ends_with(call, &[\"runtime_words\"]) {",
+          "to": "    if !ends_with(call, &[\"runtime_wordz\"]) {"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs"
+      ]
+    },
+    {
+      "name": "an-undeclared-hole-is-read-as-holding-no-flags",
+      "why": "the arm the whole asymmetry rests on. PINNED AGAINST A FIXTURE and not against the tree, because both hole-bearing commands here DO declare — aimed at the tree this comes back green and says nothing",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if undeclared > 0 {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_width_a_hole_may_hold_is_not_read_as_a_width_the_command_leaves_alone"
+      ]
+    },
+    {
+      "name": "a-flag-a-site-declared-is-not-weighed-against-the-question",
+      "why": "the door reads the declaration against the law's OWN predicate, and a reader that skipped that comparison would hand back a verdict for a site that said the flag may be there — and refuse one for every site that said it may not, which is the same clause failing in both directions. THE THIRD RED IS THAT SECOND DIRECTION and it was not named until the exhaustive set asked: a command with NO hole at all has an empty declared list too, so the inverted clause refuses every clean command in the population as well",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if !declared.is_empty() {",
+          "to": "        if declared.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs",
+        "a_width_a_hole_may_hold_is_not_read_as_a_width_the_command_leaves_alone",
+        "a_command_that_leaves_the_width_alone_is_not_read_as_deciding_it"
+      ]
+    }
+  ]
+}

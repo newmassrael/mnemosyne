@@ -188,3 +188,62 @@ pub fn named_cargo(program: impl AsRef<OsStr>, tree: Tree) -> Command {
     }
     Command::new(program)
 }
+
+/// Words whose NUMBER is decided while the program runs, declaring which FLAGS
+/// may be among them.
+///
+/// # The absence a hole cannot answer
+///
+/// [`crate::rust`] reads a `.args(expr)` it cannot evaluate as a HOLE — one word
+/// standing for a list of unknown length. R1266 established what a hole can and
+/// cannot do: it cannot TAKE a word away, so a flag spelled beside one is
+/// definitely present, and it may hold a word nobody wrote, so a flag's ABSENCE
+/// is a claim the words do not support. Two commands in this repository sit on
+/// that second half — `item-citations` hands over one selector per target, and
+/// the selectors come out of cargo's own metadata — and every ABSENCE law over
+/// the population answered "clean" for both. `decides_its_own_width` said they
+/// do not decide how wide they run, which is a claim about words it never read.
+///
+/// No hop closes it: the words are a `Vec<String>` a loop filled. So the site
+/// says, in the one place that knows — the same answer [`Tree`] is for the same
+/// shape of ignorance, one bucket over.
+///
+/// # Why declaring cannot buy silence
+///
+/// The declaration NARROWS, and it is read in both directions. A site that
+/// declares a flag makes its own life harder: every law about that flag must
+/// treat it as possibly present, so `--locked` in a declared list turns
+/// `lock_verdict` from a verdict into `Unreadable`, which is not a pass. A site
+/// that declares nothing keeps today's conservative reading and is refused by
+/// every absence law. And a site that declares a NARROWER list than the truth is
+/// not buying anything either — the flags it left out are the ones it is then
+/// judged as not having. There is no declaration that answers every law with
+/// "fine", which is R1259's rule about an expectation that cannot fail.
+///
+/// What no program here can check is whether the declaration is TRUE of the list
+/// at run time; that is the semantic ceiling every declaration in this crate
+/// shares with [`Tree`].
+///
+/// # Panics
+///
+/// When `why` is blank — the shape [`named_cargo`] refuses for the same reason —
+/// or when a declared word is not a flag. The declaration bounds the FLAGS among
+/// the words, not the operands: `--bin` is a declaration and `mnemosyne-cli` is
+/// a target name that would read as one.
+#[must_use]
+pub fn runtime_words<W>(words: W, may_hold: &[&str], why: &str) -> W {
+    assert!(
+        !why.trim().is_empty(),
+        "a list of words whose number is decided at run time says WHY it cannot \
+         be counted — a blank reason is a declaration that answers nothing"
+    );
+    for word in may_hold {
+        assert!(
+            word.starts_with('-'),
+            "`{word}` is not a flag, and this declaration bounds the FLAGS a \
+             list of unknown length may hold rather than its operands — a law \
+             asks whether a flag is absent, and an operand is never the answer"
+        );
+    }
+    words
+}

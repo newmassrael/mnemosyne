@@ -1159,7 +1159,7 @@ fn issued(line: &str) -> CargoCommand {
         env: Default::default(),
         // Written down, so the manifest path is what says whose lockfile it is.
         declared: None,
-        uncounted: 0,
+        uncounted: Vec::new(),
     }
 }
 
@@ -1250,7 +1250,10 @@ fn a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent() {
 
     let with_a_hole = |words: &str, holes: usize| {
         let mut command = issued(words);
-        command.uncounted = holes;
+        // UNDECLARED, which is the reading a hole gets when its site says
+        // nothing about what may be in it. A declared one is the R1269 half,
+        // pinned below.
+        command.uncounted = vec![ci_plan::rust::MayHold::Anything; holes];
         command
     };
 
@@ -1291,6 +1294,33 @@ fn a_flag_absent_from_words_a_hole_sits_among_is_not_read_as_absent() {
             &nothing_foreign
         ),
         LockVerdict::RepairsWhatItShouldReport,
+    );
+
+    // AND A DECLARED HOLE IS THE DEFECT AGAIN, R1269. The site said which flags
+    // may be among the words nobody can count; `--locked` is not one of them, so
+    // the absence is a fact the words support and the verdict comes back.
+    let mut declared = issued("cargo check --manifest-path bench/Cargo.toml $selectors");
+    declared.uncounted = vec![ci_plan::rust::MayHold::OnlyThese(vec![
+        "--lib".to_string(),
+        "--test".to_string(),
+    ])];
+    assert_eq!(
+        lock_verdict(&declared, &tracked, &nothing_foreign),
+        LockVerdict::RepairsWhatItShouldReport,
+        "a hole whose site declared what may be in it stops hiding an absence, \
+         which is the whole return on declaring"
+    );
+
+    // AND DECLARING THE FLAG ITSELF COSTS THE SITE ITS VERDICT, which is what
+    // makes the declaration something other than a way to buy silence.
+    let mut widened = issued("cargo check --manifest-path bench/Cargo.toml $selectors");
+    widened.uncounted = vec![ci_plan::rust::MayHold::OnlyThese(vec![
+        "--locked".to_string()
+    ])];
+    let refused = lock_verdict(&widened, &tracked, &nothing_foreign);
+    assert!(
+        matches!(&refused, LockVerdict::Unreadable(why) if why.contains("may hold")),
+        "{refused:?}"
     );
 }
 
@@ -1387,7 +1417,7 @@ fn a_shell_line_is_split_where_cargo_stops_and_the_harness_starts() {
                 harness_args: found.harness_args,
                 env: Default::default(),
                 declared: None,
-                uncounted: 0,
+                uncounted: Vec::new(),
             })
             .collect::<Vec<_>>()
     };
@@ -2008,7 +2038,84 @@ fn an_array_of_words_keeps_the_flags_a_runtime_value_sits_between() {
     let site =
         only(r#"fn f(words: Vec<String>) { issue::cargo(Tree::ThisRepository).args(&words); }"#);
     assert!(
-        matches!(site.words.first(), Some(Word::Unknown(_))),
+        matches!(
+            site.words.first(),
+            // UNDECLARED, which is what a hole is until its site says otherwise
+            // — `ci_plan::issue::runtime_words` is the saying, and a parameter
+            // handed over whole is not one.
+            Some(Word::Unknown(_, ci_plan::rust::MayHold::Anything))
+        ),
+        "{site:#?}"
+    );
+}
+
+/// A SITE THAT SAYS WHAT ITS UNCOUNTABLE WORDS MAY HOLD IS READ AS SAYING IT.
+///
+/// R1269. The declaration travels with the WORD rather than with the site,
+/// because both commands this exists for reach their hole through the hop
+/// BACKWARDS: the spawn's own hole is a parameter, and the uncountable word is
+/// made in the caller's list by an `extend` that never passes the `.args` arm at
+/// all.
+#[test]
+fn a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold() {
+    let declared = |source: &str| {
+        let site = only(source);
+        site.words
+            .iter()
+            .find_map(|word| match word {
+                Word::Unknown(_, may_hold) => Some(may_hold.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no hole at all in {site:#?}"))
+    };
+
+    // THE `.args(..)` ARM.
+    assert_eq!(
+        declared(
+            r#"fn f(words: Vec<String>) {
+                   issue::cargo(Tree::ThisRepository)
+                       .args(issue::runtime_words(&words, &["--lib", "--test"], "a reason"));
+            }"#
+        ),
+        ci_plan::rust::MayHold::OnlyThese(vec!["--lib".to_string(), "--test".to_string()]),
+    );
+
+    // AND THE `extend` ARM, which is the one the tree actually uses: the words
+    // are made here and spliced into somebody else's hole one hop away.
+    assert_eq!(
+        declared(
+            r#"fn f(more: Vec<String>) {
+                   let mut argv = vec!["test".to_string()];
+                   argv.extend(issue::runtime_words(more, &["--bench"], "a reason"));
+                   issue::cargo(Tree::ThisRepository).args(&argv);
+            }"#
+        ),
+        ci_plan::rust::MayHold::OnlyThese(vec!["--bench".to_string()]),
+    );
+
+    // A DECLARATION THIS READER CANNOT READ IS NO DECLARATION, which is the
+    // conservative direction rather than the convenient one.
+    assert_eq!(
+        declared(
+            r#"fn f(words: Vec<String>) {
+                   issue::cargo(Tree::ThisRepository)
+                       .args(issue::runtime_words(&words, SELECTORS, "a reason"));
+            }"#
+        ),
+        ci_plan::rust::MayHold::Anything,
+    );
+
+    // AND A LIST THIS READER CAN COUNT LOSES NOTHING BY BEING WRAPPED: the
+    // declaration is about words nobody can count, and these are counted.
+    let site = only(
+        r#"fn f() {
+               issue::cargo(Tree::ThisRepository)
+                   .args(issue::runtime_words(["--lib"], &["--lib"], "a reason"));
+        }"#,
+    );
+    assert_eq!(
+        site.words,
+        vec![Word::Spelled("--lib".to_string())],
         "{site:#?}"
     );
 }
@@ -2209,7 +2316,15 @@ fn a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole() {
         ],
         "{ways:#?}"
     );
-    assert_eq!(ways[0].uncounted, vec![4], "{ways:#?}");
+    assert_eq!(
+        ways[0]
+            .uncounted
+            .iter()
+            .map(|hole| hole.at)
+            .collect::<Vec<_>>(),
+        vec![4],
+        "{ways:#?}"
+    );
 }
 
 #[test]
@@ -2498,7 +2613,11 @@ fn a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site() {
     );
     // AND THE HOLE SAYS WHERE IT IS, which is the only thing that makes the
     // reading above safe to judge: the subcommand was read before it.
-    assert!(ways.iter().all(|way| way.uncounted == vec![1]), "{ways:#?}");
+    assert!(
+        ways.iter()
+            .all(|way| way.uncounted.iter().map(|hole| hole.at).collect::<Vec<_>>() == vec![1]),
+        "{ways:#?}"
+    );
     assert!(
         ways.iter().all(ci_plan::rust::Way::subcommand_was_read),
         "{ways:#?}"
@@ -3024,7 +3143,7 @@ fn the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues(
     let holed: Vec<&CargoCommand> = issued
         .commands
         .iter()
-        .filter(|command| command.uncounted > 0)
+        .filter(|command| !command.uncounted.is_empty())
         .collect();
     println!(
         "[population] {} command(s) handed over; {} conditional site(s) issue \
@@ -3035,9 +3154,22 @@ fn the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues(
         holed.len()
     );
     for command in &holed {
+        // AND WHAT EACH HOLE SAID IT MAY HOLD, R1269 — because "carries a hole"
+        // and "carries a hole nothing can be asked about" are different facts
+        // about this population, and one number said both until the site could
+        // declare.
         println!(
-            "[population]   a hole of {} word(s): {} — {}",
-            command.uncounted,
+            "[population]   a hole of {} word(s) [{}]: {} — {}",
+            command.uncounted.len(),
+            command
+                .uncounted
+                .iter()
+                .map(|hole| match hole {
+                    ci_plan::rust::MayHold::OnlyThese(flags) => flags.join(" "),
+                    ci_plan::rust::MayHold::Anything => "undeclared".to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join("; "),
             command.origin(),
             command.rendered()
         );

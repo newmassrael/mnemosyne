@@ -1315,19 +1315,85 @@ pub struct CargoCommand {
     /// `None` is not "unknown" — it is "read it off the manifest", which is the
     /// right answer for every source whose words are written down.
     pub declared: Option<rust::Declared>,
-    /// How many of this command's words stand for a list of UNKNOWN LENGTH.
+    /// Every word of this command that stands for a list of UNKNOWN LENGTH, and
+    /// what its site said may be in it.
     ///
     /// R1266, and it exists because of what a hole can and cannot do: a hole
     /// cannot take a word away, so a flag spelled beside one is definitely
     /// there — and it may hold a word nobody wrote down, so a flag's ABSENCE
-    /// cannot be claimed. Zero for every command written as data, where the words
-    /// are all there is.
+    /// cannot be claimed. Empty for every command written as data, where the
+    /// words are all there is.
     ///
     /// `--locked` in `item-citations`' assembled argv is the case: the flag is a
     /// literal one statement above the spawn and the `extend` beside it is a
     /// runtime list, so [`lock_verdict`] can say the command pins and could never
     /// have said it did not.
-    pub uncounted: usize,
+    ///
+    /// R1269 GAVE THE SECOND HALF AN ANSWER. What a hole may hold is a fact only
+    /// the site has, so the site declares it ([`issue::runtime_words`]) and
+    /// [`CargoCommand::spells_a_flag`] is the one reader of the declaration. A
+    /// hole that declared nothing is [`rust::MayHold::Anything`], which is the
+    /// reading every hole had before and still leaves every absence unclaimable.
+    pub uncounted: Vec<rust::MayHold>,
+}
+
+/// Which side of the bare `--` a question about a flag is asked on.
+///
+/// `cargo test --jobs 4 -- --test-threads 4` carries two width flags belonging
+/// to two programs, and a reader that scanned both sides for both would answer
+/// about a command line neither cargo nor the harness would accept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    /// Cargo's own words — [`CargoCommand::cargo_args`].
+    Cargo,
+    /// The harness's — [`CargoCommand::harness_args`], everything after the
+    /// first bare `--`.
+    Harness,
+}
+
+/// Whether a command spells a flag, with the ABSENCE a hole makes unclaimable
+/// kept apart from the absence its words support.
+///
+/// R1269, AND IT IS ONE DOOR BECAUSE THE ASYMMETRY IS ONE FACT. R1266 wrote it
+/// inline in [`lock_verdict`] and nothing else learned it: `decides_its_own_width`
+/// went on answering "does not decide its own width" for two commands whose
+/// words it had read only part of, which is a claim nobody made. Every law over
+/// [`commands_this_repository_issues`] that asks whether something is MISSING has
+/// the same three answers available, and they come from here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Spelled {
+    /// The words hold it, and here they are. A hole cannot take a word away, so
+    /// this is a fact about the command whatever else it carries.
+    Yes(Vec<String>),
+    /// The words do not hold it, and nothing uncounted among them could.
+    No,
+    /// The words do not hold it, and a list of unknown length among them may.
+    /// NOT a pass and NOT a "no" — a law that collapsed this into either one is
+    /// answering a question it did not read.
+    Unreadable(String),
+}
+
+impl Spelled {
+    /// Two questions about one command as one answer: PRESENCE anywhere is
+    /// presence, and an absence is claimable only when both halves could claim
+    /// it.
+    ///
+    /// The width of a command is the case — `--jobs` on cargo's side and
+    /// `--test-threads` on the harness's are one property asked of two word
+    /// lists, and a hole is side-blind because the words it stands for may
+    /// themselves hold the bare `--` that decides where the sides are.
+    #[must_use]
+    pub fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Yes(mut found), Self::Yes(more)) => {
+                found.extend(more);
+                Self::Yes(found)
+            }
+            (Self::Yes(found), _) | (_, Self::Yes(found)) => Self::Yes(found),
+            (Self::Unreadable(why), _) | (_, Self::Unreadable(why)) => Self::Unreadable(why),
+            (Self::No, Self::No) => Self::No,
+        }
+    }
 }
 
 impl CargoCommand {
@@ -1341,8 +1407,71 @@ impl CargoCommand {
     }
 
     /// Is this flag present on cargo's side, in either spelling?
+    ///
+    /// PRESENCE ONLY, which is why a hole does not enter into it: a hole cannot
+    /// take a word away, so a flag this finds is a flag the command carries. It
+    /// is [`CargoCommand::spells_a_flag`] that a law asking about ABSENCE wants,
+    /// because `false` here is two different answers wearing one face.
     pub fn has(&self, flag: &str) -> bool {
         self.flag_at(&[flag]).is_some()
+    }
+
+    /// Whether this command spells a flag `like` recognises — and when it does
+    /// not, whether that is a verdict or a question its words cannot answer.
+    ///
+    /// THE PREDICATE RATHER THAN A NAME, because what counts as the flag differs
+    /// per law: `--locked` is one word, and a width is `-j` / `-j4` / `--jobs` /
+    /// `--jobs=4` / `--test-threads=1`. A door that took names and a caller that
+    /// kept its own spelling table would be two readers of one question, free to
+    /// disagree the day a spelling is added — the shape `CLAUDE.md` calls a
+    /// half-enforced invariant.
+    ///
+    /// SOUND FOR FLAG PREDICATES ONLY, and that is what the declaration bounds.
+    /// [`issue::runtime_words`] says which FLAGS may be among words nobody can
+    /// count; it says nothing about their operands, so a predicate that
+    /// recognises a target name or a path answers about a list it has not read.
+    #[must_use]
+    pub fn spells_a_flag(&self, side: Side, like: &dyn Fn(&str) -> bool) -> Spelled {
+        let words = match side {
+            Side::Cargo => &self.cargo_args,
+            Side::Harness => &self.harness_args,
+        };
+        let found: Vec<String> = words.iter().filter(|word| like(word)).cloned().collect();
+        if !found.is_empty() {
+            return Spelled::Yes(found);
+        }
+        let undeclared = self
+            .uncounted
+            .iter()
+            .filter(|hole| matches!(hole, rust::MayHold::Anything))
+            .count();
+        if undeclared > 0 {
+            return Spelled::Unreadable(format!(
+                "{undeclared} of its words stand for a list of unknown length that \
+                 said nothing about what it may hold, so the flag's ABSENCE is a \
+                 claim about words nobody read"
+            ));
+        }
+        let declared: Vec<&str> = self
+            .uncounted
+            .iter()
+            .filter_map(|hole| match hole {
+                rust::MayHold::OnlyThese(flags) => Some(flags),
+                rust::MayHold::Anything => None,
+            })
+            .flatten()
+            .filter(|word| like(word))
+            .map(String::as_str)
+            .collect();
+        if !declared.is_empty() {
+            return Spelled::Unreadable(format!(
+                "a list of unknown length among its words declared it may hold {} \
+                 — declaring a flag is how a site tells a law to stop answering \
+                 for it",
+                declared.join(" ")
+            ));
+        }
+        Spelled::No
     }
 
     /// Where the first of `names` sits on cargo's side, and the value if it was
@@ -1693,7 +1822,12 @@ pub fn lock_verdict(
         // that is CONDITIONAL, held by `a_site_that_pins_when_the_tree_is_ours…`
         // over the site rather than over the command, because a command is one
         // path and the claim is about two.
-        Some(rust::Declared::PinnedWhenItIsOurs(_)) => command.has("--locked"),
+        Some(rust::Declared::PinnedWhenItIsOurs(_)) => {
+            matches!(
+                command.spells_a_flag(Side::Cargo, &is_the_pin),
+                Spelled::Yes(_)
+            )
+        }
         Some(rust::Declared::Unreadable(written)) => {
             return LockVerdict::Unreadable(format!(
                 "the tree it runs over is declared as `{written}`, which this \
@@ -1717,23 +1851,30 @@ pub fn lock_verdict(
             })
         }
     };
-    match (ours, command.has("--locked")) {
-        (true, true) => LockVerdict::Pinned,
-        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,
-        // A HOLE CANNOT TAKE A WORD AWAY, WHICH IS WHY THE TWO ARMS ABOVE ARE
-        // SAFE AND THESE TWO ARE NOT (R1266). The flag being THERE is a fact the
-        // words carry whatever else the command holds; the flag being ABSENT is
-        // a claim about words this reader could not count, and a list of unknown
-        // length may hold it. So the verdict is refused rather than guessed —
-        // `Unreadable` is this repository's "not a pass", and it stays that.
-        (_, false) if command.uncounted > 0 => LockVerdict::Unreadable(format!(
-            "`--locked` is not among the words this reader can name, and {} of \
-             them stand for a list of unknown length that may hold it",
-            command.uncounted
+    // A HOLE CANNOT TAKE A WORD AWAY, WHICH IS WHY PRESENCE IS SAFE AND ABSENCE
+    // IS NOT (R1266). The flag being THERE is a fact the words carry whatever
+    // else the command holds; the flag being ABSENT is a claim about words this
+    // reader could not count. That asymmetry was written inline here until
+    // R1269, and being written HERE is exactly why the other laws over this
+    // population never learned it — `spells_a_flag` is the one door now.
+    match (ours, command.spells_a_flag(Side::Cargo, &is_the_pin)) {
+        (true, Spelled::Yes(_)) => LockVerdict::Pinned,
+        (false, Spelled::Yes(_)) => LockVerdict::PinsWhatItDoesNotOwn,
+        (_, Spelled::Unreadable(why)) => LockVerdict::Unreadable(format!(
+            "`--locked` is not among the words this reader can name, and {why}"
         )),
-        (true, false) => LockVerdict::RepairsWhatItShouldReport,
-        (false, false) => LockVerdict::NotOursToPin,
+        (true, Spelled::No) => LockVerdict::RepairsWhatItShouldReport,
+        (false, Spelled::No) => LockVerdict::NotOursToPin,
     }
+}
+
+/// The flag `locked_resolution_smoke` is about, in ONE spelling.
+///
+/// [`lock_verdict`] asks about it twice — once to read ownership off it for a
+/// site that pins conditionally, once for the verdict itself — and two literals
+/// would be two readers of one flag.
+fn is_the_pin(word: &str) -> bool {
+    word == "--locked"
 }
 
 /// Every cargo invocation in every tracked shell script.
@@ -1750,7 +1891,7 @@ pub fn script_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
                 declared: None,
-                uncounted: 0,
+                uncounted: Vec::new(),
             });
         }
     }
@@ -1803,7 +1944,7 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
                 declared: None,
-                uncounted: 0,
+                uncounted: Vec::new(),
             });
         }
     }
@@ -1871,7 +2012,7 @@ pub fn sweep_cargo_commands(root: &Path) -> Vec<CargoCommand> {
             harness_args: found.harness_args,
             env: BTreeMap::new(),
             declared: None,
-            uncounted: 0,
+            uncounted: Vec::new(),
         });
     }
     out
@@ -1990,8 +2131,11 @@ pub fn commands_this_repository_issues(root: &Path) -> IssuedCommands {
 ///   other command;
 /// - a command carrying a HOLE (`CargoCommand::uncounted`) — a hole cannot take
 ///   a word away, so a flag beside one is definitely there and a flag's ABSENCE
-///   cannot be claimed. A law that asks whether something is missing has to say
-///   `unreadable` rather than `no`;
+///   cannot be claimed. A law that asks whether something is missing asks
+///   [`CargoCommand::spells_a_flag`], which answers in three and is the ONLY
+///   place that weighs what a hole may hold: a law that scans the words itself
+///   is a law that will answer `no` where the honest answer is `unreadable`,
+///   which is the defect R1269 found in two of these four;
 /// - a command carrying a DECLARATION (`CargoCommand::declared`) about the tree
 ///   it runs over — this repository's, a fixture the run built, or wherever its
 ///   caller points. A law about what this repository's own commands must do is
@@ -2069,25 +2213,32 @@ fn names(tokens: proc_macro2::TokenStream, name: &str) -> bool {
 ///
 /// Both sides are read. `--jobs` bounds compiling; `--test-threads` after the
 /// bare `--` bounds running, and this repository's memory lives on that side.
+///
+/// AN ABSENCE LAW, WHICH IS WHY IT ANSWERS IN THREE (R1269). Until this round it
+/// answered with a list, and an empty list said "this command leaves the width
+/// alone" — including for the two commands whose words hold a list nobody can
+/// count. A width flag could have been in there and nothing would have said so;
+/// the answer was a claim about words this reader never had. Now the hole is
+/// [`CargoCommand::spells_a_flag`]'s to weigh, and a site that declares what its
+/// runtime words may hold gets a verdict back.
 #[must_use]
-pub fn decides_its_own_width(command: &CargoCommand) -> Vec<String> {
-    let mut found = Vec::new();
-    for word in &command.cargo_args {
-        // `-j`, `-j4`, `--jobs`, `--jobs=4` — one flag in four spellings, and a
-        // reader that knew one of them would answer "absent" for the others.
-        let short_with_value = word.starts_with("-j")
-            && word.len() > 2
-            && word[2..].chars().all(|c| c.is_ascii_digit());
-        if word == "-j" || word == "--jobs" || word.starts_with("--jobs=") || short_with_value {
-            found.push(word.clone());
-        }
-    }
-    for word in &command.harness_args {
-        if word == "--test-threads" || word.starts_with("--test-threads=") {
-            found.push(word.clone());
-        }
-    }
-    found
+pub fn decides_its_own_width(command: &CargoCommand) -> Spelled {
+    command
+        .spells_a_flag(Side::Cargo, &bounds_compiling)
+        .or(command.spells_a_flag(Side::Harness, &bounds_running))
+}
+
+/// `-j`, `-j4`, `--jobs`, `--jobs=4` — one flag in four spellings, and a reader
+/// that knew one of them would answer "absent" for the others.
+fn bounds_compiling(word: &str) -> bool {
+    let short_with_value =
+        word.starts_with("-j") && word.len() > 2 && word[2..].chars().all(|c| c.is_ascii_digit());
+    word == "-j" || word == "--jobs" || word.starts_with("--jobs=") || short_with_value
+}
+
+/// The harness's half of the same property.
+fn bounds_running(word: &str) -> bool {
+    word == "--test-threads" || word.starts_with("--test-threads=")
 }
 
 /// Every cargo invocation in every job of every tracked workflow.
@@ -2105,7 +2256,7 @@ pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                     harness_args: found.harness_args,
                     env: step.env.clone(),
                     declared: None,
-                    uncounted: 0,
+                    uncounted: Vec::new(),
                 });
             }
         }
@@ -2540,7 +2691,7 @@ pub fn lister_declared_commands(listed: &Workspaces) -> Vec<CargoCommand> {
                 harness_args,
                 env: BTreeMap::new(),
                 declared: None,
-                uncounted: 0,
+                uncounted: Vec::new(),
             }
         })
         .collect()

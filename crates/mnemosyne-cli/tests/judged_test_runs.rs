@@ -223,7 +223,7 @@ fn the_wrapper_is_found_wherever_it_carries_and_a_command_it_does_not_carry_is_n
         harness_args: Vec::new(),
         env: Default::default(),
         declared: None,
-        uncounted: 0,
+        uncounted: Vec::new(),
     };
     assert!(
         judged_for_coverage(&carried),
@@ -265,7 +265,7 @@ fn a_command_that_builds_the_binaries_without_running_them_is_not_a_run() {
         harness_args: Vec::new(),
         env: Default::default(),
         declared: None,
-        uncounted: 0,
+        uncounted: Vec::new(),
     };
     assert!(
         ci_plan::runs_tests(&a_run),
@@ -500,7 +500,7 @@ fn a_suite_that_opts_out_of_freshening_is_seen_to() {
         harness_args: Vec::new(),
         env: Default::default(),
         declared: None,
-        uncounted: 0,
+        uncounted: Vec::new(),
     };
     assert!(!opts_out_of_freshening(&freshened));
 

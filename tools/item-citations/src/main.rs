@@ -389,12 +389,10 @@ fn document_package(
             selectors.join(" ")
         );
         let manifest_arg = manifest.display().to_string();
-        // `--locked` HERE TOO, and this reader cannot see it. The declaration in
-        // `cargo` below covers every command through it, and the two whose words
-        // are assembled at run time are the ones no law reads: `ci_plan::rust`
-        // follows a hole back to a caller's LITERAL, and a list built two lines
-        // earlier is not one. The flag is right whether or not anything is
-        // watching, which is the whole reason it is written here.
+        // `--locked` HERE TOO, and this reader CAN see it since R1266: the flag
+        // is a literal one statement up, and a hole beside it cannot take a word
+        // away. What the hole could hide is an ABSENCE, which is what the
+        // declaration below is for.
         let mut argv: Vec<&str> = vec![
             "rustdoc",
             "--locked",
@@ -403,7 +401,19 @@ fn document_package(
             "-p",
             package,
         ];
-        argv.extend(selectors.iter().map(String::as_str));
+        // ONE SELECTOR PER TARGET, and their NUMBER is a fact about this
+        // package: `selectors` was filled by a loop over cargo's own metadata,
+        // so no reader of this file can count them and no hop closes it. What
+        // CAN be said is which flags are in there — `TargetKind::selector`
+        // returns one of five and then a target name — and saying it is what
+        // lets an absence law answer about this command at all (R1269).
+        argv.extend(issue::runtime_words(
+            selectors.iter().map(String::as_str),
+            &["--lib", "--bin", "--test", "--bench", "--example"],
+            "one selector per target in this omitted-extern group; the group was \
+             built by a loop over the package's targets, so its length is a fact \
+             about the package rather than about this file",
+        ));
         argv.extend(["--keep-going", "--message-format=json"]);
         let output = cargo(root, &argv, Some(flags))?;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -515,7 +525,17 @@ fn list_harness(
         "-p".to_string(),
         target.package.clone(),
     ];
-    argv.extend(target.kind.selector(&target.name));
+    // THE SAME FIVE FLAGS, and here the hole is one hop shallower: `selector`
+    // returns a list whose length depends on the kind, and its second word is a
+    // target name out of cargo's metadata. Following the call would reach a
+    // `match` over five arms and still leave that word, so the declaration is
+    // what makes this command answerable (R1269).
+    argv.extend(issue::runtime_words(
+        target.kind.selector(&target.name),
+        &["--lib", "--bin", "--test", "--bench", "--example"],
+        "one selector for this target's kind, and the name in it comes from \
+         cargo's own metadata",
+    ));
     argv.push("--".to_string());
     argv.push("--list".to_string());
     println!(

@@ -181,6 +181,36 @@ pub enum Program {
 /// because a list cut short reads exactly like a complete one.
 const VARIANT_CAP: usize = 64;
 
+/// What one word standing for a LIST OF UNKNOWN LENGTH may hold.
+///
+/// R1269, and it is the answer to the one thing a hole ruins that reading
+/// cannot repair. A hole cannot TAKE a word away, so PRESENCE survives it and
+/// only ABSENCE is unclaimable (R1266) — and the two commands this repository
+/// issues through one hand over a list built in a loop over cargo's own
+/// metadata, which no hop reaches. So the site declares what may be in there
+/// ([`crate::issue::runtime_words`]) and the declaration travels with the WORD:
+/// a site-level union would be an approximation the moment one way through a
+/// site holds a subset of its holes, and this is exact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MayHold {
+    /// The flags the site declared, and nothing else that starts with `-`. Every
+    /// OTHER flag's absence is a claim the words now support.
+    OnlyThese(Vec<String>),
+    /// The site said nothing, so any flag at all may be in there and no absence
+    /// can be claimed. The reading every hole had before R1269, and still the
+    /// one an undeclared hole gets.
+    Anything,
+}
+
+/// One word in a [`Way`] that stands for a list of unknown length.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Uncounted {
+    /// Where in [`Way::words`] it sits.
+    pub at: usize,
+    /// What the site said may be among the words it stands for.
+    pub may_hold: MayHold,
+}
+
 /// ONE way a site's choices can go: the words it hands over, and which of them
 /// stand for a list this reader could not count.
 ///
@@ -193,8 +223,9 @@ const VARIANT_CAP: usize = 64;
 pub struct Way {
     /// The words, in order, the hole among them.
     pub words: Vec<String>,
-    /// The positions in [`Way::words`] that stand for a list of unknown length.
-    pub uncounted: Vec<usize>,
+    /// The words in [`Way::words`] that stand for a list of unknown length, each
+    /// carrying what its site said it may hold.
+    pub uncounted: Vec<Uncounted>,
     /// The positions holding ONE word whose value is decided while the program
     /// runs — `$manifest`, `$subcommand`.
     ///
@@ -221,7 +252,7 @@ impl Way {
             // its own words, so it is not this method's to hide.
             return true;
         };
-        !self.uncounted.iter().any(|hole| *hole <= first) && !self.unspelled.contains(&first)
+        !self.uncounted.iter().any(|hole| hole.at <= first) && !self.unspelled.contains(&first)
     }
 }
 
@@ -260,8 +291,9 @@ pub enum Word {
     /// one argument and it is not a flag this site spells.
     Runtime(String),
     /// An unknown NUMBER of words, from an `.args(expr)` this reader cannot
-    /// evaluate. The hole is the count, not the value: a flag may be inside.
-    Unknown(String),
+    /// evaluate. The hole is the count, not the value: a flag may be inside —
+    /// unless the site said which ones, which is what the second half carries.
+    Unknown(String, MayHold),
     /// A word added on SOME paths through the function and not others — an
     /// `.arg()` inside an `if`, a `match` arm, a loop.
     ///
@@ -278,7 +310,7 @@ impl Word {
     #[must_use]
     pub fn rendered(&self) -> String {
         match self {
-            Self::Spelled(word) | Self::Runtime(word) | Self::Unknown(word) => word.clone(),
+            Self::Spelled(word) | Self::Runtime(word) | Self::Unknown(word, _) => word.clone(),
             Self::Sometimes(word, _) => format!("[{word}]?"),
         }
     }
@@ -541,8 +573,11 @@ pub fn ways_of(words: &[Word]) -> Option<Vec<Way>> {
                             way.words.push(text.clone());
                         }
                     }
-                    Word::Unknown(text) => {
-                        way.uncounted.push(way.words.len());
+                    Word::Unknown(text, may_hold) => {
+                        way.uncounted.push(Uncounted {
+                            at: way.words.len(),
+                            may_hold: may_hold.clone(),
+                        });
                         way.words.push(text.clone());
                     }
                 }
@@ -585,10 +620,12 @@ impl RustSpawn {
                 .into_iter()
                 .filter(|way| way.subcommand_was_read())
                 .map(|way| {
-                    let uncounted = way.uncounted.len();
-                    let mut command = self.as_command(way.words, declared.clone());
-                    command.uncounted = uncounted;
-                    command
+                    let uncounted = way
+                        .uncounted
+                        .into_iter()
+                        .map(|hole| hole.may_hold)
+                        .collect();
+                    self.as_command(way.words, uncounted, declared.clone())
                 })
                 .collect(),
         )
@@ -628,7 +665,18 @@ impl RustSpawn {
     }
 
     /// This site as one of the population's commands, carrying what it declared.
-    fn as_command(&self, words: Vec<String>, declared: Declared) -> CargoCommand {
+    ///
+    /// THE HOLES ARE A PARAMETER RATHER THAN A FIELD WRITTEN AFTERWARDS. They
+    /// were the second until R1269, and a field two callers set and a third
+    /// forgot is the half-enforced invariant `CLAUDE.md` names — the more so now
+    /// that what a hole may hold decides whether an absence law may answer at
+    /// all. The compiler asks every caller instead.
+    fn as_command(
+        &self,
+        words: Vec<String>,
+        uncounted: Vec<MayHold>,
+        declared: Declared,
+    ) -> CargoCommand {
         let mut all = vec!["cargo".to_string()];
         all.extend(words);
         let Some(invocation) = cargo_invocation(&all) else {
@@ -647,9 +695,7 @@ impl RustSpawn {
             carrier: invocation.carrier,
             cargo_args: invocation.cargo_args,
             harness_args: invocation.harness_args,
-            // Set by `commands`, which is where a way's holes are known. A
-            // command built from a word list alone has none by construction.
-            uncounted: 0,
+            uncounted,
             env: BTreeMap::new(),
             declared: Some(declared),
         }
@@ -668,9 +714,10 @@ impl RustSpawn {
         &self,
         caller: &CallerWords,
         words: Vec<String>,
+        uncounted: Vec<MayHold>,
         declared: Declared,
     ) -> CargoCommand {
-        let mut command = self.as_command(words, declared);
+        let mut command = self.as_command(words, uncounted, declared);
         command.source = caller.source.clone();
         command.owner = if caller.source == self.source {
             format!("{}:{} → {}", caller.owner, caller.line, self.owner)
@@ -908,7 +955,9 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
             };
             found.ways_no_table_can_key_on += site.ways_no_table_can_key_on();
             match site.complete_words() {
-                Some(words) => found.commands.push(site.as_command(words, declared)),
+                Some(words) => found
+                    .commands
+                    .push(site.as_command(words, Vec::new(), declared)),
                 None => {
                     // ONE COMMAND PER WAY PER CALL SITE THAT WROTE ITS WORDS
                     // DOWN, and the site stays carried while any call site did
@@ -942,13 +991,17 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                                             answered = true;
                                             continue;
                                         }
-                                        let uncounted = way.uncounted.len();
-                                        let mut command = site.as_command_from(
+                                        let uncounted = way
+                                            .uncounted
+                                            .into_iter()
+                                            .map(|hole| hole.may_hold)
+                                            .collect();
+                                        let command = site.as_command_from(
                                             caller,
                                             way.words,
+                                            uncounted,
                                             declared.clone(),
                                         );
-                                        command.uncounted = uncounted;
                                         found.through_a_wrapper += 1;
                                         found.commands.push(command);
                                         answered = true;
@@ -1267,7 +1320,15 @@ impl<'a> Walk<'a> {
             }
             "extend" => {
                 if let Some(first) = call.args.first() {
-                    match word_list(&self.manifest_dir, first) {
+                    // ONE OF THE TWO PLACES A HOLE IS MADE, and the one the two
+                    // commands R1269 is about come through: the site whose
+                    // `.args(..)` this list reaches takes it as a PARAMETER, so
+                    // the uncountable word is created here, in the caller, and
+                    // spliced into that site's hole later by `words_with`. A
+                    // declaration attached to the site would never be reached by
+                    // either of them.
+                    let (handed, may_hold) = self.words_may_hold(first);
+                    match word_list(&self.manifest_dir, handed) {
                         Some(words) => {
                             for word in words {
                                 self.add_to_list(name, word);
@@ -1276,7 +1337,10 @@ impl<'a> Walk<'a> {
                         // AN UNKNOWN NUMBER OF WORDS IS A HOLE IN THE LIST, not
                         // a poisoning: a hole cannot take a word away, so what
                         // was read before it is still read.
-                        None => self.add_to_list(name, Word::Unknown(rendered_as_a_value(first))),
+                        None => self.add_to_list(
+                            name,
+                            Word::Unknown(rendered_as_a_value(handed), may_hold),
+                        ),
                     }
                 }
             }
@@ -1348,8 +1412,9 @@ impl<'a> Walk<'a> {
         }
         words.push(match word {
             // An unknown COUNT stays an unknown count: which hole it is does not
-            // get smaller for being conditional.
-            Word::Unknown(text) => Word::Unknown(text),
+            // get smaller for being conditional, and neither does what its site
+            // declared may be in it.
+            Word::Unknown(text, may_hold) => Word::Unknown(text, may_hold),
             Word::Spelled(text) | Word::Runtime(text) | Word::Sometimes(text, _) => {
                 Word::Sometimes(text, path)
             }
@@ -1359,6 +1424,25 @@ impl<'a> Walk<'a> {
     /// One word, read in the file being walked.
     fn read_word_here(&self, expression: &syn::Expr) -> Word {
         read_word(&self.manifest_dir, expression)
+    }
+
+    /// Look through an [`crate::issue::runtime_words`] wrapper: the expression
+    /// whose words it stands for, and what the site said may be among them.
+    ///
+    /// ONE READER FOR BOTH PLACES A HOLE IS MADE — the `.args(..)` beside a
+    /// spawn and the `.extend(..)` of a list a caller is building. A second
+    /// spelling of this would be one free to recognise the wrapper in one of
+    /// them and not the other, and the two commands this exists for come
+    /// through the second.
+    ///
+    /// The words go on to be read exactly as they would have been unwrapped, so
+    /// a site that wraps a list this walk CAN count loses nothing: the
+    /// declaration is about the ones it cannot.
+    fn words_may_hold<'e>(&self, expression: &'e syn::Expr) -> (&'e syn::Expr, MayHold) {
+        match declared_runtime_words(&self.manifest_dir, expression) {
+            Some(read) => read,
+            None => (expression, MayHold::Anything),
+        }
     }
 
     /// The words one argument hands over: a binding this walk has been reading,
@@ -1445,8 +1529,9 @@ impl<'a> Walk<'a> {
                 Word::Sometimes(text, all)
             }
             // An unknown COUNT stays an unknown count: which hole it is does not
-            // get smaller for being conditional.
-            Word::Unknown(text) => Word::Unknown(text),
+            // get smaller for being conditional, and neither does what its site
+            // declared may be in it.
+            Word::Unknown(text, may_hold) => Word::Unknown(text, may_hold),
         });
     }
 
@@ -1612,6 +1697,12 @@ impl<'a> Walk<'a> {
             }
             "args" => {
                 if let Some(first) = call.args.first() {
+                    // THE OTHER PLACE A HOLE IS MADE. Read before anything else,
+                    // because the wrapper is a CALL and none of the readings
+                    // below look through one — a walk that asked them first
+                    // would answer about `runtime_words(..)` rather than about
+                    // the words inside it.
+                    let (first, may_hold) = self.words_may_hold(first);
                     // A BINDING THIS WALK HAS BEEN READING ANSWERS FIRST, and its
                     // words are the list AS IT STANDS HERE: mutations above this
                     // statement are in it and mutations below are not, which is
@@ -1633,7 +1724,7 @@ impl<'a> Walk<'a> {
                                 written: format!("{} — {why}", rendered_as_a_value(first)),
                             };
                             self.sites[site].holes.push(hole);
-                            self.add(site, Word::Unknown(rendered_as_a_value(first)));
+                            self.add(site, Word::Unknown(rendered_as_a_value(first), may_hold));
                             for argument in &call.args {
                                 syn::visit::visit_expr(self, argument);
                             }
@@ -1658,7 +1749,7 @@ impl<'a> Walk<'a> {
                                 written: rendered_as_a_value(first),
                             };
                             self.sites[site].holes.push(hole);
-                            self.add(site, Word::Unknown(rendered_as_a_value(first)));
+                            self.add(site, Word::Unknown(rendered_as_a_value(first), may_hold));
                         }
                     }
                 }
@@ -2417,6 +2508,50 @@ fn string_literal(expression: &syn::Expr) -> Option<String> {
     }
 }
 
+/// The [`crate::issue::runtime_words`] wrapper an expression is written in, when
+/// it is written in one: the words it stands for, and the flags the site
+/// declared may be among them.
+///
+/// BY POSITION, unlike [`declaration`], and the difference is that there is one
+/// spelling of this function rather than two. `runtime_words(words, may_hold,
+/// why)` takes the words FIRST, and a reader that hunted instead for "the
+/// argument shaped like a list of literals" would find the words themselves the
+/// day a site wrapped a list it could have counted.
+///
+/// A wrapper whose declaration this reader cannot read is [`MayHold::Anything`]
+/// — the same answer an unwrapped hole gets. That is the conservative direction
+/// and not the convenient one: it leaves every absence unclaimable, which is
+/// what a law wants from a declaration it could not read.
+fn declared_runtime_words<'a>(
+    manifest_dir: &str,
+    expression: &'a syn::Expr,
+) -> Option<(&'a syn::Expr, MayHold)> {
+    let syn::Expr::Call(call) = unwrap(expression) else {
+        return None;
+    };
+    if !ends_with(call, &["runtime_words"]) {
+        return None;
+    }
+    let mut arguments = call.args.iter();
+    let words = arguments.next()?;
+    let may_hold = arguments
+        .next()
+        .and_then(|declared| word_list(manifest_dir, declared))
+        .map(|declared| {
+            declared
+                .iter()
+                .map(|word| match word {
+                    Word::Spelled(text) => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Option<Vec<String>>>()
+        });
+    Some(match may_hold {
+        Some(Some(flags)) => (words, MayHold::OnlyThese(flags)),
+        _ => (words, MayHold::Anything),
+    })
+}
+
 /// A word list with no hole in it, or `None` when one is still there.
 ///
 /// ONE SPELLING FOR TWO READERS. The site's own words and the words a call site
@@ -2428,7 +2563,7 @@ fn without_a_hole(words: &[Word]) -> Option<Vec<String>> {
         .iter()
         .map(|word| match word {
             Word::Spelled(text) | Word::Runtime(text) => Some(text.clone()),
-            Word::Unknown(_) | Word::Sometimes(..) => None,
+            Word::Unknown(..) | Word::Sometimes(..) => None,
         })
         .collect()
 }

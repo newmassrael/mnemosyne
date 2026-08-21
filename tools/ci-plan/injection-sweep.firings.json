@@ -163,6 +163,21 @@
         "words_one_branch_adds_together_are_never_separated"
       ]
     },
+    "a-declaration-about-uncountable-words-is-not-looked-through": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if !ends_with(call, &[\"runtime_words\"]) {",
+          "to": "    if !ends_with(call, &[\"runtime_wordz\"]) {"
+        }
+      ],
+      "expect_red": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+      ],
+      "tests": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+      ]
+    },
     "a-declared-command-does-not-say-which-one-it-is": {
       "edits": [
         {
@@ -212,8 +227,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "        (true, false) => LockVerdict::RepairsWhatItShouldReport,",
-          "to": "        (true, false) => LockVerdict::Pinned,"
+          "from": "        (true, Spelled::No) => LockVerdict::RepairsWhatItShouldReport,",
+          "to": "        (true, Spelled::No) => LockVerdict::Pinned,"
         }
       ],
       "expect_red": [
@@ -229,7 +244,7 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "                        way.uncounted.push(way.words.len());",
+          "from": "                        way.uncounted.push(Uncounted {\n                            at: way.words.len(),\n                            may_hold: may_hold.clone(),\n                        });\n",
           "to": ""
         }
       ],
@@ -248,8 +263,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "        (_, false) if command.uncounted > 0 => LockVerdict::Unreadable(format!(",
-          "to": "        (_, false) if command.uncounted > usize::MAX => LockVerdict::Unreadable(format!("
+          "from": "        if undeclared > 0 {",
+          "to": "        if false {"
         }
       ],
       "expect_red": [
@@ -323,7 +338,8 @@
         "a_binding_read_without_being_changed_stays_readable",
         "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
         "a_list_lent_out_mutably_is_a_hole",
-        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
       ],
       "tests": [
         "a_binding_read_without_being_changed_stays_readable",
@@ -332,6 +348,7 @@
         "a_list_extended_with_a_literal_carries_those_words",
         "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
         "a_list_lent_out_mutably_is_a_hole",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold",
         "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
         "a_second_let_of_the_same_name_is_a_different_list",
         "a_string_literal_converted_to_a_string_is_still_that_word",
@@ -603,7 +620,8 @@
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
         "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
         "a_list_extended_with_a_literal_carries_those_words",
-        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole"
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
       ],
       "tests": [
         "a_call_site_handing_over_a_value_is_counted_rather_than_guessed_at",
@@ -612,6 +630,7 @@
         "a_command_built_over_several_statements_is_one_command",
         "a_list_extended_with_a_literal_carries_those_words",
         "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold",
         "a_wrappers_words_are_read_at_the_call_sites_that_wrote_them",
         "an_array_of_words_keeps_the_flags_a_runtime_value_sits_between",
         "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in",
@@ -701,6 +720,21 @@
       ],
       "tests": [
         "a_command_this_reader_cannot_place_is_not_read_as_compliant"
+      ]
+    },
+    "an-unreadable-declaration-is-read-as-declaring-no-flags": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        _ => (words, MayHold::Anything),",
+          "to": "        _ => (words, MayHold::OnlyThese(Vec::new())),"
+        }
+      ],
+      "expect_red": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+      ],
+      "tests": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
       ]
     },
     "an-unreadable-hashfiles-argument-is-taken-as-a-glob": {
@@ -856,6 +890,21 @@
         "a_restore_only_step_is_still_a_declaration"
       ]
     },
+    "only-the-args-arm-looks-through-a-declaration": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    let (handed, may_hold) = self.words_may_hold(first);",
+          "to": "                    let (handed, may_hold) = (first, MayHold::Anything);"
+        }
+      ],
+      "expect_red": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+      ],
+      "tests": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+      ]
+    },
     "only-the-innermost-branch-is-remembered": {
       "edits": [
         {
@@ -988,6 +1037,7 @@
         "a_word_pushed_after_the_binding_is_in_the_command",
         "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
         "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold",
         "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ],
       "tests": [
@@ -1006,6 +1056,7 @@
         "a_list_extended_with_a_literal_carries_those_words",
         "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
         "a_list_lent_out_mutably_is_a_hole",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold",
         "a_method_call_inside_a_macro_is_not_read_as_a_call_of_a_free_function",
         "a_method_hands_over_no_parameter_this_reader_follows",
         "a_name_that_means_two_functions_is_not_followed_back",
@@ -1042,8 +1093,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,",
-          "to": "        (false, true) => LockVerdict::Pinned,"
+          "from": "        (false, Spelled::Yes(_)) => LockVerdict::PinsWhatItDoesNotOwn,",
+          "to": "        (false, Spelled::Yes(_)) => LockVerdict::Pinned,"
         }
       ],
       "expect_red": [

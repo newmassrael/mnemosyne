@@ -157,8 +157,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "            Word::Unknown(_) | Word::Sometimes(..) => None,",
-          "to": "            Word::Unknown(text) | Word::Sometimes(text, _) => Some(text.clone()),"
+          "from": "            Word::Unknown(..) | Word::Sometimes(..) => None,",
+          "to": "            Word::Unknown(text, _) | Word::Sometimes(text, _) => Some(text.clone()),"
         }
       ],
       "expect_red": [
@@ -235,8 +235,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "        !self.uncounted.iter().any(|hole| *hole <= first) && !self.unspelled.contains(&first)",
-          "to": "        !self.uncounted.iter().any(|hole| *hole <= first)"
+          "from": "        !self.uncounted.iter().any(|hole| hole.at <= first) && !self.unspelled.contains(&first)",
+          "to": "        !self.uncounted.iter().any(|hole| hole.at <= first)"
         }
       ],
       "expect_red": [
@@ -250,7 +250,7 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "        Some(rust::Declared::PinnedWhenItIsOurs(_)) => command.has(\"--locked\"),",
+          "from": "        Some(rust::Declared::PinnedWhenItIsOurs(_)) => {\n            matches!(\n                command.spells_a_flag(Side::Cargo, &is_the_pin),\n                Spelled::Yes(_)\n            )\n        }",
           "to": "        Some(rust::Declared::PinnedWhenItIsOurs(_)) => true,"
         }
       ],

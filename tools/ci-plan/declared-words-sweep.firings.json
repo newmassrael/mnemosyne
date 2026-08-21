@@ -1,0 +1,89 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-declaration-is-widened-to-the-flag-the-law-is-about": {
+      "edits": [
+        {
+          "file": "tools/item-citations/src/main.rs",
+          "from": "\n            &[\"--lib\", \"--bin\", \"--test\", \"--bench\", \"--example\"],",
+          "to": "\n            &[\"--jobs\", \"--lib\", \"--bin\", \"--test\", \"--bench\", \"--example\"],"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs"
+      ],
+      "tests": [
+        "build_width::no_command_this_repository_issues_decides_how_wide_it_runs"
+      ]
+    },
+    "a-flag-a-site-declared-is-not-weighed-against-the-question": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if !declared.is_empty() {",
+          "to": "        if declared.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs",
+        "a_width_a_hole_may_hold_is_not_read_as_a_width_the_command_leaves_alone",
+        "a_command_that_leaves_the_width_alone_is_not_read_as_deciding_it"
+      ],
+      "tests": [
+        "build_width::a_command_that_leaves_the_width_alone_is_not_read_as_deciding_it",
+        "build_width::a_width_a_hole_may_hold_is_not_read_as_a_width_the_command_leaves_alone",
+        "build_width::no_command_this_repository_issues_decides_how_wide_it_runs"
+      ]
+    },
+    "a-site-stops-saying-what-its-runtime-words-may-hold": {
+      "edits": [
+        {
+          "file": "tools/item-citations/src/main.rs",
+          "from": "    argv.extend(issue::runtime_words(\n        target.kind.selector(&target.name),\n        &[\"--lib\", \"--bin\", \"--test\", \"--bench\", \"--example\"],\n        \"one selector for this target's kind, and the name in it comes from \\\n         cargo's own metadata\",\n    ));",
+          "to": "    argv.extend(target.kind.selector(&target.name));"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs"
+      ],
+      "tests": [
+        "build_width::no_command_this_repository_issues_decides_how_wide_it_runs"
+      ]
+    },
+    "an-undeclared-hole-is-read-as-holding-no-flags": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if undeclared > 0 {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_width_a_hole_may_hold_is_not_read_as_a_width_the_command_leaves_alone"
+      ],
+      "tests": [
+        "build_width::a_width_a_hole_may_hold_is_not_read_as_a_width_the_command_leaves_alone"
+      ]
+    },
+    "the-wrapper-a-site-declares-through-stops-being-recognised": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if !ends_with(call, &[\"runtime_words\"]) {",
+          "to": "    if !ends_with(call, &[\"runtime_wordz\"]) {"
+        }
+      ],
+      "expect_red": [
+        "no_command_this_repository_issues_decides_how_wide_it_runs"
+      ],
+      "tests": [
+        "build_width::no_command_this_repository_issues_decides_how_wide_it_runs"
+      ]
+    }
+  },
+  "forgotten": {}
+}

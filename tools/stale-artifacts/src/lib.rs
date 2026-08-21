@@ -153,7 +153,7 @@ pub fn plan(at: &Path, command: &[String]) -> Plan {
         // The wrapped command's own words, read as written — this is not a site
         // declaring anything about a tree.
         declared: None,
-        uncounted: 0,
+        uncounted: Vec::new(),
     };
     let manifest = read
         .value(&["--manifest-path"])

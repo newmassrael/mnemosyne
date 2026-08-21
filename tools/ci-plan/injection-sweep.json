@@ -212,8 +212,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "        (true, false) => LockVerdict::RepairsWhatItShouldReport,",
-          "to": "        (true, false) => LockVerdict::Pinned,"
+          "from": "        (true, Spelled::No) => LockVerdict::RepairsWhatItShouldReport,",
+          "to": "        (true, Spelled::No) => LockVerdict::Pinned,"
         }
       ],
       "expect_red": [
@@ -227,8 +227,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,",
-          "to": "        (false, true) => LockVerdict::Pinned,"
+          "from": "        (false, Spelled::Yes(_)) => LockVerdict::PinsWhatItDoesNotOwn,",
+          "to": "        (false, Spelled::Yes(_)) => LockVerdict::Pinned,"
         }
       ],
       "expect_red": ["the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"]
@@ -514,7 +514,8 @@
         "the_words_a_caller_writes_keep_their_place_among_the_sites_own",
         "a_caller_handing_over_a_list_it_built_is_read_at_that_call_site",
         "a_list_extended_with_a_literal_carries_those_words",
-        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole"
+        "a_list_extended_with_a_runtime_value_keeps_the_words_around_the_hole",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
       ]
     },
     {
@@ -609,6 +610,7 @@
         "a_word_pushed_after_the_binding_is_in_the_command",
         "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
         "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold",
         "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ]
     },
@@ -633,7 +635,8 @@
         "a_binding_read_without_being_changed_stays_readable",
         "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
         "a_list_lent_out_mutably_is_a_hole",
-        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
       ]
     },
     {
@@ -709,12 +712,12 @@
     },
     {
       "name": "a-hole-lets-the-law-claim-a-flag-is-absent",
-      "why": "a hole cannot take a word away, so a flag beside one is definitely there — and it may HOLD a flag nobody wrote down, so absence is a claim about words this reader could not count. PINNED AGAINST A FIXTURE and not against the tree, because every hole-bearing command here also spells `--locked`: aimed at the tree this comes back green and says nothing, which is what the first attempt did",
+      "why": "a hole cannot take a word away, so a flag beside one is definitely there — and it may HOLD a flag nobody wrote down, so absence is a claim about words this reader could not count. PINNED AGAINST A FIXTURE and not against the tree, because every hole-bearing command here also spells `--locked`: aimed at the tree this comes back green and says nothing, which is what the first attempt did. RE-AIMED IN R1269: the clause moved out of `lock_verdict` into the one door every absence law now asks, which is the whole of what that round did — so this is where it lives",
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "        (_, false) if command.uncounted > 0 => LockVerdict::Unreadable(format!(",
-          "to": "        (_, false) if command.uncounted > usize::MAX => LockVerdict::Unreadable(format!("
+          "from": "        if undeclared > 0 {",
+          "to": "        if false {"
         }
       ],
       "expect_red": [
@@ -810,7 +813,7 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "                        way.uncounted.push(way.words.len());",
+          "from": "                        way.uncounted.push(Uncounted {\n                            at: way.words.len(),\n                            may_hold: may_hold.clone(),\n                        });\n",
           "to": ""
         }
       ],
@@ -1015,6 +1018,48 @@
       ],
       "expect_red": [
         "every_law_over_this_population_is_one_this_crate_names"
+      ]
+    },
+    {
+      "name": "a-declaration-about-uncountable-words-is-not-looked-through",
+      "why": "R1269. A site says what its runtime words may hold and this reader is the only thing that reads it — unrecognised, every hole goes back to being one nothing can be asked about, and the two commands in this repository that declare stop being judged for a flag's absence by any law",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    if !ends_with(call, &[\"runtime_words\"]) {",
+          "to": "    if !ends_with(call, &[\"runtime_wordz\"]) {"
+        }
+      ],
+      "expect_red": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+      ]
+    },
+    {
+      "name": "only-the-args-arm-looks-through-a-declaration",
+      "why": "R1269. THE HALF THAT MATTERS IS THE OTHER ONE: both commands this exists for reach their hole through the hop BACKWARDS, so the uncountable word is made by a caller's `extend` and never passes the `.args` arm at all. A reader that recognised the wrapper only where the spawn is would be green on its own fixture and blind on the tree",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                    let (handed, may_hold) = self.words_may_hold(first);",
+          "to": "                    let (handed, may_hold) = (first, MayHold::Anything);"
+        }
+      ],
+      "expect_red": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+      ]
+    },
+    {
+      "name": "an-unreadable-declaration-is-read-as-declaring-no-flags",
+      "why": "R1269. A wrapper whose flag list this reader cannot evaluate has to fall back to the CONSERVATIVE answer — any flag may be in there — because the convenient one lets a site buy silence from every absence law by writing its declaration in a shape nobody parses",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        _ => (words, MayHold::Anything),",
+          "to": "        _ => (words, MayHold::OnlyThese(Vec::new())),"
+        }
+      ],
+      "expect_red": [
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
       ]
     }
   ]

@@ -462,7 +462,7 @@ fn a_command_is_read_for_the_features_it_actually_enables() {
                 harness_args: found.harness_args,
                 env: Default::default(),
                 declared: None,
-                uncounted: 0,
+                uncounted: Vec::new(),
             },
             &declared,
             &declared,
