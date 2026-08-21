@@ -798,3 +798,162 @@ fn the_directory_this_reporter_records_into_is_one_this_repository_collects() {
          typed: {mine}"
     );
 }
+
+/// A commit name from a number, so a series can be as long as a case needs.
+fn nth_commit(n: usize) -> String {
+    format!("{n:040x}")
+}
+
+/// A record of one job's series, one commit per share, in the order given.
+fn series_of(check: &str, shares: &[u64], budget_minutes: u64) -> Vec<Kept> {
+    shares
+        .iter()
+        .enumerate()
+        .map(|(n, share)| {
+            record(
+                &nth_commit(n + 1),
+                &format!("2026-08-{:02}T00:00:00Z", n + 1),
+                &[spent(
+                    check,
+                    share * budget_minutes * 60 / 100,
+                    budget_minutes,
+                )],
+            )
+        })
+        .collect()
+}
+
+fn only_movement(kept: &[Kept]) -> Movement {
+    let found = movements(kept);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    found.into_iter().next().expect("one movement")
+}
+
+/// HOW MUCH A JOB SWINGS ON ITS OWN IS WHAT SAYS WHICH MOVEMENTS ARE NEWS.
+///
+/// R1270, and the cost of not printing it is measured rather than imagined:
+/// R1268's ledger recorded `validate` gaining eleven points between two pushes as
+/// a budget running away. On this repository's own record that job moves by as
+/// much as thirteen points between adjacent commits while nothing about it
+/// changes, so the eleven were its noise. Nothing in the sentence said so, and the
+/// only way to find out was to read thirty JSON files by hand.
+#[test]
+fn how_far_a_job_moves_between_adjacent_commits_is_part_of_its_sentence() {
+    let kept = series_of("noisy", &[40, 20, 41, 21, 40], 100);
+    let movement = only_movement(&kept);
+    assert_eq!(
+        (
+            movement.first_share(),
+            movement.last_share(),
+            movement.points()
+        ),
+        (40, 40, 0),
+        "the ends agree, which is exactly the series a reader would call flat: {movement:?}"
+    );
+    assert_eq!(
+        movement.jitter, 21,
+        "and it is nothing of the kind — it swings by twenty-one points between \
+         one commit and the next: {movement:?}"
+    );
+    let said = ci_state::history::movement_line(&movement);
+    assert!(
+        said.contains("21 point(s) on their own"),
+        "and the sentence carries it, because a reader who has to open the record \
+         to learn it will not: {said}"
+    );
+}
+
+/// A SERIES THAT SEPARATES IN ONE PLACE IS A STEP, AND THE PLACE IS NAMEABLE.
+///
+/// R1270. The movement between the ends of `validate`'s window reads as a climb
+/// of twenty-two points; the window is two levels with a jump between them, and
+/// the difference decides what the next round does — extrapolate a line, or go
+/// and read one commit.
+#[test]
+fn a_series_that_separates_in_exactly_one_place_is_named_a_step() {
+    // THE EXPENSIVE SIDE DOES NOT OPEN AT ITS OWN MINIMUM, and that is what makes
+    // this series separate in ONE place: a side whose first run is its cheapest
+    // would be clean at the next cut too, which the rule reads as a staircase.
+    let kept = series_of("stepped", &[24, 27, 26, 44, 39, 42, 46], 100);
+    let movement = only_movement(&kept);
+    let step = movement
+        .step
+        .as_ref()
+        .unwrap_or_else(|| panic!("this series separates and nothing said so: {movement:?}"));
+    assert_eq!(
+        (step.before, step.below, step.after, step.above),
+        (3, 27, 4, 39),
+        "three runs at or below 27% and four at or above 39% — and `above` is the \
+         LOWEST of that side rather than the run the step lands on: {step:?}"
+    );
+    assert_eq!(
+        step.at,
+        nth_commit(4),
+        "and the commit named is the OLDEST run on the expensive side, which is \
+         the one to go and read: {step:?}"
+    );
+    let said = ci_state::history::movement_line(&movement);
+    assert!(
+        said.contains("STEP rather than a climb") && said.contains(&nth_commit(4)[..8]),
+        "{said}"
+    );
+}
+
+/// A STEADY CLIMB IS CLEAN AT EVERY CUT, WHICH IS WHY ONE CLEAN CUT IS NOT ENOUGH.
+///
+/// R1270, and this is the case that makes the rule mean something. A slope
+/// satisfies "everything before is cheaper than everything after" wherever it is
+/// cut, so a detector that fired on the existence of such a cut would report the
+/// steadiest climb in the repository as a step and send its reader to one
+/// arbitrary commit to look for a cause that is spread across all of them.
+#[test]
+fn a_steady_climb_is_not_reported_as_a_step_even_though_every_cut_is_clean() {
+    let kept = series_of("climbing", &[10, 20, 30, 40, 50, 60, 70], 100);
+    let movement = only_movement(&kept);
+    assert_eq!(
+        movement.points(),
+        60,
+        "the climb is real and the movement says so: {movement:?}"
+    );
+    assert!(
+        movement.step.is_none(),
+        "but it separates everywhere, which is a slope and not a step: {movement:?}"
+    );
+    assert!(
+        !ci_state::history::movement_line(&movement).contains("STEP"),
+        "{movement:?}"
+    );
+}
+
+/// AND A SIDE OF FEWER THAN THREE RUNS IS NOT A LEVEL.
+///
+/// R1270. "Every run before is cheaper than every run after" is trivially true of
+/// any series whose first measurement happened to be its lowest, and the jobs in
+/// this repository's record move by eight to thirteen points between adjacent
+/// commits — so a one- or two-run side is a claim about noise wearing the clothes
+/// of a claim about a level.
+#[test]
+fn a_side_too_short_to_be_a_level_is_not_read_as_one() {
+    let kept = series_of("lucky-first", &[10, 44, 35, 47, 36, 45, 40], 100);
+    let movement = only_movement(&kept);
+    assert!(
+        movement.step.is_none(),
+        "one cheap run at the front is not a level the rest stepped up from: {movement:?}"
+    );
+}
+
+/// A SERIES THAT SEPARATES IN MORE THAN ONE PLACE IS NEITHER, AND SAYS NOTHING.
+///
+/// R1270. A staircase does separate — twice — and this reporter does not choose
+/// between them. The range and the jitter are still printed, so the reader is not
+/// left with less than before; what they are not given is a place to go that the
+/// data does not single out.
+#[test]
+fn a_series_that_separates_twice_is_not_narrowed_to_one_of_them() {
+    let kept = series_of("staircase", &[10, 11, 12, 30, 31, 32, 50, 51, 52], 100);
+    let movement = only_movement(&kept);
+    assert!(
+        movement.step.is_none(),
+        "two separations and neither is THE place: {movement:?}"
+    );
+}

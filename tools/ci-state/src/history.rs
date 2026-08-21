@@ -257,6 +257,100 @@ fn read_record(path: &Path) -> Result<Kept, String> {
     Ok(kept)
 }
 
+/// A place in one job's completed series where every run before was cheaper than
+/// every run after — a STEP, and not a slope.
+///
+/// WHY THE DISTINCTION IS THE WHOLE POINT. A movement between the ENDS of a
+/// window reads as a climb, and a reader who reads it that way extrapolates: so
+/// many points per commit, so many commits until the budget. If the window is two
+/// LEVELS with a jump between them, that arithmetic is about a line nothing is
+/// on. The question stops being "when does it reach the budget" and becomes "what
+/// changed at that commit", which is a different round.
+///
+/// R1270 MEASURED WHAT NOT SAYING WHICH COSTS. `validate` reads 24% → 46% across
+/// 24 completed runs, and R1268's ledger wrote that down as a climb of eleven
+/// points in one commit. It is neither: the first four runs are 24–27%, the
+/// twenty after them are 33–48%, and the level has not moved in three days. The
+/// eleven points were the gap between two adjacent runs of a job whose adjacent
+/// runs differ by that much routinely.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Step {
+    /// The commit of the OLDEST run on the expensive side — the place to look.
+    pub at: String,
+    /// When that run went.
+    pub when: String,
+    /// How many completed runs sit below the split.
+    pub before: usize,
+    /// The HIGHEST share among them.
+    pub below: u64,
+    /// How many sit above it.
+    pub after: usize,
+    /// The LOWEST share among those.
+    pub above: u64,
+}
+
+/// How many completed runs a side needs before it is a LEVEL rather than a
+/// couple of points.
+///
+/// TWO WOULD BE ENOUGH TO SATISFY THE ARITHMETIC AND IS NOT ENOUGH TO MEAN
+/// ANYTHING. "Every run before is cheaper than every run after" is trivially true
+/// of a series whose first measurement happened to be its lowest, and this
+/// record's own jobs move by eight to thirteen points between adjacent commits —
+/// so a two-run side is a claim about noise. Three is the smallest side that
+/// cannot be one accident, and it is stated here rather than buried in a
+/// comparison because it is the whole of what this detector is willing to assert.
+const A_LEVEL: usize = 3;
+
+/// The one place a job's completed series splits into two levels, if there is
+/// exactly one.
+///
+/// A CLEAN SPLIT is an index where every share before it is strictly below every
+/// share after it, with at least [`A_LEVEL`] runs on each side.
+///
+/// EXACTLY ONE, AND THAT IS THE WHOLE DISCRIMINATOR AGAINST A SLOPE. A series
+/// that climbs steadily is clean at EVERY index — 10, 20, 30, 40, 50, 60, 70
+/// splits anywhere you cut it — so "there is a clean split" on its own would
+/// report the steadiest climb in the repository as a step and send its reader to
+/// one arbitrary commit to look for a cause spread across all of them. A step is
+/// a series that separates in ONE place and nowhere else.
+///
+/// Measured against this repository's own record, which is what says the rule is
+/// not vacuous in either direction: of the ten jobs it holds, nine have no clean
+/// split at all and `validate` has exactly one.
+///
+/// `None` is the ordinary answer and means the movement between the ends is what
+/// it looks like — the reader has the range and the jitter beside it either way.
+#[must_use]
+pub fn step_in(shares: &[u64]) -> Option<usize> {
+    let mut only = None;
+    for at in A_LEVEL..=shares.len().saturating_sub(A_LEVEL) {
+        let (before, after) = shares.split_at(at);
+        let (Some(below), Some(above)) = (before.iter().max(), after.iter().min()) else {
+            continue;
+        };
+        if below >= above {
+            continue;
+        }
+        if only.is_some() {
+            // A SECOND CLEAN SPLIT AND THE ANSWER IS NO. Whether this series is a
+            // staircase or a slope, it does not separate in one place, and this
+            // reporter says nothing rather than picking one of them.
+            return None;
+        }
+        only = Some(at);
+    }
+    only
+}
+
+/// The largest move between adjacent entries, or zero when there is no pair.
+fn largest_adjacent_move(shares: &[u64]) -> u64 {
+    shares
+        .windows(2)
+        .map(|pair| pair[1].abs_diff(pair[0]))
+        .max()
+        .unwrap_or(0)
+}
+
 /// Where one job's share of its budget has been across the record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Movement {
@@ -294,6 +388,21 @@ pub struct Movement {
     /// and a reader who is not told that is reading a curve over a population
     /// they did not choose.
     pub set_aside: usize,
+    /// The largest move between ADJACENT completed runs — how much this job
+    /// swings on its own, from one commit to the next.
+    ///
+    /// THE NUMBER THAT SAYS WHICH MOVEMENTS ARE NEWS. R1268 read `validate`
+    /// gaining eleven points between two pushes as a cost that was running away;
+    /// this job moves by as much as thirteen between adjacent commits while
+    /// changing nothing, and `every test compiled is one CI runs` swings twenty
+    /// while beginning and ending the window at four per cent. A movement
+    /// smaller than this number is the job's noise and not its trend, and the
+    /// only way a reader could know that was to go and read thirty JSON files.
+    pub jitter: u64,
+    /// Where the completed series splits into two levels, when it does — see
+    /// [`Step`]. `None` means the movement between the ends is what it looks
+    /// like, which is the ordinary answer.
+    pub step: Option<Step>,
     /// The furthest any of those set-aside runs got, as a share of the budget the
     /// job declares now.
     ///
@@ -373,13 +482,17 @@ impl Movement {
 /// [`Movement::set_aside`] and [`Movement::reached`].
 #[must_use]
 pub fn movements(kept: &[Kept]) -> Vec<Movement> {
-    let mut series: BTreeMap<&str, Vec<(&str, &Spent)>> = BTreeMap::new();
+    // THE COMMIT TRAVELS WITH THE POINT since R1270, because a step is a PLACE:
+    // "the level rose here" is only worth printing if the reader is told where
+    // here is, and a timestamp is not something anybody can go and read.
+    let mut series: BTreeMap<&str, Vec<(&str, &str, &Spent)>> = BTreeMap::new();
     for one in kept {
         for job in &one.jobs {
-            series
-                .entry(job.check.as_str())
-                .or_default()
-                .push((one.ran_at.as_str(), job));
+            series.entry(job.check.as_str()).or_default().push((
+                one.commit.as_str(),
+                one.ran_at.as_str(),
+                job,
+            ));
         }
     }
     series
@@ -390,27 +503,44 @@ pub fn movements(kept: &[Kept]) -> Vec<Movement> {
             // well as one that passed. Reading it off the newest completed run
             // instead would hold today's durations against a budget the workflow
             // may have changed since.
-            let (_, newest) = *rows.last()?;
+            let (_, _, newest) = *rows.last()?;
             let against = newest.budget_minutes;
             let (ran, stopped): (Vec<_>, Vec<_>) = rows
                 .iter()
-                .partition(|(_, one)| one.conclusion == RAN_TO_COMPLETION);
-            let (since, first) = *ran.first()?;
-            let (_, last) = *ran.last()?;
-            let shares = ran.iter().map(|(_, one)| share_of(one.took, against));
+                .partition(|(_, _, one)| one.conclusion == RAN_TO_COMPLETION);
+            let (_, since, first) = *ran.first()?;
+            let (_, _, last) = *ran.last()?;
+            let shares: Vec<u64> = ran
+                .iter()
+                .map(|(_, _, one)| share_of(one.took, against))
+                .collect();
+            // THE STEP IS DRAWN OVER THE SAME POPULATION AS THE MOVEMENT — the
+            // runs that completed. A duration is a fact about every run; a COST
+            // is a fact only about one that ran all its steps, and a level built
+            // from both would be a level over two different quantities.
+            let step = step_in(&shares).map(|at| Step {
+                at: ran[at].0.to_string(),
+                when: ran[at].1.to_string(),
+                before: at,
+                below: shares[..at].iter().copied().max().unwrap_or(0),
+                after: shares.len() - at,
+                above: shares[at..].iter().copied().min().unwrap_or(0),
+            });
             Some(Movement {
                 check: check.to_string(),
                 first: first.clone(),
                 last: last.clone(),
-                low: shares.clone().min()?,
-                high: shares.max()?,
+                low: shares.iter().copied().min()?,
+                high: shares.iter().copied().max()?,
                 commits: ran.len(),
                 since: since.to_string(),
-                budgets: ran.iter().map(|(_, one)| one.budget_minutes).collect(),
+                budgets: ran.iter().map(|(_, _, one)| one.budget_minutes).collect(),
+                jitter: largest_adjacent_move(&shares),
+                step,
                 set_aside: stopped.len(),
                 reached: stopped
                     .iter()
-                    .map(|(_, one)| share_of(one.took, against))
+                    .map(|(_, _, one)| share_of(one.took, against))
                     .max()
                     .unwrap_or(0),
             })
@@ -434,11 +564,57 @@ fn set_aside_clause(movement: &Movement) -> String {
     )
 }
 
+/// How much the job swings on its own, as the clause that follows the movement.
+///
+/// EMPTY UNTIL THERE ARE THREE COMPLETED RUNS, and that is not a threshold for
+/// tidiness. With two runs there is ONE adjacent pair, so the largest move
+/// between adjacent commits IS the movement between the ends — the same number
+/// printed twice, the second time wearing the word "own", which would tell a
+/// reader that the only measurement in the window is noise.
+fn jitter_clause(movement: &Movement) -> String {
+    if movement.commits < 3 {
+        return String::new();
+    }
+    format!(
+        "; adjacent commits move it by as much as {} point(s) on their own",
+        movement.jitter
+    )
+}
+
+/// What a movement is SHAPED like, as the clause that follows it.
+///
+/// EMPTY WHEN THE SERIES DOES NOT SEPARATE, which is the ordinary case and the
+/// one where the movement between the ends is what it looks like. When it does
+/// separate, this is the difference between a reader extrapolating a line and a
+/// reader going to look at a commit — see [`Step`].
+fn step_clause(movement: &Movement) -> String {
+    let Some(step) = &movement.step else {
+        return String::new();
+    };
+    format!(
+        "; and that movement is a STEP rather than a climb — the {} completed run(s) before \
+         {} ({}) are all at or below {}% and the {} from there on are all at or above {}%, \
+         and the series separates nowhere else, so what to ask is what changed at that \
+         commit rather than when the budget is reached",
+        step.before,
+        short(&step.at),
+        step.when,
+        step.below,
+        step.after,
+        step.above
+    )
+}
+
 /// How one job's history reads as a sentence.
 #[must_use]
 pub fn movement_line(movement: &Movement) -> String {
     let commits = movement.commits;
-    let aside = set_aside_clause(movement);
+    let aside = format!(
+        "{}{}{}",
+        jitter_clause(movement),
+        step_clause(movement),
+        set_aside_clause(movement)
+    );
     if movement.budget_steady() {
         return format!(
             "`{}` {}% → {}% ({:+} points over {commits} commit(s) it completed; {}–{}% \

@@ -315,6 +315,21 @@
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
       ]
     },
+    "a-series-that-separates-in-one-place-is-read-as-a-climb": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let step = step_in(&shares).map(|at| Step {",
+          "to": "    let step = None.map(|at: usize| Step {"
+        }
+      ],
+      "expect_red": [
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step"
+      ],
+      "tests": [
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step"
+      ]
+    },
     "a-share-off-disk-saturates-into-an-alarming-number": {
       "edits": [
         {
@@ -328,6 +343,27 @@
       ],
       "tests": [
         "a_duration_nobody_worked_is_a_number_rather_than_a_panic"
+      ]
+    },
+    "a-side-of-one-run-is-read-as-a-level": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "const A_LEVEL: usize = 3;",
+          "to": "const A_LEVEL: usize = 1;"
+        }
+      ],
+      "expect_red": [
+        "a_side_too_short_to_be_a_level_is_not_read_as_one",
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step",
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ],
+      "tests": [
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step",
+        "a_side_too_short_to_be_a_level_is_not_read_as_one",
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "a-single-point-is-drawn-as-a-trend": {
@@ -395,8 +431,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
-          "from": "                .partition(|(_, one)| one.conclusion == RAN_TO_COMPLETION);",
-          "to": "                .partition(|(_, one)| !one.conclusion.is_empty());"
+          "from": "                .partition(|(_, _, one)| one.conclusion == RAN_TO_COMPLETION);",
+          "to": "                .partition(|(_, _, one)| !one.conclusion.is_empty());"
         }
       ],
       "expect_red": [
@@ -472,6 +508,21 @@
         "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
+    "how-far-a-job-swings-on-its-own-is-not-printed": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if movement.commits < 3 {\n        return String::new();\n    }",
+          "to": "    if movement.commits < usize::MAX {\n        return String::new();\n    }"
+        }
+      ],
+      "expect_red": [
+        "how_far_a_job_moves_between_adjacent_commits_is_part_of_its_sentence"
+      ],
+      "tests": [
+        "how_far_a_job_moves_between_adjacent_commits_is_part_of_its_sentence"
+      ]
+    },
     "no-failing-check-is-asked-what-step-ended-it": {
       "edits": [
         {
@@ -489,6 +540,23 @@
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
         "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ]
+    },
+    "one-clean-cut-is-enough-to-call-a-series-a-step": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        if only.is_some() {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_steady_climb_is_not_reported_as_a_step_even_though_every_cut_is_clean",
+        "a_series_that_separates_twice_is_not_narrowed_to_one_of_them"
+      ],
+      "tests": [
+        "a_series_that_separates_twice_is_not_narrowed_to_one_of_them",
+        "a_steady_climb_is_not_reported_as_a_step_even_though_every_cut_is_clean"
       ]
     },
     "only-the-word-failure-gets-its-step-named": {
@@ -670,6 +738,23 @@
       ],
       "tests": [
         "the_census_names_every_row_and_the_lines_name_every_row_that_is_not_success"
+      ]
+    },
+    "the-jitter-is-printed-for-a-window-of-two-runs": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if movement.commits < 3 {\n        return String::new();\n    }",
+          "to": "    if movement.commits < 2 {\n        return String::new();\n    }"
+        }
+      ],
+      "expect_red": [
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ],
+      "tests": [
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "the-job-is-taken-from-the-checks-own-id": {

@@ -708,8 +708,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/history.rs",
-          "from": "                .partition(|(_, one)| one.conclusion == RAN_TO_COMPLETION);",
-          "to": "                .partition(|(_, one)| !one.conclusion.is_empty());"
+          "from": "                .partition(|(_, _, one)| one.conclusion == RAN_TO_COMPLETION);",
+          "to": "                .partition(|(_, _, one)| !one.conclusion.is_empty());"
         }
       ],
       "expect_red": [
@@ -767,6 +767,77 @@
         }
       ],
       "expect_red": ["a_directory_that_stopped_reading_at_once_is_one_fact_and_not_thirty"]
+    },
+    {
+      "name": "how-far-a-job-swings-on-its-own-is-not-printed",
+      "why": "R1270. Without it a reader has the ends and the range and no way to tell a movement from this job's noise — which is measured rather than supposed: R1268's ledger read `validate` gaining eleven points between two pushes as a budget running away, and that job moves by as much as thirteen between adjacent commits while nothing about it changes",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if movement.commits < 3 {\n        return String::new();\n    }",
+          "to": "    if movement.commits < usize::MAX {\n        return String::new();\n    }"
+        }
+      ],
+      "expect_red": ["how_far_a_job_moves_between_adjacent_commits_is_part_of_its_sentence"]
+    },
+    {
+      "name": "the-jitter-is-printed-for-a-window-of-two-runs",
+      "why": "R1270. With two completed runs there is ONE adjacent pair, so the largest move between adjacent commits IS the movement between the ends — printing it there is the same number twice, the second time wearing the word `own`, which tells a reader that the only measurement in the window is noise",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    if movement.commits < 3 {\n        return String::new();\n    }",
+          "to": "    if movement.commits < 2 {\n        return String::new();\n    }"
+        }
+      ],
+      "expect_red": [
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ]
+    },
+    {
+      "name": "a-series-that-separates-in-one-place-is-read-as-a-climb",
+      "why": "R1270. A movement between the ends of a window reads as a slope, and a reader who reads it that way extrapolates a line nothing is on. `validate` is two levels with a jump between them and R1268's ledger recorded it as a climb",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "    let step = step_in(&shares).map(|at| Step {",
+          "to": "    let step = None.map(|at: usize| Step {"
+        }
+      ],
+      "expect_red": ["a_series_that_separates_in_exactly_one_place_is_named_a_step"]
+    },
+    {
+      "name": "one-clean-cut-is-enough-to-call-a-series-a-step",
+      "why": "R1270, and this is the clause that keeps the detector from firing on the steadiest climb in the repository. A series that rises every commit separates cleanly WHEREVER it is cut, so a rule that stopped at the first clean cut would send its reader to one arbitrary commit to look for a cause spread across all of them",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        if only.is_some() {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_steady_climb_is_not_reported_as_a_step_even_though_every_cut_is_clean",
+        "a_series_that_separates_twice_is_not_narrowed_to_one_of_them"
+      ]
+    },
+    {
+      "name": "a-side-of-one-run-is-read-as-a-level",
+      "why": "R1270. `every run before is cheaper than every run after` is trivially true of any series whose first measurement happened to be its lowest, and this record's jobs move by eight to thirteen points between adjacent commits — so a one-run side is a claim about noise wearing the clothes of a claim about a level. IT REDDENS FOUR CASES AND ALL FOUR ARE THE SAME HARM: a window of TWO runs becomes able to step at all, which is why the two records built from two commits break; and a seven-run series gains a second separation at its first run, which is why the step case breaks with it",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "const A_LEVEL: usize = 3;",
+          "to": "const A_LEVEL: usize = 1;"
+        }
+      ],
+      "expect_red": [
+        "a_side_too_short_to_be_a_level_is_not_read_as_one",
+        "a_series_that_separates_in_exactly_one_place_is_named_a_step",
+        "the_steepest_rise_is_named_even_when_it_is_not_the_job_closest_to_its_budget",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ]
     }
   ]
 }
