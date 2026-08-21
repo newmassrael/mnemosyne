@@ -148,6 +148,12 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
 #[test]
 fn a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag() {
     let root = repository_root();
+    let declaring = ci_plan::commands_this_repository_issues(&root)
+        .rust
+        .declaring
+        .get("PinnedWhenItIsOurs")
+        .copied()
+        .unwrap_or(0);
     let commands = everything_this_repository_issues(&root);
     // THE SITE IS ASKED THROUGH ITS COMMANDS, because a site whose flag is
     // unconditional issues exactly ONE and that is the whole defect. Commands
@@ -174,6 +180,24 @@ fn a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag() {
         "no command in this repository declares `Tree::PinnedWhenItIsOurs`, so \
          this law holds over nothing — the arm is either unnecessary or \
          unreachable, and both are things to know"
+    );
+    // AND EVERY SITE THAT DECLARES THE ARM IS ONE THIS LAW REACHED (R1271).
+    // A law about an arm asks its COMMANDS, and a site whose words stopped being
+    // readable issues none — so it leaves this law quietly, and the law goes on
+    // passing over the sites that remain. Measured: `stale-artifacts::apply`
+    // declares this arm and issued no judged command at all until R1271 read the
+    // list its helper returns, and this assertion was the missing half rather
+    // than the hop. "Not empty" was a floor of one.
+    assert_eq!(
+        by_site.len(),
+        declaring,
+        "{} site(s) declare `Tree::PinnedWhenItIsOurs` and this law reached {} \
+         of them — a site that issues no readable command is a site this law \
+         passes over in silence, which is exactly what it did for \
+         `stale-artifacts::apply` until the list its helper returns was read: {:?}",
+        declaring,
+        by_site.len(),
+        by_site.keys().collect::<Vec<_>>()
     );
     let broken: Vec<String> = by_site
         .iter()

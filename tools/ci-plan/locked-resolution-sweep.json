@@ -269,6 +269,20 @@
       "expect_red": [
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
       ]
+    },
+    {
+      "name": "a-site-that-declares-the-arm-and-issues-nothing-leaves-in-silence",
+      "why": "R1271, and this injection is the round's own subject. A law about an arm asks its COMMANDS, so a site whose words stop being readable issues none and drops out — and the law goes on passing over the sites that remain, which is a green meaning `two sites are fine` read as `this repository's sites are fine`. Measured: `stale-artifacts::apply` declares this arm and issued no judged command at all until the list its helper returns was read. Taking the hop away puts the tree back in that state, and the count of DECLARING sites is what notices",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        self.list_a_call_returns(expression)\n    }",
+          "to": "        let _ = expression;\n        None\n    }"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ]
     }
   ]
 }

@@ -1856,6 +1856,138 @@ fn only(text: &str) -> RustSpawn {
     found.into_iter().next().expect("one")
 }
 
+/// A LIST A FUNCTION HANDS BACK IS THE LIST THE CALLER HOLDS.
+///
+/// R1271, and the site it exists for is `stale-artifacts::apply`, whose whole
+/// command is `clean_arguments(freshen, package)` — a `vec![..]` and a
+/// conditional push, one call away, in the shape R1266 already reads when it is
+/// written beside the spawn. Before this hop the binding was dropped and the
+/// `.args(..)` two lines down was a hole no law could ask anything of: measured,
+/// that site issued NO judged command, and the law about a site that pins when
+/// the tree is ours was holding over two of the three sites that declare it.
+#[test]
+fn a_list_a_function_returns_is_read_one_call_away() {
+    let site = only(
+        r#"fn f(package: &str) {
+               let arguments = words(package);
+               issue::cargo(Tree::ThisRepository).args(&arguments);
+           }
+           fn words(package: &str) -> Vec<String> {
+               vec!["clean".to_string(), "-p".to_string(), package.to_string()]
+           }"#,
+    );
+    assert_eq!(
+        site.words,
+        vec![
+            Word::Spelled("clean".to_string()),
+            Word::Spelled("-p".to_string()),
+            Word::Runtime("$package.to_string()".to_string()),
+        ],
+        "{site:#?}"
+    );
+}
+
+/// A FUNCTION WITH TWO WAYS OUT HANDS BACK TWO LISTS, AND NEITHER IS THE ONE.
+///
+/// R1271. `ways_of` enumerates the choices WITHIN one list and has nothing to say
+/// about a choice BETWEEN lists, so a helper that returns early is left unread
+/// rather than read as whichever list its tail happens to name — which would be a
+/// command nobody issues, reported as one this repository does.
+#[test]
+fn a_function_that_returns_early_hands_back_no_list_this_reader_will_use() {
+    let site = only(
+        r#"fn f(quick: bool) {
+               let arguments = words(quick);
+               issue::cargo(Tree::ThisRepository).args(&arguments);
+           }
+           fn words(quick: bool) -> Vec<String> {
+               if quick {
+                   return vec!["check".to_string()];
+               }
+               vec!["build".to_string()]
+           }"#,
+    );
+    assert!(
+        matches!(
+            site.words.first(),
+            Some(Word::Unknown(_, ci_plan::rust::MayHold::Anything))
+        ),
+        "{site:#?}"
+    );
+}
+
+/// AND A NAME THAT MEANS TWO FUNCTIONS MEANS NEITHER (R1263's rule).
+#[test]
+fn a_name_that_returns_a_list_in_two_files_is_not_followed_into_either() {
+    let found = ci_plan::rust::spawns_across(&[
+        (
+            "a/one.rs",
+            r#"fn f() {
+                   let arguments = words();
+                   issue::cargo(Tree::ThisRepository).args(&arguments);
+               }
+               fn words() -> Vec<String> { vec!["build".to_string()] }"#,
+            "a",
+        ),
+        (
+            "a/two.rs",
+            r#"fn words() -> Vec<String> { vec!["check".to_string()] }"#,
+            "a",
+        ),
+    ]);
+    let site = found
+        .iter()
+        .find(|site| site.owner.ends_with("f"))
+        .unwrap_or_else(|| panic!("{found:#?}"));
+    assert!(
+        matches!(site.words.first(), Some(Word::Unknown(..))),
+        "two definitions and the call names neither: {site:#?}"
+    );
+}
+
+/// THE CHOICES INSIDE A RETURNED LIST ARE THE CALLER'S OWN, RENUMBERED.
+///
+/// R1271, and this is the half that is invisible until it is wrong. A
+/// `Branch::choice` is a number within ONE walk and the returned list was read by
+/// another, so a list spliced in carrying its old numbers collides with the
+/// calling function's choices — and `ways_of`, which groups by that number, would
+/// enumerate two INDEPENDENT decisions as though taking one arm of the first
+/// settled the second. Two conditional words, one in each function, are four
+/// commands; under a collision they are two.
+#[test]
+fn a_choice_inside_a_returned_list_is_independent_of_the_callers_own() {
+    let ways = only(
+        r#"fn f(locked: bool, quiet: bool) {
+               let mut arguments = words(locked);
+               if quiet {
+                   arguments.push("--quiet".to_string());
+               }
+               issue::cargo(Tree::ThisRepository).args(&arguments);
+           }
+           fn words(locked: bool) -> Vec<String> {
+               let mut out = vec!["build".to_string()];
+               if locked {
+                   out.push("--locked".to_string());
+               }
+               out
+           }"#,
+    )
+    .variants()
+    .expect("the paths can be enumerated");
+    let mut said: Vec<String> = ways.iter().map(|way| way.words.join(" ")).collect();
+    said.sort();
+    assert_eq!(
+        said,
+        vec![
+            "build".to_string(),
+            "build --locked".to_string(),
+            "build --locked --quiet".to_string(),
+            "build --quiet".to_string(),
+        ],
+        "two independent choices are four commands, and a collision makes them two"
+    );
+}
+
 #[test]
 fn a_cargo_spawn_beside_the_door_is_seen_however_it_names_cargo() {
     // Four spellings, and every one of them was in this tree before R1262.

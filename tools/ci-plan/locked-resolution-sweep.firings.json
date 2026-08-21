@@ -116,6 +116,21 @@
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     },
+    "a-site-that-declares-the-arm-and-issues-nothing-leaves-in-silence": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        self.list_a_call_returns(expression)\n    }",
+          "to": "        let _ = expression;\n        None\n    }"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ]
+    },
     "a-site-that-pins-when-ours-spells-the-flag-on-every-path": {
       "edits": [
         {

@@ -152,6 +152,26 @@ pub enum Declared {
     Unreadable(String),
 }
 
+impl Declared {
+    /// The arm's own name, so a law about ONE arm can ask how many sites
+    /// declared it.
+    ///
+    /// A NAME RATHER THAN A `matches!` AT EVERY CALLER, for the reason R1268
+    /// gave about the list of laws: a fact several places re-derive is a fact
+    /// they are free to derive differently.
+    #[must_use]
+    pub fn arm(&self) -> &'static str {
+        match self {
+            Self::ThisRepository => "ThisRepository",
+            Self::MadeByThisRun(_) => "MadeByThisRun",
+            Self::WhereverTheCallerPoints(_) => "WhereverTheCallerPoints",
+            Self::PinnedWhereverItPoints(_) => "PinnedWhereverItPoints",
+            Self::PinnedWhenItIsOurs(_) => "PinnedWhenItIsOurs",
+            Self::Unreadable(_) => "Unreadable",
+        }
+    }
+}
+
 /// The program a spawn site runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Program {
@@ -805,6 +825,22 @@ pub struct RustSpawns {
     pub our_binaries: usize,
     /// Spawns of another program, named by a literal — `git`, `bash`, `tar`.
     pub other_programs: usize,
+    /// How many SITES declared each [`Declared`] arm, whatever became of their
+    /// words — see [`Declared::arm`].
+    ///
+    /// R1271, AND IT EXISTS BECAUSE A LAW ABOUT AN ARM ASKS ITS COMMANDS. A site
+    /// that issues no readable command contributes none, so a site whose words
+    /// stop being readable leaves such a law holding over fewer sites with
+    /// nothing saying so. Measured: `stale-artifacts::apply` declares
+    /// `PinnedWhenItIsOurs` and issued NO judged command at all until this
+    /// round, and the law over that arm was passing on two of the three sites
+    /// that declare it — a green that meant "two sites are fine", read as "this
+    /// repository's sites are fine".
+    ///
+    /// R1228's shape once more: the count is handed over rather than left for a
+    /// caller to reconstruct, because a caller that has to reconstruct it is a
+    /// caller that will not.
+    pub declaring: BTreeMap<String, usize>,
     /// Every tracked Rust file this walk parsed — the reach, which an empty
     /// finding list alone can never distinguish from a walk that did not run.
     pub files: usize,
@@ -903,13 +939,25 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
     // words are at the call sites, and those are in files this walk may not have
     // reached yet. So every file is walked first and the holes are followed
     // afterwards, over the whole tree at once.
+    // A PASS OF ITS OWN, BEFORE THE ONE THAT READS SPAWNS (R1271). A helper is
+    // as often written BELOW the function that calls it as above it, and a
+    // reading that collected returned lists as it went would answer for one
+    // order of the file and not the other. The lists are gathered over the whole
+    // tree first, so a call reads the same wherever its helper sits.
+    // ONE COMPUTATION OF WHICH CRATE EACH FILE BELONGS TO, read by both passes.
+    let directories: BTreeMap<String, String> = parsed
+        .iter()
+        .map(|(path, _, _)| (path.clone(), manifest_dir_of(path, &manifests)))
+        .collect();
+    let returned = returned_word_lists(&parsed, &shared, &directories);
+
     let mut sites = Vec::new();
     let mut calls = Vec::new();
     let mut walked: Vec<(String, syn::File, String)> = Vec::new();
     for (path, file, named) in parsed {
         found.files += 1;
-        let manifest_dir = manifest_dir_of(&path, &manifests);
-        let mut walk = Walk::new(&path, &named, &shared, manifest_dir.clone());
+        let manifest_dir = directories.get(&path).cloned().unwrap_or_default();
+        let mut walk = Walk::new(&path, &named, &shared, manifest_dir.clone(), &returned);
         walk.visit_file(&file);
         sites.append(&mut walk.sites);
         calls.append(&mut walk.calls);
@@ -953,6 +1001,13 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                     continue;
                 }
             };
+            // COUNTED WHERE THE DECLARATION IS READ AND BEFORE ANY SORTING, so
+            // the number is about SITES rather than about whichever bucket their
+            // words landed in.
+            *found
+                .declaring
+                .entry(declared.arm().to_string())
+                .or_default() += 1;
             found.ways_no_table_can_key_on += site.ways_no_table_can_key_on();
             match site.complete_words() {
                 Some(words) => found
@@ -1105,15 +1160,31 @@ pub fn spawns_across(sources: &[(&str, &str, &str)]) -> Vec<RustSpawn> {
     let mut sites = Vec::new();
     let mut calls = Vec::new();
     let mut walked = Vec::new();
-    for (source, text, manifest_dir) in sources {
-        let file =
-            syn::parse_file(text).unwrap_or_else(|why| panic!("{source} does not parse: {why}"));
-        let named = named_values(&file);
-        let mut walk = Walk::new(source, &named, &shared, (*manifest_dir).to_string());
-        walk.visit_file(&file);
+    // THE SAME TWO PASSES THE TREE WALK MAKES, so a fixture drives the hop
+    // R1271 added rather than only the tree doing so. A helper is as often
+    // written below its caller as above it, which is the whole reason the
+    // returned lists are gathered before any spawn is read.
+    let parsed: Vec<(String, syn::File, Landings)> = sources
+        .iter()
+        .map(|(source, text, _)| {
+            let file = syn::parse_file(text)
+                .unwrap_or_else(|why| panic!("{source} does not parse: {why}"));
+            let named = named_values(&file);
+            ((*source).to_string(), file, named)
+        })
+        .collect();
+    let directories: BTreeMap<String, String> = sources
+        .iter()
+        .map(|(source, _, manifest_dir)| ((*source).to_string(), (*manifest_dir).to_string()))
+        .collect();
+    let returned = returned_word_lists(&parsed, &shared, &directories);
+    for (source, file, named) in &parsed {
+        let manifest_dir = directories.get(source).cloned().unwrap_or_default();
+        let mut walk = Walk::new(source, named, &shared, manifest_dir.clone(), &returned);
+        walk.visit_file(file);
         sites.append(&mut walk.sites);
         calls.append(&mut walk.calls);
-        walked.push(((*source).to_string(), file, (*manifest_dir).to_string()));
+        walked.push((source.clone(), file.clone(), manifest_dir));
     }
     follow_every_hole(&mut sites, &walked, calls);
     sites
@@ -1145,6 +1216,11 @@ struct Walk<'a> {
     named: &'a Landings,
     /// The names every tracked file agrees about.
     shared: &'a BTreeMap<String, String>,
+    /// Every list a tracked plain `fn` hands back — the hop this walk takes when
+    /// a binding's initialiser or a `.args(..)` is a CALL rather than a list.
+    /// Empty while the returned lists are themselves being read, which is what
+    /// stops the reading recursing.
+    returned: &'a BTreeMap<String, Result<Vec<Word>, String>>,
     /// What `env!("CARGO_MANIFEST_DIR")` reads as in this file.
     manifest_dir: String,
     /// The function bodies enclosing what is being visited, innermost last.
@@ -1209,11 +1285,13 @@ impl<'a> Walk<'a> {
         named: &'a Landings,
         shared: &'a BTreeMap<String, String>,
         manifest_dir: String,
+        returned: &'a BTreeMap<String, Result<Vec<Word>, String>>,
     ) -> Self {
         Self {
             path,
             named,
             shared,
+            returned,
             manifest_dir,
             owners: Vec::new(),
             sites: Vec::new(),
@@ -1241,7 +1319,15 @@ impl<'a> Walk<'a> {
     /// Walk a function body with its own binding scope. Bindings are per
     /// function: two functions may each hold a `command`, and carrying one scope
     /// across both would file the second one's arguments under the first.
-    fn in_function(&mut self, name: String, parameters: Vec<String>, body: &syn::Block) {
+    /// Answers the list this function RETURNS, when it returns one — read while
+    /// the function's own scope is still standing, which is the only moment the
+    /// binding its tail names still holds anything.
+    fn in_function(
+        &mut self,
+        name: String,
+        parameters: Vec<String>,
+        body: &syn::Block,
+    ) -> Option<Vec<Word>> {
         let commands = std::mem::take(&mut self.commands);
         let values = std::mem::take(&mut self.values);
         let lists = std::mem::take(&mut self.lists);
@@ -1250,6 +1336,7 @@ impl<'a> Walk<'a> {
         let outer_parameters = std::mem::replace(&mut self.parameters, parameters);
         self.owners.push(name);
         self.visit_block(body);
+        let returned = self.list_returned_by(body);
         self.owners.pop();
         self.commands = commands;
         self.values = values;
@@ -1257,6 +1344,34 @@ impl<'a> Walk<'a> {
         self.shadowed = shadowed;
         self.parameters = outer_parameters;
         self.depth = depth;
+        returned
+    }
+
+    /// The list this function's TAIL EXPRESSION hands back, when it hands one
+    /// back that this walk read.
+    ///
+    /// A `return` ANYWHERE REFUSES THE READING, and that is the whole of this
+    /// reader's caution. A function with two ways out hands back two lists, and
+    /// which one a call site gets is a choice between LISTS — [`ways_of`]
+    /// enumerates choices within one list and has nothing to say about that. So a
+    /// helper that branches its way out is left unread rather than read as
+    /// whichever list its tail happens to name, which would be a command nobody
+    /// issues reported as one this repository does.
+    fn list_returned_by(&self, body: &syn::Block) -> Option<Vec<Word>> {
+        if returns_early(body) {
+            return None;
+        }
+        let Some(syn::Stmt::Expr(tail, None)) = body.stmts.last() else {
+            return None;
+        };
+        match self.list_named(tail) {
+            Some(Ok(words)) => Some(words),
+            // A POISONED BINDING IS NOT A LIST TO HAND ON. Something this walk
+            // does not model happened to it, so what it holds afterwards is
+            // exactly what a call site must not be told.
+            Some(Err(_)) => None,
+            None => word_list(&self.manifest_dir, tail),
+        }
     }
 
     /// Walk something a pattern binds names over — a closure body, a `for` body.
@@ -1328,7 +1443,8 @@ impl<'a> Walk<'a> {
                     // declaration attached to the site would never be reached by
                     // either of them.
                     let (handed, may_hold) = self.words_may_hold(first);
-                    match word_list(&self.manifest_dir, handed) {
+                    let handed = handed.clone();
+                    match self.words_of(&handed) {
                         Some(words) => {
                             for word in words {
                                 self.add_to_list(name, word);
@@ -1339,7 +1455,7 @@ impl<'a> Walk<'a> {
                         // was read before it is still read.
                         None => self.add_to_list(
                             name,
-                            Word::Unknown(rendered_as_a_value(handed), may_hold),
+                            Word::Unknown(rendered_as_a_value(&handed), may_hold),
                         ),
                     }
                 }
@@ -1424,6 +1540,68 @@ impl<'a> Walk<'a> {
     /// One word, read in the file being walked.
     fn read_word_here(&self, expression: &syn::Expr) -> Word {
         read_word(&self.manifest_dir, expression)
+    }
+
+    /// The words an expression hands over: a list written right here, or the one
+    /// a tracked function hands back a single call away.
+    ///
+    /// ONE READER FOR EVERY PLACE A LIST IS TAKEN — the `let` that starts a
+    /// binding, the `.args(..)` beside a spawn, the `.extend(..)` that grows a
+    /// caller's list. A second spelling would be one free to take the hop in one
+    /// of them and not the others, which is how `stale-artifacts::apply` came to
+    /// be a site with no readable command while the same shape two files over
+    /// was read whole.
+    fn words_of(&mut self, expression: &syn::Expr) -> Option<Vec<Word>> {
+        if let Some(words) = word_list(&self.manifest_dir, expression) {
+            return Some(words);
+        }
+        self.list_a_call_returns(expression)
+    }
+
+    /// The list a CALL hands back, renumbered into this walk's own choices.
+    ///
+    /// THE CHOICES ARE RENUMBERED AND THAT IS NOT BOOKKEEPING. A `Branch::choice`
+    /// is a number within ONE walk, and the returned list was read by another; a
+    /// list spliced in with its old numbers would collide with the calling
+    /// function's own choices and [`ways_of`] would enumerate two independent
+    /// decisions as though taking one arm of the first settled the second. It is
+    /// also the right reading on its own terms: the same helper called at two
+    /// sites is two decisions, not one.
+    fn list_a_call_returns(&mut self, expression: &syn::Expr) -> Option<Vec<Word>> {
+        let syn::Expr::Call(call) = through_the_shapes_that_keep_a_list(expression) else {
+            return None;
+        };
+        let name = called_name(call)?;
+        let Some(Ok(words)) = self.returned.get(&name) else {
+            return None;
+        };
+        let words = words.clone();
+        let mut given: BTreeMap<usize, usize> = BTreeMap::new();
+        Some(
+            words
+                .into_iter()
+                .map(|word| match word {
+                    Word::Sometimes(text, path) => {
+                        let path = path
+                            .into_iter()
+                            .map(|branch| {
+                                let choice = match given.get(&branch.choice) {
+                                    Some(mine) => *mine,
+                                    None => {
+                                        self.choices += 1;
+                                        given.insert(branch.choice, self.choices - 1);
+                                        self.choices - 1
+                                    }
+                                };
+                                Branch { choice, ..branch }
+                            })
+                            .collect();
+                        Word::Sometimes(text, path)
+                    }
+                    other => other,
+                })
+                .collect(),
+        )
     }
 
     /// Look through an [`crate::issue::runtime_words`] wrapper: the expression
@@ -1736,7 +1914,8 @@ impl<'a> Walk<'a> {
                     // `["run", "--manifest-path", path]` is three words, one of
                     // them decided at runtime, and reading it as a hole would
                     // throw away the two flags that are right there.
-                    match word_list(&self.manifest_dir, first) {
+                    let first = first.clone();
+                    match self.words_of(&first) {
                         Some(words) => {
                             for word in words {
                                 self.add(site, word);
@@ -1745,11 +1924,11 @@ impl<'a> Walk<'a> {
                         None => {
                             let hole = Hole {
                                 at: self.sites[site].words.len(),
-                                parameter: self.parameter_named(first),
-                                written: rendered_as_a_value(first),
+                                parameter: self.parameter_named(&first),
+                                written: rendered_as_a_value(&first),
                             };
                             self.sites[site].holes.push(hole);
-                            self.add(site, Word::Unknown(rendered_as_a_value(first), may_hold));
+                            self.add(site, Word::Unknown(rendered_as_a_value(&first), may_hold));
                         }
                     }
                 }
@@ -1866,7 +2045,13 @@ impl<'ast> Visit<'ast> for Walk<'_> {
                 // the old one — and a binding whose initialiser is not a list
                 // this reader can spell is poisoned rather than left holding
                 // whatever the previous one held.
-                match word_list(&self.manifest_dir, &init.expr) {
+                // AND A CALL IS A LIST WHEN THE FUNCTION IT NAMES HANDS ONE BACK
+                // (R1271). `let arguments = clean_arguments(freshen, package);`
+                // is the whole of `stale-artifacts::apply`'s command, and before
+                // this hop the binding was removed here and the `.args(..)` two
+                // lines down became a hole no law could ask anything of.
+                let initialiser = (*init.expr).clone();
+                match self.words_of(&initialiser) {
                     Some(words) => {
                         self.lists.insert(
                             name.clone(),
@@ -2276,6 +2461,83 @@ fn follow_back(site: &mut RustSpawn, other: &TheOtherDirection) {
             words: None,
         }))
         .collect();
+}
+
+/// Does this body leave by any route other than falling off its end?
+///
+/// A `return` inside a CLOSURE leaves the closure and not the function, so
+/// reading one as a second way out of the function is wrong — and reading it as
+/// harmless is the direction that hands a caller a list it may never get. This
+/// answers the loud way for the same reason every other refusal here does.
+fn returns_early(body: &syn::Block) -> bool {
+    struct AnyReturn(bool);
+    impl<'ast> syn::visit::Visit<'ast> for AnyReturn {
+        fn visit_expr_return(&mut self, _: &'ast syn::ExprReturn) {
+            self.0 = true;
+        }
+    }
+    let mut found = AnyReturn(false);
+    syn::visit::visit_block(&mut found, body);
+    found.0
+}
+
+/// Every list a tracked plain `fn` hands back, by the name a call site writes.
+///
+/// R1271, AND THE TECHNIQUE IS ALREADY IN THIS REPOSITORY TWICE — R1266 named
+/// this as undone work rather than as a limit, and `named_environment::
+/// returned_lists` follows a function's returned list for its own question. What
+/// this reader could not do was read `stale-artifacts::apply`, whose whole
+/// command is `clean_arguments(freshen, package)`: a `vec![..]` and a
+/// conditional push, one call away, in a shape R1266 already reads when it is
+/// written beside the spawn.
+///
+/// A NAME THAT MEANS TWO FUNCTIONS MEANS NEITHER (R1263's rule, and the reason
+/// this is a whole-tree pass rather than a per-file one). The `Err` carries why,
+/// so a site that hands over such a call is a hole with a reason rather than a
+/// silence.
+///
+/// METHODS ARE NOT HERE. `visit_item_fn` sees free functions, which are the ones
+/// a call site writes as `name(..)` — the same boundary [`read_the_other_direction`]
+/// draws for the hop in the other direction, and for the same reason.
+fn returned_word_lists(
+    parsed: &[(String, syn::File, Landings)],
+    shared: &BTreeMap<String, String>,
+    directories: &BTreeMap<String, String>,
+) -> BTreeMap<String, Result<Vec<Word>, String>> {
+    let mut found: BTreeMap<String, Result<Vec<Word>, String>> = BTreeMap::new();
+    // NOTHING TO HOP THROUGH WHILE THE HOPS ARE BEING READ. A helper whose own
+    // list came from a second helper is a chain, and a reader that followed one
+    // would have to decide what to do about a cycle; one hop is what R1266 named
+    // and one hop is what this is. The bound is here rather than in a comment
+    // somewhere: the walk that reads a returned list is handed no returned lists.
+    let no_further_hop = BTreeMap::new();
+    for (path, file, named) in parsed {
+        let manifest_dir = directories.get(path).cloned().unwrap_or_default();
+        for item in &file.items {
+            let syn::Item::Fn(function) = item else {
+                continue;
+            };
+            let name = function.sig.ident.to_string();
+            let mut walk = Walk::new(path, named, shared, manifest_dir.clone(), &no_further_hop);
+            let Some(words) =
+                walk.in_function(name.clone(), parameters_of(&function.sig), &function.block)
+            else {
+                continue;
+            };
+            match found.entry(name.clone()) {
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert(Ok(words));
+                }
+                std::collections::btree_map::Entry::Occupied(mut slot) => {
+                    *slot.get_mut() = Err(format!(
+                        "`{name}` names a list-returning function in more than one \
+                         tracked file, so a call of it names no one list"
+                    ));
+                }
+            }
+        }
+    }
+    found
 }
 
 /// Is this call `Command::new(..)`, however the path is written?

@@ -611,6 +611,10 @@
         "a_word_pushed_after_the_command_was_handed_the_list_is_not_in_it",
         "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
         "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold",
+        "a_list_a_function_returns_is_read_one_call_away",
+        "a_function_that_returns_early_hands_back_no_list_this_reader_will_use",
+        "a_name_that_returns_a_list_in_two_files_is_not_followed_into_either",
+        "a_choice_inside_a_returned_list_is_independent_of_the_callers_own",
         "the_population_handed_to_a_law_holds_every_command_a_conditional_site_issues"
       ]
     },
@@ -636,7 +640,9 @@
         "a_binding_something_unmodelled_happened_to_is_a_hole_and_says_which_spelling",
         "a_list_lent_out_mutably_is_a_hole",
         "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
-        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
+        "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold",
+        "a_list_a_function_returns_is_read_one_call_away",
+        "a_choice_inside_a_returned_list_is_independent_of_the_callers_own"
       ]
     },
     {
@@ -651,7 +657,8 @@
       ],
       "expect_red": [
         "a_word_pushed_after_the_binding_is_in_the_command",
-        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional"
+        "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
+        "a_choice_inside_a_returned_list_is_independent_of_the_callers_own"
       ]
     },
     {
@@ -693,7 +700,9 @@
         }
       ],
       "expect_red": [
-        "a_string_literal_converted_to_a_string_is_still_that_word"
+        "a_string_literal_converted_to_a_string_is_still_that_word",
+        "a_list_a_function_returns_is_read_one_call_away",
+        "a_choice_inside_a_returned_list_is_independent_of_the_callers_own"
       ]
     },
     {
@@ -804,7 +813,8 @@
         "words_one_branch_adds_together_are_never_separated",
         "a_site_with_more_choices_than_a_report_can_hold_says_so_rather_than_cutting_the_list",
         "a_hole_among_the_words_is_kept_and_counted_rather_than_refusing_the_site",
-        "a_word_pushed_after_the_binding_is_in_the_command"
+        "a_word_pushed_after_the_binding_is_in_the_command",
+        "a_choice_inside_a_returned_list_is_independent_of_the_callers_own"
       ]
     },
     {
@@ -1061,6 +1071,57 @@
       "expect_red": [
         "a_list_of_unknown_length_carries_what_its_site_declared_it_may_hold"
       ]
+    },
+    {
+      "name": "a-list-a-function-returns-is-not-read-one-call-away",
+      "why": "R1271. `stale-artifacts::apply`'s whole command is `clean_arguments(freshen, package)` — a `vec![..]` and a conditional push, one call away, in the shape this reader already reads when it is written beside the spawn. Without the hop the binding is dropped and the `.args(..)` two lines down is a hole no law can ask anything of",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        self.list_a_call_returns(expression)\n    }",
+          "to": "        let _ = expression;\n        None\n    }"
+        }
+      ],
+      "expect_red": [
+        "a_list_a_function_returns_is_read_one_call_away",
+        "a_choice_inside_a_returned_list_is_independent_of_the_callers_own"
+      ]
+    },
+    {
+      "name": "a-function-with-two-ways-out-is-read-as-its-tail",
+      "why": "R1271. A helper that returns early hands back two lists and `ways_of` enumerates choices WITHIN one list, not between two — so reading such a helper as whichever list its tail names would put a command nobody issues into the population as one this repository does",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if returns_early(body) {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": ["a_function_that_returns_early_hands_back_no_list_this_reader_will_use"]
+    },
+    {
+      "name": "a-name-that-means-two-list-returning-functions-is-followed-into-one",
+      "why": "R1263's rule, on the new hop: a call of a name two tracked files define names no one list, and picking whichever was read last would hand a site the words of a function it never calls",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                std::collections::btree_map::Entry::Occupied(mut slot) => {\n                    *slot.get_mut() = Err(format!(\n                        \"`{name}` names a list-returning function in more than one \\\n                         tracked file, so a call of it names no one list\"\n                    ));\n                }\n",
+          "to": "                std::collections::btree_map::Entry::Occupied(mut slot) => {\n                    *slot.get_mut() = Ok(words);\n                }\n"
+        }
+      ],
+      "expect_red": ["a_name_that_returns_a_list_in_two_files_is_not_followed_into_either"]
+    },
+    {
+      "name": "a-returned-lists-choices-keep-the-numbers-of-the-walk-that-read-them",
+      "why": "R1271, and this is the half that is invisible until it is wrong. A `Branch::choice` is a number within ONE walk and the returned list was read by another, so a list spliced in with its old numbers collides with the calling function's choices — and `ways_of`, which groups by that number, enumerates two INDEPENDENT decisions as though taking one arm of the first settled the second. Two conditional words, one in each function, are four commands; under a collision they are two",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                                let choice = match given.get(&branch.choice) {",
+          "to": "                                let choice = match Some(&branch.choice) {"
+        }
+      ],
+      "expect_red": ["a_choice_inside_a_returned_list_is_independent_of_the_callers_own"]
     }
   ]
 }
