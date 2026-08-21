@@ -89,13 +89,19 @@ impl Tree {
         tree.beside("outside", "outside-crate");
         tree.write("a-file-no-package-owns.md", "not code\n");
         // AND BOTH WORKSPACES ARE RESOLVED BEFORE THEY ARE COMMITTED, which is
-        // what this repository's tracked `Cargo.lock` files are. Cargo wants a
-        // lockfile for any manifest that declares a dependency, and `--locked`
-        // forbids writing one — so a workspace nobody has resolved cannot be
-        // read under a pinned command. That is the pass declining exactly where
-        // the command it precedes would decline, so it is a property to have in
-        // the fixture rather than one to design around; the case named for it
-        // asserts it, and an injection showed it is not about `--no-deps`.
+        // what this repository's tracked `Cargo.lock` files are. `--locked`
+        // forbids writing a lockfile, so a workspace nobody has resolved cannot
+        // be read under a pinned command — and that is the pass declining
+        // exactly where the command it precedes declines, which R1273 measured
+        // in all four combinations rather than accepting.
+        //
+        // ⚠ THE REASON WROTE HERE UNTIL R1273 WAS WRONG, and it was wrong the
+        // same way twice. R1257 first said `--no-deps` would avoid needing a
+        // lockfile, and an injection disproved it; it then said cargo wants one
+        // "for any manifest that DECLARES A DEPENDENCY", and R1273 disproved
+        // that by running the fixture ROOT — which declares none — and watching
+        // it decline too. The condition is the pin and the missing file, and
+        // dependencies have nothing to do with it.
         tree.resolve("Cargo.toml");
         tree.resolve("side/Cargo.toml");
         tree.git(&["init", "-q", "."]);
@@ -656,14 +662,21 @@ fn a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command() {
     // AN INJECTION DISPROVED IT. The obvious reading is that reaching a path
     // dependency costs the lockfile, so `--no-deps` would not need one — and the
     // sweep's `the-pass-asks-for-members-rather-than-for-the-resolve` puts
-    // `--no-deps` back and this case STAYS GREEN. Cargo wants the lockfile
-    // either way once the manifest declares a dependency; what `--no-deps`
-    // changes is only which packages come back.
+    // `--no-deps` back and this case STAYS GREEN. What `--no-deps` changes is
+    // only which packages come back.
+    //
+    // ⚠ AND THE SECOND EXPLANATION WAS WRONG TOO. This comment then said cargo
+    // wants the lockfile "once the manifest declares a dependency", and R1273
+    // ran the fixture ROOT — which declares none — and watched it decline just
+    // the same. The condition is `--locked` and a missing file; dependencies
+    // have nothing to do with it.
     //
     // IT IS THE RIGHT DIRECTION AND THAT IS WHY IT IS ACCEPTED: the command this
-    // pass precedes carries the same `--locked` and would decline for the same
-    // reason one step later. A pass that was more permissive than the run it
-    // guards would be answering about a resolve the run will not use.
+    // pass precedes carries the same `--locked` and declines for the same reason
+    // one step later. That sentence was an assumption until R1273 ran both
+    // commands in all four combinations of pin and dependency —
+    // `the_pass_and_the_run_it_precedes_decline_in_the_same_place` is where it
+    // is now measured, in both directions.
     let tree = Tree::new();
     std::fs::remove_file(tree.at().join("side/Cargo.lock")).expect("the fixture's lockfile");
     let out = program(
@@ -689,6 +702,154 @@ fn a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command() {
          to know whether to resolve the workspace or drop the pin:\n{}",
         said(&out)
     );
+}
+
+/// One cargo command in the fixture, for the measurement below.
+fn in_fixture(tree: &Tree, arguments: &[&str]) -> Output {
+    issue::cargo(issue::Tree::MadeByThisRun(
+        "the fixture workspace this measurement wrote, whose lockfile it removed \
+         on purpose to see who declines",
+    ))
+    .args(arguments)
+    .current_dir(tree.at())
+    .env("CARGO_TARGET_DIR", tree.at().join(BUILD_DIRECTORY))
+    .output()
+    .expect("cargo runs")
+}
+
+/// THE PASS DECLINES EXACTLY WHERE THE RUN IT PRECEDES WOULD, ASKED OF CARGO.
+///
+/// R1273, and R1257 asked for this in its own words. That round wrote the
+/// no-lockfile refusal down as ACCEPTED rather than designed around, on the
+/// grounds that "the command this pass precedes carries the same `--locked` and
+/// would decline for the same reason one step later" — and never ran that
+/// command. The case above it asserts the PASS declines; nothing asserted the
+/// RUN does, so the sentence that made the refusal acceptable was the one part
+/// of it nobody had measured.
+///
+/// WHY IT IS NOT A DETAIL. If the run would have SUCCEEDED, this pass is
+/// manufacturing a failure that nothing else in the toolchain would have raised
+/// — a gate that turns a working tree red for a reason the work does not have.
+/// That is the direction R1257's own comment named as the one to rule out ("a
+/// pass that was more permissive than the run it guards would be answering about
+/// a resolve the run will not use"), and this measures both directions of it.
+///
+/// AND THE OTHER HALF OF THE POPULATION IS HERE TOO. R1257 said cargo wants a
+/// lockfile for a manifest that DECLARES A DEPENDENCY, so a workspace with none
+/// should be the case where the refusal does not happen. `side` declares two path
+/// dependencies and the fixture root declares none — and measured, BOTH decline.
+/// The condition is the pin and the missing file; that explanation was the second
+/// wrong one R1257 gave for this refusal, and an injection had already disproved
+/// the first.
+///
+/// ⚠ WHAT THIS CASE IS STRUCTURALLY BLIND TO, and the harness is what said so. A
+/// comparison of two verdicts cannot see a change that moves BOTH: drop the pin
+/// the pass copies and it resolves the workspace freely, WRITES the lockfile, and
+/// the run then succeeds as well — so the two exit codes agree and this case
+/// passes while the pass has just erased the very thing the run was to be held
+/// to. That is R1115's original defect one program over, and what catches it is
+/// `a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command` beside this
+/// one, which asks the pass for a refusal rather than for agreement. Recorded
+/// here because the injection aimed at this case came back MISSED and the honest
+/// answer was that it should have been aimed elsewhere.
+#[test]
+fn the_pass_and_the_run_it_precedes_decline_in_the_same_place() {
+    let tree = Tree::new();
+    std::fs::remove_file(tree.at().join("side/Cargo.lock")).expect("the fixture's lockfile");
+    std::fs::remove_file(tree.at().join("Cargo.lock")).expect("the fixture root's lockfile");
+
+    // THE PASS IS ASKED THROUGH ITS OWN BINARY AND NOT REBUILT HERE. A case that
+    // assembled `cargo metadata --locked` by hand would be a second spelling of
+    // the commands this pass issues, free to keep passing on the day the pass
+    // stopped copying the pin — which is exactly the failure it is written to
+    // catch. The run is the SAME WORDS the pass was handed, run directly.
+    for (manifest, declares_a_dependency) in [("side/Cargo.toml", true), ("Cargo.toml", false)] {
+        let wrapped = [
+            "cargo",
+            "test",
+            "--no-run",
+            "--manifest-path",
+            manifest,
+            "--locked",
+        ];
+        let pass = program(tree.at(), &wrapped);
+        let the_run = in_fixture(&tree, &wrapped[1..]);
+        println!(
+            "{manifest} (declares a dependency: {declares_a_dependency}) with no lockfile, \
+             under `--locked`: the pass {}, the run it precedes {}",
+            if pass.status.success() {
+                "SUCCEEDS"
+            } else {
+                "declines"
+            },
+            if the_run.status.success() {
+                "SUCCEEDS"
+            } else {
+                "declines"
+            }
+        );
+        // THE HALF THAT MATTERS MOST, stated on its own so its failure reads as
+        // itself: the pass may not decline where the run would have gone
+        // through. That is a gate turning a tree red for a reason the work does
+        // not have, and R1257's own comment named it as the direction to rule
+        // out — "a pass that was more permissive than the run it guards would be
+        // answering about a resolve the run will not use" is the mirror, and
+        // this is the side that costs somebody a red they cannot act on.
+        assert!(
+            the_run.status.success() || !pass.status.success(),
+            "the pass went through and the run it precedes did NOT, so this pass \
+             is answering about a resolve the run will not use — {manifest}:\n{}",
+            String::from_utf8_lossy(&the_run.stderr)
+        );
+        assert!(
+            !(pass.status.success() ^ the_run.status.success()),
+            "the pass and the run disagree about whether {manifest} can be \
+             resolved under `--locked` with no lockfile, so R1257's reason for \
+             ACCEPTING the refusal — that the run declines one step later — is \
+             not true of this cargo:\npass: {}\nrun: {}",
+            said(&pass),
+            String::from_utf8_lossy(&the_run.stderr)
+        );
+
+        // AND THE MIRROR, WHICH IS THE HALF THIS REPOSITORY ACTUALLY MEETS. An
+        // UNPINNED run over a workspace with no lockfile goes through — cargo
+        // writes one — and `studio` is exactly that shape here: not ours to pin,
+        // its lockfile untracked, so a fresh clone has none. The pass in front of
+        // it must go through too, and a pass that pinned when the run did not
+        // would turn every fresh clone red on a workspace the run is happy with.
+        let unpinned = ["cargo", "test", "--no-run", "--manifest-path", manifest];
+        let pass_unpinned = program(tree.at(), &unpinned);
+        let run_unpinned = in_fixture(&tree, &unpinned[1..]);
+        println!(
+            "{manifest} with no lockfile, UNPINNED: the pass {}, the run it \
+             precedes {}",
+            if pass_unpinned.status.success() {
+                "SUCCEEDS"
+            } else {
+                "declines"
+            },
+            if run_unpinned.status.success() {
+                "SUCCEEDS"
+            } else {
+                "declines"
+            }
+        );
+        assert!(
+            !(pass_unpinned.status.success() ^ run_unpinned.status.success()),
+            "the pass and the run disagree about {manifest} with no lockfile and \
+             no pin — and this is the shape `studio` has in a fresh clone, so a \
+             pass stricter than its run here reddens a checkout nothing is wrong \
+             with:\npass: {}\nrun: {}",
+            said(&pass_unpinned),
+            String::from_utf8_lossy(&run_unpinned.stderr)
+        );
+        // The unpinned resolve WROTE a lockfile, so put the tree back for the
+        // next manifest — a case that measured a missing lockfile and then left
+        // one behind would measure something else the second time round.
+        for lockfile in ["Cargo.lock", "side/Cargo.lock"] {
+            let _ = std::fs::remove_file(tree.at().join(lockfile));
+        }
+    }
 }
 
 #[test]

@@ -30,11 +30,13 @@
       ],
       "expect_red": [
         "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
-        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command"
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command",
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place"
       ],
       "tests": [
         "a_workspace_cargo_cannot_read_is_a_refusal_the_caller_fails_on",
-        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command"
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command",
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place"
       ]
     },
     "an-untracked-file-is-not-a-difference-from-head": {
@@ -76,10 +78,12 @@
         }
       ],
       "expect_red": [
-        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does",
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place"
       ],
       "tests": [
-        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does",
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place"
       ]
     },
     "the-pass-asks-for-members-rather-than-for-the-resolve": {
@@ -93,11 +97,13 @@
       "expect_red": [
         "a_changed_path_dependency_outside_this_workspace_is_still_code_the_run_compiles",
         "a_package_outside_this_repository_is_not_one_this_pass_counts",
-        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
+        "the_pass_removes_the_artifact_and_not_merely_the_line_about_it",
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place"
       ],
       "tests": [
         "a_changed_path_dependency_outside_this_workspace_is_still_code_the_run_compiles",
         "a_package_outside_this_repository_is_not_one_this_pass_counts",
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place",
         "the_pass_removes_the_artifact_and_not_merely_the_line_about_it"
       ]
     },
@@ -114,6 +120,40 @@
       ],
       "tests": [
         "a_command_that_leaves_no_artifact_is_not_cleaned_in_front_of"
+      ]
+    },
+    "the-pass-drops-the-pin-the-run-it-precedes-carries": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let locked = read.has(\"--locked\");",
+          "to": "    let locked = false;"
+        }
+      ],
+      "expect_red": [
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command",
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"
+      ],
+      "tests": [
+        "a_workspace_with_no_lockfile_is_a_refusal_under_a_pinned_command",
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"
+      ]
+    },
+    "the-pass-pins-where-the-run-it-precedes-does-not": {
+      "edits": [
+        {
+          "file": "tools/stale-artifacts/src/lib.rs",
+          "from": "    let locked = read.has(\"--locked\");",
+          "to": "    let locked = true;"
+        }
+      ],
+      "expect_red": [
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place",
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does"
+      ],
+      "tests": [
+        "the_clean_pins_the_lockfile_exactly_when_the_command_it_precedes_does",
+        "the_pass_and_the_run_it_precedes_decline_in_the_same_place"
       ]
     },
     "the-population-is-the-root-workspaces-directory-again": {
