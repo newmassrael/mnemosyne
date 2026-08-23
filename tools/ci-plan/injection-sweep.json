@@ -1122,6 +1122,30 @@
         }
       ],
       "expect_red": ["a_choice_inside_a_returned_list_is_independent_of_the_callers_own"]
+    },
+    {
+      "name": "the-pin-is-one-literal-again",
+      "why": "R1280 — `--frozen` IS `--locked --offline`, so a command spelling it reports a disagreeing lockfile rather than repairing it. A verdict that matches the literal `--locked` only reads such a command as the defect the whole law exists for. The direction is safe and NO COMMAND IN THIS REPOSITORY SPELLS THE WORD, which is exactly why nothing had ever noticed — so the fixture in `reading.rs` is the only place this can be exercised at all, and this injection is what says that fixture is not decoration",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    word == \"--locked\" || word == \"--frozen\"\n",
+          "to": "    word == \"--locked\"\n"
+        }
+      ],
+      "expect_red": ["a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"]
+    },
+    {
+      "name": "the-pin-widens-to-a-word-that-is-not-one",
+      "why": "R1280 — the other direction, and it is the mistake the fix invites: `--offline` sits beside `--frozen` in cargo's own documentation and stops the network, but it does NOT stop cargo rewriting a lockfile from what it already has. A reader widened to it would pass the very command the law exists to refuse",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    word == \"--locked\" || word == \"--frozen\"\n",
+          "to": "    word == \"--locked\" || word == \"--frozen\" || word == \"--offline\"\n"
+        }
+      ],
+      "expect_red": ["a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"]
     }
   ]
 }

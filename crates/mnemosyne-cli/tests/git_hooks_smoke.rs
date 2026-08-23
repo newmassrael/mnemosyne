@@ -1875,8 +1875,18 @@ fn pre_commit_rejects_a_version_postfix_identifier() {
     f.stage_all();
 
     let out = f.run_hook("pre-commit", &[], "", &[]);
-    assert!(!out.status.success(), "a vN identifier must be rejected");
     let err = stderr_of(&out);
+    // THE HOOK'S OWN WORDS ARE THE EVIDENCE AND THIS ASSERTION USED TO THROW
+    // THEM AWAY (R1280). It went red once inside the full suite and passed alone,
+    // and there was nothing in the failure to say WHY the hook had accepted —
+    // whether Gate 6 ran and found nothing, or the gates never ran because the
+    // staged list came back empty. The hook prints a line per gate it enters, so
+    // the answer is in what it said.
+    assert!(
+        !out.status.success(),
+        "a vN identifier must be rejected, and the hook accepted it — what it \
+         printed says which gates it entered:\n{err}"
+    );
     assert!(
         err.contains("vN version-postfix identifier"),
         "the rejection must name the vN ban:\n{err}"

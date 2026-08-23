@@ -462,8 +462,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "    if locked {\n        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
-          "to": "    cargo.arg(\"--locked\");\n    let out = cargo.output().expect(\"cargo runs\");\n"
+          "from": "    if pin == Pin::Locked {\n        cargo.arg(\"--locked\");\n    }\n    if pin == Pin::Frozen {\n        cargo.arg(\"--frozen\");\n    }\n",
+          "to": "    cargo.arg(\"--locked\");\n"
         }
       ],
       "expect_red": [
@@ -473,12 +473,12 @@
     },
     {
       "name": "a-measurement-pins-on-no-path-at-all",
-      "why": "R1279 — the other direction of the same obligation, and it stays inside the bucket so it exercises the word-reading half rather than the equality: a site whose conditional word is not the pin has no free-versus-pinned difference in it, and the arm it declares is a claim that it does",
+      "why": "R1279 — the other direction of the same obligation, and it stays inside the bucket (R1280's third arm leaves another conditional word there) so it exercises the word-reading half rather than the equality: a site whose conditional words include no pin has no free-versus-pinned difference in it, and the arm it declares is a claim that it does",
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
-          "to": "        cargo.arg(\"--offline\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n"
+          "from": "    if pin == Pin::Locked {\n        cargo.arg(\"--locked\");\n    }\n",
+          "to": "    if pin == Pin::Locked {\n        cargo.arg(\"--offline\");\n    }\n"
         }
       ],
       "expect_red": [
@@ -513,6 +513,20 @@
       "expect_red": [
         "the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement",
         "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    {
+      "name": "the-third-arm-of-the-measurement-runs-without-its-flag",
+      "why": "R1280 — what licenses `ci_plan::is_the_pin` reading `--frozen` as the pin is not cargo's documentation but this fixture running both flags against a planted disagreement and asserting they act the same. An arm that forgets to add its own flag measures the FREE case twice and reports the equivalence it was supposed to test, which is the shape of every vacuous measurement: the answer arrives with the same confidence and is about nothing",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "    if pin == Pin::Frozen {\n        cargo.arg(\"--frozen\");\n    }\n",
+          "to": "    if pin == Pin::Frozen {\n        cargo.arg(\"--offline\");\n    }\n"
+        }
+      ],
+      "expect_red": [
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     }
   ]

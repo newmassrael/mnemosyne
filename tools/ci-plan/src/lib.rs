@@ -1978,8 +1978,22 @@ pub fn lock_verdict(
 /// [`lock_verdict`] asks about it twice — once to read ownership off it for a
 /// site that pins conditionally, once for the verdict itself — and two literals
 /// would be two readers of one flag.
+///
+/// TWO WORDS SINCE R1280, AND THE SECOND IS THERE BECAUSE IT WAS MEASURED. Cargo
+/// documents `--frozen` as `--locked --offline`, so a command spelling it
+/// REPORTS a disagreeing lockfile instead of repairing it — and until R1280 this
+/// reader matched the literal `--locked` only, which made `--frozen` a pin the
+/// verdict could not see. The direction was safe (such a command read as
+/// `RepairsWhatItShouldReport`, a false red rather than a false pass) and no
+/// command in this repository spelled it, which is exactly why nothing had ever
+/// noticed. What licenses the second word is not the documentation: it is
+/// `what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo`, which
+/// runs both flags against a planted disagreement and asserts they act the same.
+///
+/// `--offline` ALONE IS NOT HERE. It stops cargo reaching the network; it does
+/// not stop it rewriting a lockfile from what it already has.
 fn is_the_pin(word: &str) -> bool {
-    word == "--locked"
+    word == "--locked" || word == "--frozen"
 }
 
 /// Every cargo invocation in every tracked shell script.

@@ -66,8 +66,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "    if locked {\n        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
-          "to": "    cargo.arg(\"--locked\");\n    let out = cargo.output().expect(\"cargo runs\");\n"
+          "from": "    if pin == Pin::Locked {\n        cargo.arg(\"--locked\");\n    }\n    if pin == Pin::Frozen {\n        cargo.arg(\"--frozen\");\n    }\n",
+          "to": "    cargo.arg(\"--locked\");\n"
         }
       ],
       "expect_red": [
@@ -83,8 +83,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
-          "to": "        cargo.arg(\"--offline\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n"
+          "from": "    if pin == Pin::Locked {\n        cargo.arg(\"--locked\");\n    }\n",
+          "to": "    if pin == Pin::Locked {\n        cargo.arg(\"--offline\");\n    }\n"
         }
       ],
       "expect_red": [
@@ -536,6 +536,21 @@
       ],
       "tests": [
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    "the-third-arm-of-the-measurement-runs-without-its-flag": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "    if pin == Pin::Frozen {\n        cargo.arg(\"--frozen\");\n    }\n",
+          "to": "    if pin == Pin::Frozen {\n        cargo.arg(\"--offline\");\n    }\n"
+        }
+      ],
+      "expect_red": [
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ],
+      "tests": [
+        "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     },
     "the-tracked-shell-is-not-in-the-population": {

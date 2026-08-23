@@ -1218,6 +1218,36 @@
         "the_manifest_directory_cargo_hands_a_crate_is_read_from_the_file_it_is_in"
       ]
     },
+    "the-pin-is-one-literal-again": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    word == \"--locked\" || word == \"--frozen\"\n",
+          "to": "    word == \"--locked\"\n"
+        }
+      ],
+      "expect_red": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ],
+      "tests": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ]
+    },
+    "the-pin-widens-to-a-word-that-is-not-one": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    word == \"--locked\" || word == \"--frozen\"\n",
+          "to": "    word == \"--locked\" || word == \"--frozen\" || word == \"--offline\"\n"
+        }
+      ],
+      "expect_red": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ],
+      "tests": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ]
+    },
     "the-population-of-jobs-is-whatever-a-misspelling-finds": {
       "edits": [
         {

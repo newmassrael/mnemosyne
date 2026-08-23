@@ -365,19 +365,62 @@ fn what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo() {
     let mut measured = 0;
     for subcommand in &issued {
         let arguments = arguments_for(subcommand);
-        let free = run_in_fixture(&fixture, home.path(), stale, subcommand, &arguments, false);
+        let free = run_in_fixture(
+            &fixture,
+            home.path(),
+            stale,
+            subcommand,
+            &arguments,
+            Pin::Free,
+        );
         let (Some(rewrote), Some(refused)) = (
             free,
-            run_in_fixture(&fixture, home.path(), stale, subcommand, &arguments, true),
+            run_in_fixture(
+                &fixture,
+                home.path(),
+                stale,
+                subcommand,
+                &arguments,
+                Pin::Locked,
+            ),
         ) else {
             unmeasurable.push(subcommand.clone());
             continue;
         };
         measured += 1;
+        // THE THIRD ARM (R1280). `--frozen` is documented as `--locked
+        // --offline`, and this asks the cargo on this machine whether it acts on
+        // a disagreeing lockfile the same way — which is what licenses
+        // `ci_plan`'s `is_the_pin` reading it as the pin. A documented
+        // equivalence is a claim, and this file does not take claims about cargo
+        // on trust.
+        let frozen = run_in_fixture(
+            &fixture,
+            home.path(),
+            stale,
+            subcommand,
+            &arguments,
+            Pin::Frozen,
+        );
         println!(
-            "cargo {subcommand}: free resolve {} the lockfile, `--locked` {} it",
+            "cargo {subcommand}: free resolve {} the lockfile, `--locked` {} it, \
+             `--frozen` {}",
             if rewrote { "REWROTE" } else { "left" },
-            if refused { "REFUSED" } else { "accepted" }
+            if refused { "REFUSED" } else { "accepted" },
+            match frozen {
+                Some(true) => "REFUSED it",
+                Some(false) => "accepted it",
+                None => "could not be run",
+            }
+        );
+        assert_eq!(
+            frozen,
+            Some(refused),
+            "`cargo {subcommand} --frozen` and `cargo {subcommand} --locked` \
+             have to act the same on a lockfile that disagrees with its \
+             manifests, because `--frozen` IS `--locked --offline` — and \
+             `ci_plan::is_the_pin` reads both as the pin on the strength of this \
+             measurement. If they differ, that reader is wrong for one of them"
         );
         let claimed = resolves_the_lockfile(subcommand)
             .unwrap_or_else(|| panic!("`cargo {subcommand}` is issued here and unclassified"));
@@ -434,12 +477,42 @@ fn what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo() {
             stale,
             "metadata",
             &["--no-deps", "--format-version", "1"],
-            true,
+            Pin::Locked,
         ),
         Some(false),
         "`cargo metadata --no-deps --locked` accepts a stale lockfile, so it is \
          not a freshness check however much it reads like one"
     );
+}
+
+/// Which of cargo's positions on re-resolving one arm of this measurement takes.
+///
+/// R1280, AND THE THIRD ARM IS WHY `is_the_pin` COULD BE FIXED. `--frozen` is
+/// documented as `--locked --offline`, and a documented equivalence is a claim —
+/// this file's whole discipline is that a claim about what cargo does to a
+/// lockfile is MEASURED against the cargo on this machine. So the fixture runs
+/// it, and what `lock_verdict` reads as the pin follows the measurement rather
+/// than the sentence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pin {
+    /// No flag: the arm that shows whether a subcommand REWRITES a lockfile it
+    /// disagrees with.
+    Free,
+    /// `--locked`.
+    Locked,
+    /// `--frozen`, which cargo documents as `--locked --offline`.
+    Frozen,
+}
+
+impl Pin {
+    /// The word this arm adds, or `None` for the free one.
+    fn flag(self) -> Option<&'static str> {
+        match self {
+            Self::Free => None,
+            Self::Locked => Some("--locked"),
+            Self::Frozen => Some("--frozen"),
+        }
+    }
 }
 
 /// Run one subcommand against a fresh copy of the stale lockfile.
@@ -452,14 +525,14 @@ fn run_in_fixture(
     stale: &str,
     subcommand: &str,
     arguments: &[&str],
-    locked: bool,
+    pin: Pin,
 ) -> Option<bool> {
     let lockfile = fixture.join("Cargo.lock");
     std::fs::write(&lockfile, stale).expect("plant the disagreement");
     // THE ONE PLACE A DISAGREEING LOCKFILE IS DELIBERATE. The fixture is built
-    // three functions up, its lockfile is planted on the line above, and both
-    // arms — free and `--locked` — are run on purpose, which is what makes this
-    // a measurement rather than a check.
+    // three functions up, its lockfile is planted on the line above, and all
+    // three arms — free, `--locked` and `--frozen` — are run on purpose, which
+    // is what makes this a measurement rather than a check.
     let mut cargo = issue::cargo(Tree::PlantedByThisMeasurement(
         "the one-package fixture this measurement builds, whose lockfile is \
          planted disagreeing on purpose, and which this function runs both \
@@ -476,19 +549,27 @@ fn run_in_fixture(
         .env("CARGO_HOME", home.join("cargo-home"))
         .env_remove("RUSTC_WRAPPER")
         .env_remove("RUSTC_WORKSPACE_WRAPPER");
-    if locked {
+    // SPELLED OUT RATHER THAN HANDED OVER AS A VALUE, and that is what the arm
+    // this site declares asks of it: the pin has to be a word READABLE at the
+    // spawn and present on some paths only, so `a_site_that_plants_a_lockfile_
+    // runs_both_ways` can see the variable vary. A `cargo.arg(flag)` would put
+    // the pin behind a runtime word and take that check away.
+    if pin == Pin::Locked {
         cargo.arg("--locked");
+    }
+    if pin == Pin::Frozen {
+        cargo.arg("--frozen");
     }
     let out = cargo.output().expect("cargo runs");
     let said = String::from_utf8_lossy(&out.stderr);
     if said.contains("no such command") || said.contains("no such subcommand") {
         return None;
     }
-    if locked {
+    if let Some(flag) = pin.flag() {
         // The flag itself being rejected is not a refusal of the lockfile — it
         // is the subcommand saying the flag is not its. Both are non-zero exits
         // and reading them as one would call `cargo fmt` a lockfile check.
-        if said.contains("unexpected argument '--locked'") {
+        if said.contains(&format!("unexpected argument '{flag}'")) {
             return Some(false);
         }
         return Some(said.contains("cannot update the lock file"));
@@ -658,12 +739,18 @@ const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 2] = [
 /// from.
 ///
 /// R1278. `lock_verdict` reads a command's subcommand, its `--manifest-path` and
-/// its `--locked`, and nothing else — so a relay that adds one of those has
-/// stopped relaying and started deciding. `--frozen` and `--offline` are here
-/// for the case the other three would miss: `--frozen` IS `--locked --offline`,
-/// and `is_the_pin` matches the literal `--locked` only, so a relay adding
-/// `--frozen` would pin what the other site chose not to pin in a word this
-/// repository's verdict function cannot see.
+/// its pin, and nothing else — so a relay that adds one of those has stopped
+/// relaying and started deciding.
+///
+/// `--frozen` WAS HERE BEFORE THE VERDICT COULD SEE IT, which is worth recording
+/// because it is the order this repository prefers. R1278 forbade it on the
+/// reasoning that `--frozen` IS `--locked --offline` while `is_the_pin` matched
+/// the literal `--locked` only — so a relay adding it would pin the other site's
+/// command in a word the verdict was blind to. R1280 measured the equivalence
+/// against cargo and taught `is_the_pin` the second word, so the blindness is
+/// gone and this entry now names a word the verdict really does read. `--offline`
+/// stays for the other reason: it is NOT the pin, and a relay that adds it is
+/// still changing how the other site's command resolves.
 const WORDS_A_RELAY_MAY_NOT_ADD: [&str; 4] =
     ["--locked", "--frozen", "--offline", "--manifest-path"];
 

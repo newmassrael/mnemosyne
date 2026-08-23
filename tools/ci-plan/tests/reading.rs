@@ -1234,6 +1234,38 @@ fn a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported() {
         "`cargo fmt` cannot rewrite a lockfile and REJECTS `--locked`, so a law \
          that demanded the flag of everything would be unsatisfiable"
     );
+    // R1280 — `--frozen` IS `--locked --offline`, so a command spelling it
+    // reports a disagreeing lockfile rather than repairing it. Until R1280
+    // `is_the_pin` matched the literal `--locked` only, which read this exact
+    // command as the defect above; the direction was safe and nothing in this
+    // repository spelled the word, which is why nothing noticed. This is the
+    // non-vacuity of that fix: no command in the tree exercises it, so the
+    // fixture is the only place it can be exercised at all.
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo clippy --manifest-path bench/Cargo.toml --frozen --all-targets"),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::Pinned,
+        "`--frozen` refuses a disagreeing lockfile exactly as `--locked` does — \
+         measured against cargo by `locked_resolution_smoke`, not read out of \
+         the documentation — so a verdict that cannot see it calls a pinned \
+         command the defect the law exists for"
+    );
+    // AND `--offline` ALONE IS NOT THE PIN. It stops cargo reaching the network;
+    // it does not stop it rewriting a lockfile from what it already has, so a
+    // reader that took it for the flag would pass the defect above.
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo clippy --manifest-path bench/Cargo.toml --offline --all-targets"),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::RepairsWhatItShouldReport,
+        "`--offline` is not the pin, and a reader that widened to it would accept \
+         a command that still rewrites the file it disagrees with"
+    );
 }
 
 /// A HOLE CAN HIDE A FLAG AND CAN NEVER REMOVE ONE, and both halves are here.
