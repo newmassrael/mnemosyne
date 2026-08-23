@@ -119,7 +119,23 @@ ATOMIC_SIDECAR="docs/.atomic/workspace.atomic.json"
 # that the build script stops rerunning on every build.
 cli=(scripts/mn)
 
-staged=$(git diff --cached --name-only --diff-filter=ACMR || true)
+# THE POPULATION EVERY GATE BELOW IS KEYED ON, AND IT REFUSES RATHER THAN
+# ANSWERING EMPTY (R1281). This line ended in `|| true` until then, which
+# disarmed `set -e` for exactly the case it should not have: `git diff --cached
+# --name-only` returns non-zero only on ERROR — an empty index is a zero exit
+# with no output — so the only thing that clause could ever mask was a read that
+# failed. And a failed read here does not look like a failure: it looks like a
+# repository with nothing staged, which every gate below reads as nothing to
+# check, so the hook walks through Gates 3 to 6 and exits 0. A commit gate that
+# accepts because it could not see is the shape this repository keeps paying for
+# — `commit-msg`'s `2>/dev/null` was the same thing one hook over.
+if ! staged=$(git diff --cached --name-only --diff-filter=ACMR); then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — the staged list could not be read"
+        echo "  every gate below is keyed on it, and an unreadable list is not an empty one"
+    } >&2
+    exit 1
+fi
 
 # Gate 2 — code citation defense (R257+). Internally skips when
 # [plugins.set_equality_validator] is unconfigured.

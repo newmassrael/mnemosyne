@@ -259,6 +259,18 @@
         }
       ],
       "expect_red": ["pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"]
+    },
+    {
+      "name": "an-unreadable-staged-list-reads-as-an-empty-one",
+      "why": "R1281 — this is the defect as it stood, a single `|| true` on the line four gates are keyed on. `git diff --cached --name-only` returns non-zero only on ERROR, so that clause masked nothing but a failed read — and a failed read does not look like a failure here, it looks like a repository with nothing staged. Gates 3 to 6 then find nothing to check and the hook exits 0 on a commit no rule was applied to. The same shape as `commit-msg`'s `2>/dev/null`, in the hook that gates every commit",
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "if ! staged=$(git diff --cached --name-only --diff-filter=ACMR); then\n    {\n        echo \"[mnemosyne pre-commit] commit rejected — the staged list could not be read\"\n        echo \"  every gate below is keyed on it, and an unreadable list is not an empty one\"\n    } >&2\n    exit 1\nfi\n",
+          "to": "staged=$(git diff --cached --name-only --diff-filter=ACMR || true)\n"
+        }
+      ],
+      "expect_red": ["pre_commit_refuses_when_it_cannot_read_what_is_staged"]
     }
   ]
 }

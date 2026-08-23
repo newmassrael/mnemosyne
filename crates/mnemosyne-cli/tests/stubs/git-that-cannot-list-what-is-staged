@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# A `git` that fails ONE question and answers every other honestly: `diff
+# --cached --name-only`, which is where `.githooks/pre-commit` gets the list
+# every gate below it is keyed on.
+#
+# NARROW ON PURPOSE. Hobbling git outright would abort the hook under `set -e`
+# and the test would pass for the wrong reason — a non-zero exit proves nothing
+# if everything is non-zero. What has to be reproduced is the one shape that
+# reads as an empty repository rather than as a broken one: the population read
+# fails, and the gates that ask "is a .rs staged" all answer no.
+#
+# Reads nothing; writes nothing.
+staged_list=0
+for argument in "$@"; do
+    case "$argument" in
+        --name-only) staged_list=$((staged_list + 1)) ;;
+        --cached) staged_list=$((staged_list + 1)) ;;
+    esac
+done
+if [[ $staged_list -ge 2 ]]; then
+    echo "git: fatal: could not read the index" >&2
+    exit 128
+fi
+exec /usr/bin/git "$@"

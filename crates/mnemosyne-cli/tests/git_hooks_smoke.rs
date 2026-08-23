@@ -1787,6 +1787,7 @@ fn the_side_workspace_gate_names_every_unformatted_manifest_in_one_run() {
 /// defect guessed at, kept because it is the OTHER way the capability can be
 /// missing and the hook must answer for both.
 const GREP_WITHOUT_PCRE: &str = "grep-without-pcre";
+const GIT_WITHOUT_A_STAGED_LIST: &str = "git-that-cannot-list-what-is-staged";
 
 #[test]
 fn commit_msg_enforces_its_content_rules_in_a_locale_that_cannot_read_characters() {
@@ -1909,6 +1910,70 @@ fn pre_commit_rejects_a_version_postfix_identifier() {
         out.status.success(),
         "`schema_version` must not trip the vN ban:\n{}",
         stderr_of(&out)
+    );
+}
+
+/// A COMMIT GATE THAT CANNOT SEE WHAT IS STAGED MUST NOT ACCEPT.
+///
+/// R1281, and the defect it closes is a single `|| true`. Four of this hook's
+/// gates are keyed on the staged file list, and that list was read with a clause
+/// that turned a FAILED read into an EMPTY one — so an unreadable index looked
+/// exactly like a repository with nothing staged, every one of those gates found
+/// nothing to check, and the hook exited 0 on a commit no rule had been applied
+/// to. `git diff --cached --name-only` returns non-zero only on error (an empty
+/// index is a zero exit with no output), so that clause could never have masked
+/// anything but the failure it was masking.
+///
+/// THE SHAPE IS THIS REPOSITORY'S OLDEST ONE and it has now been found in both
+/// hooks: `commit-msg` ended its Unicode rules in `2>/dev/null`, which made
+/// every way of going wrong look like "no match", and it took a second machine
+/// to see it. Here the stand-in is what makes the condition reproducible on this
+/// one — narrow on purpose, because a `git` that failed at everything would abort
+/// the hook under `set -e` and a non-zero exit would prove nothing.
+#[test]
+fn pre_commit_refuses_when_it_cannot_read_what_is_staged() {
+    let f = Fixture::new();
+    // The same banned identifier the case above uses, assembled rather than
+    // written for the same reason: Gate 6 scans this file too.
+    let banned = format!("parse_{}{}", 'v', 2);
+    f.write(
+        "src/lib.rs",
+        &format!("pub fn {banned}() -> u8 {{\n    2\n}}\n"),
+    );
+    f.stage_all();
+
+    let shim = f.path().join("shim-blind-git");
+    link_stub(GIT_WITHOUT_A_STAGED_LIST, &shim.join("git"));
+    let hobbled = format!(
+        "{}:{}",
+        shim.to_str().expect("shim path is utf-8"),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = f.run_hook("pre-commit", &[], "", &[("PATH", &hobbled)]);
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "the staged list could not be read, so no gate below it ran — and a hook \
+         that accepts because it could not look is worse than no hook, because \
+         it reports a clean answer:\n{err}"
+    );
+    assert!(
+        err.contains("the staged list could not be read"),
+        "and it must say what it could not do rather than merely fail, so the \
+         next reader is not left deciding between an empty index and a broken \
+         one:\n{err}"
+    );
+
+    // THE CONTROL, and it is the half that keeps the assertion above from being
+    // satisfied by a hook that refuses everything: the same fixture through an
+    // unhobbled hook is rejected BY GATE 6, naming the identifier. Refusing for
+    // the right reason and refusing for any reason are different facts.
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success() && err.contains("vN version-postfix identifier"),
+        "with a git that can answer, the same tree is refused by the gate whose \
+         subject it is:\n{err}"
     );
 }
 
