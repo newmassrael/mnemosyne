@@ -147,6 +147,12 @@ pub enum Declared {
     /// the answer to that question — held honest by demanding the flag be
     /// CONDITIONAL, which is a thing a site can fail to do.
     PinnedWhenItIsOurs(String),
+    /// `Tree::AlreadyJudgedWhereItIsWritten("…")`. The words are another
+    /// command's, so what this site owes is about the words it ADDS: the first
+    /// word handed over must be the relayed list, and none of its own may be one
+    /// [`crate::lock_verdict`] reads. Held by
+    /// `a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer`.
+    AlreadyJudgedWhereItIsWritten(String),
     /// A `Tree` expression this reader cannot read — a variable, a call, a
     /// variant it does not know. NOT a pass.
     Unreadable(String),
@@ -167,6 +173,7 @@ impl Declared {
             Self::WhereverTheCallerPoints(_) => "WhereverTheCallerPoints",
             Self::PinnedWhereverItPoints(_) => "PinnedWhereverItPoints",
             Self::PinnedWhenItIsOurs(_) => "PinnedWhenItIsOurs",
+            Self::AlreadyJudgedWhereItIsWritten(_) => "AlreadyJudgedWhereItIsWritten",
             Self::Unreadable(_) => "Unreadable",
         }
     }
@@ -184,7 +191,8 @@ impl Declared {
             Self::MadeByThisRun(_) => Self::WhereverTheCallerPoints(String::new()),
             Self::WhereverTheCallerPoints(_) => Self::PinnedWhereverItPoints(String::new()),
             Self::PinnedWhereverItPoints(_) => Self::PinnedWhenItIsOurs(String::new()),
-            Self::PinnedWhenItIsOurs(_) => Self::Unreadable(String::new()),
+            Self::PinnedWhenItIsOurs(_) => Self::AlreadyJudgedWhereItIsWritten(String::new()),
+            Self::AlreadyJudgedWhereItIsWritten(_) => Self::Unreadable(String::new()),
             Self::Unreadable(_) => return None,
         })
     }
@@ -457,7 +465,8 @@ impl RustSpawn {
                 Declared::MadeByThisRun(why)
                 | Declared::WhereverTheCallerPoints(why)
                 | Declared::PinnedWhereverItPoints(why)
-                | Declared::PinnedWhenItIsOurs(why),
+                | Declared::PinnedWhenItIsOurs(why)
+                | Declared::AlreadyJudgedWhereItIsWritten(why),
             ) => format!("cargo [{why}]"),
             Program::Cargo(Declared::Unreadable(written)) => format!("cargo [{written}?]"),
             Program::CargoBesideTheDoor(how)
@@ -657,15 +666,27 @@ impl RustSpawn {
     /// counted by [`RustSpawn::reach`] so the drop is not silent.
     #[must_use]
     pub fn commands(&self) -> Option<Vec<CargoCommand>> {
+        // SPELLED OUT RATHER THAN LEFT TO A CATCH-ALL, and R1278 is why. This
+        // enumeration used to end in `_ => return None`, so adding a sixth arm
+        // to `Declared` compiled here and answered "no commands" for every site
+        // declaring it — the two sister enumerations in this file are exhaustive
+        // matches and the compiler stopped the same change at both. A silent
+        // `None` here is a site that issues nothing, which is exactly the
+        // condition R1277's law is about, arriving as a pass.
         let declared = match &self.program {
             Program::Cargo(
                 declared @ (Declared::ThisRepository
                 | Declared::MadeByThisRun(_)
                 | Declared::WhereverTheCallerPoints(_)
                 | Declared::PinnedWhereverItPoints(_)
-                | Declared::PinnedWhenItIsOurs(_)),
+                | Declared::PinnedWhenItIsOurs(_)
+                | Declared::AlreadyJudgedWhereItIsWritten(_)),
             ) => declared.clone(),
-            _ => return None,
+            Program::Cargo(Declared::Unreadable(_))
+            | Program::CargoBesideTheDoor(_)
+            | Program::OurBinary(_)
+            | Program::Named(_)
+            | Program::Unplaceable(_) => return None,
         };
         Some(
             self.variants()?
@@ -1021,7 +1042,8 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                     | Declared::MadeByThisRun(_)
                     | Declared::WhereverTheCallerPoints(_)
                     | Declared::PinnedWhereverItPoints(_)
-                    | Declared::PinnedWhenItIsOurs(_)),
+                    | Declared::PinnedWhenItIsOurs(_)
+                    | Declared::AlreadyJudgedWhereItIsWritten(_)),
                 ) => declared.clone(),
                 // THE DOOR'S OWN SPAWN NEEDS NO EXCEPTION HERE, which is a
                 // finding rather than an omission. It ends in a `Command::new`,
@@ -2692,6 +2714,12 @@ fn one_declaration(expression: &syn::Expr) -> Declared {
             call.args.first().and_then(string_literal).map_or_else(
                 || Declared::Unreadable(rendered_text),
                 Declared::PinnedWhenItIsOurs,
+            )
+        }
+        syn::Expr::Call(call) if ends_with(call, &["AlreadyJudgedWhereItIsWritten"]) => {
+            call.args.first().and_then(string_literal).map_or_else(
+                || Declared::Unreadable(rendered_text),
+                Declared::AlreadyJudgedWhereItIsWritten,
             )
         }
         _ => Declared::Unreadable(rendered_text),

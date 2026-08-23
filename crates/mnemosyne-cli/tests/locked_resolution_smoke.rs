@@ -589,7 +589,7 @@ fn a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile() {
 /// a site whose words stop being readable issues no command, so a law about its
 /// arm goes on passing over the sites that remain — and it fixed that for ONE
 /// arm by demanding every declaring site be reached. Measured over all five, the
-/// demand is false of two of them: seven sites hand their subcommand over as a
+/// demand is false of two of them: some sites hand their subcommand over as a
 /// caller's word, or build their word list from a value, and no reading of the
 /// syntax finishes them.
 ///
@@ -604,7 +604,17 @@ fn a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile() {
 /// holding it, so an edit above it does not redden this list — a list that goes
 /// red for an unrelated change is a list people learn to renumber, which is the
 /// opposite of what it is for.
-const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [
+///
+/// R1278 TOOK FOUR OF THE SEVEN OFF IT, AND THAT IS WHAT THIS LIST IS FOR. Four
+/// entries said nearly the same sentence four times — the words are another
+/// command's, judged where it is written — and a shape four sites share is a
+/// shape that can carry a DECLARATION instead of a listing
+/// (`issue::Tree::AlreadyJudgedWhereItIsWritten`), which owes a falsifiable
+/// obligation where an entry here owes only a sentence. The three that remain
+/// are one shape too, and a different one: each is a measurement FIXTURE whose
+/// subcommand is the loop variable of a test asking cargo about every subcommand
+/// it has. A list nobody is trying to shorten is a list that grows.
+const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [
     (
         "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
         "compiles_in_fixture",
@@ -626,31 +636,20 @@ const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [
         "both call sites hand over a list they assembled, so the words at the \
          spawn are a hole this reader cannot count",
     ),
-    (
-        "tools/uncompiled-sources/src/lib.rs",
-        "probe",
-        "the words are `command.cargo_args.iter().skip(1)` — another command's \
-         arguments, which is not a parameter any call site's literal answers",
-    ),
-    (
-        "tools/unreported-targets/src/lib.rs",
-        "run",
-        "the words are `asked[1..]`, a slice of a value rather than a parameter \
-         this reader can follow back",
-    ),
-    (
-        "tools/unrun-tests/src/lib.rs",
-        "build_test_binaries",
-        "the words are `cargo_args.iter().skip(1)`, another command's arguments \
-         again",
-    ),
-    (
-        "tools/unrun-tests/src/lib.rs",
-        "list_doc_tests",
-        "three lists this reader cannot count, and splitting one call site's \
-         literals between them is a second question",
-    ),
 ];
+
+/// The words a relay may not add, because they are the ones a verdict is read
+/// from.
+///
+/// R1278. `lock_verdict` reads a command's subcommand, its `--manifest-path` and
+/// its `--locked`, and nothing else — so a relay that adds one of those has
+/// stopped relaying and started deciding. `--frozen` and `--offline` are here
+/// for the case the other three would miss: `--frozen` IS `--locked --offline`,
+/// and `is_the_pin` matches the literal `--locked` only, so a relay adding
+/// `--frozen` would pin what the other site chose not to pin in a word this
+/// repository's verdict function cannot see.
+const WORDS_A_RELAY_MAY_NOT_ADD: [&str; 4] =
+    ["--locked", "--frozen", "--offline", "--manifest-path"];
 
 /// EVERY ARM IS ASKED THE QUESTION R1271 ASKED OF ONE.
 ///
@@ -663,12 +662,21 @@ const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [
 /// unmeasured.
 ///
 /// Measured, and the answer is NO FOR TWO OF THEM — so the shape of the law is
-/// not the equality R1271 used but a PARTITION: every site that declares an arm
-/// either issues a command these laws judge, or is one of
-/// [`DECLARED_AND_UNREADABLE`] with its reason written down. Nothing may be in
-/// neither, and nothing may be in both.
+/// not the equality R1271 used but a PARTITION, in three cells since R1278:
+/// every site that declares an arm either issues a command these laws judge, or
+/// declares `Tree::AlreadyJudgedWhereItIsWritten` and is judged by
+/// `a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer`
+/// where it stands, or is one of [`DECLARED_AND_UNREADABLE`] with its reason
+/// written down. Nothing may be in none of the three, and nothing in two.
 ///
-/// THE ARMS COME FROM THE ENUM (`Declared::arms`), so a sixth one arrives here
+/// THE THIRD CELL IS NOT A WAY OUT OF THE FIRST, which is the question a new
+/// cell has to answer. A relay's subcommand is its caller's word, so it can
+/// never be in the first cell; what it CAN do is owe something a program checks,
+/// and it owes three things (see that law). The cell that has no obligation is
+/// the list, which is why the list is the one this repository is trying to
+/// shorten.
+///
+/// THE ARMS COME FROM THE ENUM (`Declared::arms`), so a seventh one arrives here
 /// without anybody deciding to add it — and arrives failing, because an arm no
 /// site declares is a law holding over nothing.
 #[test]
@@ -746,6 +754,25 @@ fn every_site_that_declares_a_tree_issues_a_command_or_is_named() {
              about that arm holds over nothing — the arm is either unnecessary \
              or unreachable, and both are things to know"
         );
+        if matches!(
+            arm,
+            ci_plan::rust::Declared::AlreadyJudgedWhereItIsWritten(_)
+        ) {
+            // THE SECOND CELL, AND IT IS AN ARM RATHER THAN A LIST (R1278). A
+            // relay hands over another command's words, so its subcommand is
+            // its caller's and it can never issue a command this population
+            // judges. What it can do is owe something falsifiable, which the
+            // relay law holds it to over the SITE — including that every site
+            // declaring the arm is one that law reached, so this cell cannot
+            // quietly grow past it.
+            assert!(
+                hit.is_empty(),
+                "a relay's subcommand is the word its caller hands over, so a \
+                 relay site that issued a judged command has words this reader \
+                 finished — which means it added a subcommand of its own: {hit:?}"
+            );
+            continue;
+        }
         let invented: Vec<&String> = hit.difference(&declared).collect();
         assert!(
             invented.is_empty(),
@@ -837,5 +864,217 @@ fn every_site_that_declares_a_tree_issues_a_command_or_is_named() {
          the site is gone, or its words became readable and the list is now \
          claiming a limit this repository does not have:\n  {}",
         stale.join("\n  ")
+    );
+}
+
+/// A SITE THAT RELAYS A JUDGED COMMAND OWES THREE THINGS AND ALL OF THEM ARE
+/// FALSIFIABLE.
+///
+/// R1278, and it is what took four entries off [`DECLARED_AND_UNREADABLE`]. Four
+/// gates re-issue the command they were asked about — with `--no-run` to build
+/// without running, with `--message-format=json` to read cargo's own artifact
+/// record, with `--doc -- --list` to ask which doc-tests there are — and until
+/// this round every one of them declared `Tree::WhereverTheCallerPoints`, whose
+/// obligation is that the command resolve NOTHING. They re-issue `cargo test`
+/// and `cargo check`, which resolve. The declaration was FALSE of all four, and
+/// what hid it is the very thing R1277's law is about: a relay's subcommand sits
+/// behind a hole, so the site issued no command for `lock_verdict` to contradict.
+///
+/// So the arm they declare now says what they do, and the obligation is about
+/// the words the site ADDS rather than the words it passes on:
+///
+/// 1. THE FIRST WORD IT HANDS OVER IS THE RELAYED LIST. That is what makes the
+///    subcommand the other site's rather than this one's, and a relay with no
+///    hole at all relays nothing — which this law sees as a site the walk could
+///    finish, and refuses in the equality below.
+/// 2. NONE OF ITS OWN WORDS IS ONE A VERDICT IS READ FROM
+///    ([`WORDS_A_RELAY_MAY_NOT_ADD`]). `--locked` pins what the other site chose
+///    not to pin, `--manifest-path` points the command at a different tree, and
+///    `--frozen` does the first in a word `is_the_pin` cannot see.
+/// 3. AND THE HARNESS SIDE IS NOT THE CARGO SIDE. Words after the first bare
+///    `--` go to the test binary and change no resolution, so this stops there
+///    rather than refusing `--list`.
+///
+/// WHAT IT CANNOT CHECK is that the relayed list really is a command this
+/// population holds — the semantic ceiling every arm shares.
+#[test]
+fn a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer() {
+    let root = repository_root();
+    let issued = ci_plan::commands_this_repository_issues(&root);
+    let arm = ci_plan::rust::Declared::AlreadyJudgedWhereItIsWritten(String::new());
+    let name = arm.arm();
+    let declared = issued.rust.declaring.get(name).cloned().unwrap_or_default();
+    assert!(
+        !declared.is_empty(),
+        "no site declares `Tree::{name}`, so this law holds over nothing — the \
+         arm is either unnecessary or unreachable, and both are things to know"
+    );
+
+    let mut reached = BTreeSet::new();
+    let mut broken = Vec::new();
+    for site in issued.rust.conditional.iter().chain(&issued.rust.carried) {
+        let ci_plan::rust::Program::Cargo(spelled) = &site.program else {
+            continue;
+        };
+        if spelled.arm() != name {
+            continue;
+        }
+        reached.insert(site.origin());
+        match site.words.first() {
+            Some(ci_plan::rust::Word::Unknown(..)) => {}
+            other => broken.push(format!(
+                "{} — the first word it hands over is {} and not the relayed \
+                 list, so the subcommand is this site's own choice",
+                site.origin(),
+                other.map_or_else(
+                    || "nothing at all".to_string(),
+                    |word| format!("`{}`", word.rendered())
+                )
+            )),
+        }
+        for word in &site.words {
+            let spelled_here = match word {
+                ci_plan::rust::Word::Spelled(text) | ci_plan::rust::Word::Sometimes(text, _) => {
+                    text.as_str()
+                }
+                // ONE runtime word is not a flag this site spells, which is the
+                // reading `Word::Runtime` carries everywhere else; a hole is the
+                // relayed list itself.
+                ci_plan::rust::Word::Runtime(_) | ci_plan::rust::Word::Unknown(..) => continue,
+            };
+            if spelled_here == "--" {
+                break;
+            }
+            if let Some(forbidden) = WORDS_A_RELAY_MAY_NOT_ADD.iter().find(|word| {
+                spelled_here == **word || spelled_here.starts_with(&format!("{word}="))
+            }) {
+                broken.push(format!(
+                    "{} — it adds `{spelled_here}`, and `{forbidden}` is a word \
+                     the verdict is read from, so this site is deciding rather \
+                     than relaying",
+                    site.origin()
+                ));
+            }
+        }
+    }
+    println!(
+        "[locked-resolution] {} site(s) relay a command judged where it is \
+         written, each handing over a list this reader cannot count and adding \
+         only words no verdict is read from",
+        reached.len()
+    );
+    // EVERY SITE THAT DECLARES THE ARM IS ONE THIS LAW REACHED, which is R1271's
+    // assertion in the place it belongs. A relay whose words this walk could
+    // FINISH is not in either bucket, and it is not in either bucket precisely
+    // because it has no hole — obligation 1 broken in the one way that would
+    // otherwise leave this law holding over fewer sites in silence.
+    assert_eq!(
+        reached,
+        declared,
+        "{} site(s) declare `Tree::{name}` and this law reached {} of them — a \
+         site missing here is one whose words this reader could finish, which \
+         for a relay means it wrote a word list of its own: {:?}",
+        declared.len(),
+        reached.len(),
+        declared.difference(&reached).collect::<Vec<_>>()
+    );
+    assert!(
+        broken.is_empty(),
+        "a site declaring that the words it hands over were judged where they \
+         are written may add nothing a verdict is read from, or the verdict at \
+         that other site is no longer the verdict here:\n  {}",
+        broken.join("\n  ")
+    );
+}
+
+/// THE ARM THOSE FOUR SITES USED TO DECLARE REFUSES THE COMMAND THEY ISSUE, AND
+/// THE ONE THEY DECLARE NOW REPRODUCES THE VERDICT ALREADY RECORDED.
+///
+/// R1278, and it is here because "the old declaration was false" is a claim, and
+/// a claim about a mechanism in this tree can be RUN. The relays hand over a
+/// command out of this very population — so this takes each command the
+/// population holds that RESOLVES, puts it under each of the two declarations in
+/// turn, and asks `lock_verdict`.
+///
+/// - under `WhereverTheCallerPoints`, whose obligation is that the command
+///   resolve NOTHING, the verdict is `Unreadable` — "a declaration the words
+///   contradict", in that function's own words;
+/// - under `AlreadyJudgedWhereItIsWritten` the verdict is EQUAL to the relayed
+///   command's own, which is the whole content of the arm.
+///
+/// WHY THIS COULD NOT FAIL BEFORE, which is the point R1277 was making one level
+/// up: a relay's subcommand is its caller's word, so no relay command was ever
+/// in the population, so `lock_verdict` was never asked. The declaration was
+/// false and unreachable at the same time, and the second is what made the first
+/// survive.
+#[test]
+fn the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues() {
+    let root = repository_root();
+    let tracked = tracked_manifests(&root);
+    let foreign = workspaces_this_repository_cannot_pin(&root);
+    let commands = everything_this_repository_issues(&root);
+
+    let mut checked = 0;
+    for relayed in &commands {
+        // WRITTEN AS DATA, so its own verdict is read off its words — which is
+        // exactly the position a relay puts them in.
+        if relayed.declared.is_some() {
+            continue;
+        }
+        let Some(subcommand) = relayed.subcommand() else {
+            continue;
+        };
+        if resolves_the_lockfile(subcommand) != Some(true) {
+            continue;
+        }
+        let recorded = lock_verdict(relayed, &tracked, &foreign);
+        if matches!(recorded, LockVerdict::Unreadable(_)) {
+            // Nothing to compare against: this command has no verdict of its
+            // own for a relay to inherit.
+            continue;
+        }
+        let under = |declared: ci_plan::rust::Declared| {
+            let mut command = relayed.clone();
+            command.declared = Some(declared);
+            command.site = Some("a relay of this command".to_string());
+            lock_verdict(&command, &tracked, &foreign)
+        };
+        let as_the_old_arm = under(ci_plan::rust::Declared::WhereverTheCallerPoints(
+            "the obligation this arm carries".to_string(),
+        ));
+        assert!(
+            matches!(as_the_old_arm, LockVerdict::Unreadable(_)),
+            "`{}` resolves, so a site declaring `WhereverTheCallerPoints` over \
+             it is claiming the command resolves nothing — and `lock_verdict` \
+             answered {as_the_old_arm:?} rather than refusing it, which would \
+             mean the obligation that arm documents is not the one it enforces",
+            relayed.rendered()
+        );
+        let as_the_relay = under(ci_plan::rust::Declared::AlreadyJudgedWhereItIsWritten(
+            "the words are another command's".to_string(),
+        ));
+        assert_eq!(
+            as_the_relay,
+            recorded,
+            "the whole content of the relay arm is that the verdict is the one \
+             already recorded where the words are written, and for `{}` the two \
+             disagree",
+            relayed.rendered()
+        );
+        checked += 1;
+    }
+    println!(
+        "[locked-resolution] {checked} command(s) this population holds were put \
+         under both declarations: the old one refuses every single one of them, \
+         the new one reproduces the verdict already recorded"
+    );
+    // NON-VACUITY, AND IT IS A FLOOR ON THE RESOLVING HALF OF THE POPULATION.
+    // Every relay in this repository is handed one of these, so a run that found
+    // a handful of them is a run whose answer is about something else.
+    assert!(
+        checked >= 20,
+        "this repository issues far more than twenty resolving cargo commands \
+         written as data, and {checked} of them is too few for the comparison \
+         above to be about the population a relay is actually handed"
     );
 }

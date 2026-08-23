@@ -532,7 +532,7 @@ pub fn probe(root: &Path, command: &CargoCommand, refusals: &mut Vec<Refusal>) -
         }
     };
 
-    let output = issue::cargo(Tree::WhereverTheCallerPoints(
+    let output = issue::cargo(Tree::AlreadyJudgedWhereItIsWritten(
         "the words are a command judged where it is WRITTEN — this re-issues \
          them, and whose lockfile they resolve is decided by the manifest they \
          already name",

@@ -234,7 +234,7 @@ struct ArtifactProfile {
 /// they are out of cargo's own artifact record rather than out of a path this
 /// gate derived. R1078 established that as the way to know what a gate reached.
 pub fn build_test_binaries(root: &Path, cargo_args: &[String]) -> Result<Vec<TestBinary>, String> {
-    let mut command = issue::cargo(Tree::WhereverTheCallerPoints(
+    let mut command = issue::cargo(Tree::AlreadyJudgedWhereItIsWritten(
         "the words are a command judged where it is WRITTEN — this re-issues \
          them with `--no-run`, over whichever manifest they already name",
     ));
@@ -441,7 +441,7 @@ fn list_doc_tests(
     command: &CargoCommand,
     extra_harness: &[&str],
 ) -> Result<BTreeSet<TestId>, String> {
-    let mut invocation = issue::cargo(Tree::WhereverTheCallerPoints(
+    let mut invocation = issue::cargo(Tree::AlreadyJudgedWhereItIsWritten(
         "the words are a command judged where it is WRITTEN — this re-issues \
          them to LIST doc-tests, over whichever manifest they already name",
     ));

@@ -1909,7 +1909,14 @@ pub fn lock_verdict(
                  reader cannot read"
             ))
         }
-        None => {
+        // THE WORDS ARE ANOTHER COMMAND'S, SO THE ANSWER IS READ OFF THEM — the
+        // same answer a command written as data gets, and for the same reason:
+        // the manifest is in the words. What is different is that they arrived
+        // from another site, and that is what the relay's own obligation is
+        // about (`issue::Tree::AlreadyJudgedWhereItIsWritten`): it may add no
+        // word this function reads, so reading the words is reading the other
+        // site's command. R1278.
+        Some(rust::Declared::AlreadyJudgedWhereItIsWritten(_)) | None => {
             let manifest = match command.manifest(tracked) {
                 ManifestTarget::Root => "Cargo.toml".to_string(),
                 ManifestTarget::Named(path) => path,

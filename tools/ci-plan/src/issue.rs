@@ -50,14 +50,15 @@ use std::process::Command;
 
 /// Whose lockfile a cargo command resolves — the fact only the call site has.
 ///
-/// FOUR ARMS AND EACH ONE OWES SOMETHING. Two of them decline to name a tree,
+/// SIX ARMS AND EACH ONE OWES SOMETHING. Three of them decline to name a tree,
 /// because a gate's census is pointed at a manifest by whoever calls it and its
 /// author honestly cannot say which — and declining is the HARDEST position
-/// rather than the easiest, with two ways to pay for it: resolve nothing at all
-/// ([`Tree::WhereverTheCallerPoints`]), or pin whatever you land on
-/// ([`Tree::PinnedWhereverItPoints`]). An arm that asked nothing would be an
-/// exemption, and R1259 spent a round on what an expectation that cannot fail is
-/// worth.
+/// rather than the easiest, with three ways to pay for it: resolve nothing at
+/// all ([`Tree::WhereverTheCallerPoints`]), pin whatever you land on
+/// ([`Tree::PinnedWhereverItPoints`]), or hand over words somebody else's site
+/// already answered for ([`Tree::AlreadyJudgedWhereItIsWritten`]). An arm that
+/// asked nothing would be an exemption, and R1259 spent a round on what an
+/// expectation that cannot fail is worth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tree {
     /// This repository, in any of its workspaces. Its lockfiles are tracked
@@ -115,6 +116,42 @@ pub enum Tree {
     /// rather than something else; that is the semantic ceiling every one of
     /// these arms shares.
     PinnedWhenItIsOurs(&'static str),
+    /// THE WORDS ARE ANOTHER COMMAND'S, AND THAT COMMAND IS JUDGED WHERE IT IS
+    /// WRITTEN. A gate that re-issues the command it was asked about — with
+    /// `--no-run` to build without running, with `--message-format=json` to read
+    /// cargo's own artifact record, with `--doc -- --list` to ask which doc-tests
+    /// there are — is not pointing cargo at a tree of its own choosing. It is
+    /// handing back a word list some other site wrote down, and the lockfile
+    /// question about that list already has an answer at the site that wrote it.
+    ///
+    /// SO THE ANSWER HERE IS THE MANIFEST THOSE WORDS NAME, which is the same
+    /// answer a command written as data gets. What is different is where the
+    /// words came from, and that is exactly what this site owes an account of.
+    ///
+    /// THE OBLIGATION IS ON THE SITE AND EVERY PART OF IT IS FALSIFIABLE: the
+    /// FIRST word this site hands over must be the relayed list itself — so the
+    /// subcommand is the relayed command's and not one this site chose — and
+    /// none of the site's OWN words may be one [`crate::lock_verdict`] reads. A
+    /// relay that spells `--locked` pins what the other site chose not to pin; a
+    /// relay that spells `--manifest-path` points the command at a different
+    /// tree; a relay that spells `--frozen` or `--offline` does the first of
+    /// those in words this repository's verdict function cannot even see. Each is
+    /// a relay that has stopped being one, and each is a thing a program can see.
+    ///
+    /// WHY IT IS NOT AN EXEMPTION, which is the question R1259 makes every arm
+    /// answer. Before R1278 these four sites declared
+    /// [`Tree::WhereverTheCallerPoints`], whose obligation is that the command
+    /// resolve NOTHING — and they re-issue `cargo test` and `cargo check`, which
+    /// resolve. The declaration was false, and what hid it is that a relay's
+    /// subcommand sits behind a hole, so the site issued no command for
+    /// `lock_verdict` to contradict. An arm with a false obligation nobody can
+    /// reach is worth less than an arm with a true one a program checks.
+    ///
+    /// WHAT NO PROGRAM HERE CAN CHECK is that the relayed list really is a
+    /// command this population holds. That is the semantic ceiling every arm
+    /// shares, and it is why the obligation above is about the words this site
+    /// ADDS rather than about the words it passes on.
+    AlreadyJudgedWhereItIsWritten(&'static str),
 }
 
 impl Tree {
@@ -126,7 +163,8 @@ impl Tree {
             Self::MadeByThisRun(why)
             | Self::WhereverTheCallerPoints(why)
             | Self::PinnedWhereverItPoints(why)
-            | Self::PinnedWhenItIsOurs(why) => Some(why),
+            | Self::PinnedWhenItIsOurs(why)
+            | Self::AlreadyJudgedWhereItIsWritten(why) => Some(why),
         }
     }
 }

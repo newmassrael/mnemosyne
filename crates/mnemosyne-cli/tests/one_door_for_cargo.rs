@@ -121,6 +121,9 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
             Some(Declared::WhereverTheCallerPoints(_)) => "wherever the caller points",
             Some(Declared::PinnedWhereverItPoints(_)) => "pinned wherever it points",
             Some(Declared::PinnedWhenItIsOurs(_)) => "pinned when it is ours",
+            Some(Declared::AlreadyJudgedWhereItIsWritten(_)) => {
+                "already judged where it is written"
+            }
             Some(Declared::Unreadable(_)) | None => {
                 panic!("{origin} came through the door undeclared")
             }

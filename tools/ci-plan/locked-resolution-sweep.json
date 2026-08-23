@@ -125,7 +125,9 @@
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
-        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
       ]
     },
     {
@@ -166,7 +168,8 @@
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
-        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
       ]
     },
     {
@@ -323,8 +326,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [",
-          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 8] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
+          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [",
+          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 4] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
         }
       ],
       "expect_red": [
@@ -343,7 +346,110 @@
       ],
       "expect_red": [
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ]
+    },
+    {
+      "name": "a-relay-adds-the-pin-the-other-site-chose-not-to",
+      "why": "R1278 — a relay's whole claim is that the verdict was recorded where the words were written, and `--locked` is the word that verdict is read from. Adding it pins what the other site chose not to pin, which makes the answer here a different answer from the one being inherited",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "        .args(cargo_args.iter().skip(1))\n        .arg(\"--no-run\")\n        .arg(\"--message-format=json\")\n",
+          "to": "        .args(cargo_args.iter().skip(1))\n        .arg(\"--no-run\")\n        .arg(\"--locked\")\n        .arg(\"--message-format=json\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ]
+    },
+    {
+      "name": "a-relay-adds-the-word-this-repositorys-verdict-cannot-see",
+      "why": "R1278, AND IT IS THE ENTRY IN `WORDS_A_RELAY_MAY_NOT_ADD` THAT IS NOT DERIVED FROM WHAT `lock_verdict` READS. `--frozen` IS `--locked --offline`, and `is_the_pin` matches the literal `--locked` only — so a relay adding it pins the other site's command in a word this repository's verdict function is blind to. Without this injection those two entries would be decoration",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    .args(command.cargo_args.iter().skip(1))\n    .arg(\"--message-format=json\")\n",
+          "to": "    .args(command.cargo_args.iter().skip(1))\n    .arg(\"--frozen\")\n    .arg(\"--message-format=json\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ]
+    },
+    {
+      "name": "a-relay-points-the-command-at-a-tree-of-its-own",
+      "why": "R1278 — `--manifest-path` is the second of the three words a verdict is read from, and it is the most plausible mistake of the three: a gate that wants to be sure which workspace it is asking about adds it, and the command is then over a different tree from the one whose verdict is being inherited",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "        .args(command.cargo_args.iter().skip(1))\n        .arg(\"--doc\")\n",
+          "to": "        .args(command.cargo_args.iter().skip(1))\n        .arg(\"--manifest-path\")\n        .arg(\"Cargo.toml\")\n        .arg(\"--doc\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ]
+    },
+    {
+      "name": "a-relay-writes-its-own-subcommand-first",
+      "why": "R1278 — the FIRST word a relay hands over has to be the relayed list, because that is what makes the subcommand the other site's. A literal in front of it and the command is running something this site chose, over words that were judged as something else",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    .args(command.cargo_args.iter().skip(1))\n    .arg(\"--message-format=json\")\n    .current_dir(root)\n",
+          "to": "    .arg(\"check\")\n    .args(command.cargo_args.iter().skip(2))\n    .arg(\"--message-format=json\")\n    .current_dir(root)\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    {
+      "name": "a-relay-with-no-hole-in-it-relays-nothing",
+      "why": "R1278 — a site declaring the relay arm and handing over a word list this reader can FINISH is not relaying anything, and it is the one break that would otherwise be silent: such a site leaves the conditional and carried buckets altogether, so a law that only walked those buckets would hold over fewer sites and say nothing. That is R1271's silence, and the equality against `declaring` is what catches it",
+      "edits": [
+        {
+          "file": "tools/unreported-targets/src/lib.rs",
+          "from": "        .args(&asked[1..])\n",
+          "to": "        .arg(\"metadata\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    {
+      "name": "the-relay-arms-verdict-is-not-the-one-already-recorded",
+      "why": "R1278 — the whole content of the arm is that the verdict is the one recorded where the words are written, so a `lock_verdict` that answers something else for it has taken the arm's meaning away while leaving its name. Answering `ResolvesNothing` is the specific wrong answer worth injecting: it is a PASS, so nothing else in this file would notice",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::AlreadyJudgedWhereItIsWritten(_)) | None => {\n",
+          "to": "        Some(rust::Declared::AlreadyJudgedWhereItIsWritten(_)) => {\n            return LockVerdict::ResolvesNothing\n        }\n        None => {\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+      ]
+    },
+    {
+      "name": "the-arm-a-relay-left-stops-refusing-what-it-documents",
+      "why": "R1278 — half of this round's measurement is that `WhereverTheCallerPoints` REFUSES a command that resolves, which is what made the four relays' old declaration false. If that arm stopped refusing, the old declaration would have been fine all along and the round's reason would be gone — and nothing else in this file would go red, because the six sites that legitimately declare that arm resolve nothing and pass either way",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::WhereverTheCallerPoints(why)) => {\n            return LockVerdict::Unreadable(format!(\n",
+          "to": "        Some(rust::Declared::WhereverTheCallerPoints(why)) => {\n            return LockVerdict::ResolvesNothing;\n            #[allow(unreachable_code)]\n            return LockVerdict::Unreadable(format!(\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
       ]
     }
   ]

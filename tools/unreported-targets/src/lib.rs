@@ -513,7 +513,7 @@ pub fn run(log: &Path, argv: &[String], at: &Path) -> Result<Report, String> {
     // command goes through the one door so the declaration is made where every
     // other cargo spawn in this repository makes it (R1262).
     let mut spawn = if asked[0] == "cargo" {
-        issue::cargo(Tree::WhereverTheCallerPoints(
+        issue::cargo(Tree::AlreadyJudgedWhereItIsWritten(
             "the words are the command being asked about, judged where it is \
              WRITTEN — this re-issues them over whichever manifest they name",
         ))

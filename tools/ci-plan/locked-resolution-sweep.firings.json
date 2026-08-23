@@ -34,10 +34,12 @@
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
-        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
@@ -86,6 +88,89 @@
       ],
       "tests": [
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    "a-relay-adds-the-pin-the-other-site-chose-not-to": {
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "        .args(cargo_args.iter().skip(1))\n        .arg(\"--no-run\")\n        .arg(\"--message-format=json\")\n",
+          "to": "        .args(cargo_args.iter().skip(1))\n        .arg(\"--no-run\")\n        .arg(\"--locked\")\n        .arg(\"--message-format=json\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ]
+    },
+    "a-relay-adds-the-word-this-repositorys-verdict-cannot-see": {
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    .args(command.cargo_args.iter().skip(1))\n    .arg(\"--message-format=json\")\n",
+          "to": "    .args(command.cargo_args.iter().skip(1))\n    .arg(\"--frozen\")\n    .arg(\"--message-format=json\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ]
+    },
+    "a-relay-points-the-command-at-a-tree-of-its-own": {
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "        .args(command.cargo_args.iter().skip(1))\n        .arg(\"--doc\")\n",
+          "to": "        .args(command.cargo_args.iter().skip(1))\n        .arg(\"--manifest-path\")\n        .arg(\"Cargo.toml\")\n        .arg(\"--doc\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+      ]
+    },
+    "a-relay-with-no-hole-in-it-relays-nothing": {
+      "edits": [
+        {
+          "file": "tools/unreported-targets/src/lib.rs",
+          "from": "        .args(&asked[1..])\n",
+          "to": "        .arg(\"metadata\")\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ]
+    },
+    "a-relay-writes-its-own-subcommand-first": {
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    .args(command.cargo_args.iter().skip(1))\n    .arg(\"--message-format=json\")\n    .current_dir(root)\n",
+          "to": "    .arg(\"check\")\n    .args(command.cargo_args.iter().skip(2))\n    .arg(\"--message-format=json\")\n    .current_dir(root)\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     "a-resolving-command-declines-to-name-its-tree": {
@@ -141,8 +226,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [",
-          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 8] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
+          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [",
+          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 4] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
         }
       ],
       "expect_red": [
@@ -177,10 +262,12 @@
       ],
       "expect_red": [
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
         "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
@@ -291,6 +378,21 @@
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     },
+    "the-arm-a-relay-left-stops-refusing-what-it-documents": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::WhereverTheCallerPoints(why)) => {\n            return LockVerdict::Unreadable(format!(\n",
+          "to": "        Some(rust::Declared::WhereverTheCallerPoints(why)) => {\n            return LockVerdict::ResolvesNothing;\n            #[allow(unreachable_code)]\n            return LockVerdict::Unreadable(format!(\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+      ],
+      "tests": [
+        "locked_resolution_smoke::the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+      ]
+    },
     "the-gate-pointed-at-a-workspace-resolves-it-freely": {
       "edits": [
         {
@@ -336,6 +438,21 @@
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     },
+    "the-relay-arms-verdict-is-not-the-one-already-recorded": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::AlreadyJudgedWhereItIsWritten(_)) | None => {\n",
+          "to": "        Some(rust::Declared::AlreadyJudgedWhereItIsWritten(_)) => {\n            return LockVerdict::ResolvesNothing\n        }\n        None => {\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+      ],
+      "tests": [
+        "locked_resolution_smoke::the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+      ]
+    },
     "the-sixth-sources-flag-goes-away": {
       "edits": [
         {
@@ -363,12 +480,16 @@
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
-        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "locked_resolution_smoke::the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     }
