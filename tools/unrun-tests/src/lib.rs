@@ -618,6 +618,7 @@ pub fn population_command(manifest: &str) -> CargoCommand {
         // The manifest is a literal in the words, so the manifest is what says
         // whose lockfile this resolves.
         declared: None,
+        site: None,
         uncounted: Vec::new(),
     }
 }

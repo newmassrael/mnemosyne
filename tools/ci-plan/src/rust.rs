@@ -170,6 +170,38 @@ impl Declared {
             Self::Unreadable(_) => "Unreadable",
         }
     }
+
+    /// The arm after this one, and `None` at the last — the chain
+    /// [`Declared::arms`] walks.
+    ///
+    /// EXHAUSTIVE BECAUSE THE COMPILER KEEPS IT SO. A sixth arm added to the
+    /// enum and forgotten here does not build, which is the difference between
+    /// a list of the arms and a list of the arms somebody remembered. Every
+    /// payload is empty: this chain is the arms as VALUES, not as data.
+    fn after(&self) -> Option<Self> {
+        Some(match self {
+            Self::ThisRepository => Self::MadeByThisRun(String::new()),
+            Self::MadeByThisRun(_) => Self::WhereverTheCallerPoints(String::new()),
+            Self::WhereverTheCallerPoints(_) => Self::PinnedWhereverItPoints(String::new()),
+            Self::PinnedWhereverItPoints(_) => Self::PinnedWhenItIsOurs(String::new()),
+            Self::PinnedWhenItIsOurs(_) => Self::Unreadable(String::new()),
+            Self::Unreadable(_) => return None,
+        })
+    }
+
+    /// One value of every arm, payloads empty.
+    ///
+    /// R1277, AND IT IS VALUES RATHER THAN NAMES so a law over "every arm" can
+    /// both NAME one ([`Declared::arm`]) and MATCH on it — a law that told the
+    /// arms apart by string would go on holding over five of six the day a
+    /// variant is renamed, which is R1271's silence one level up. The list
+    /// itself is what makes such a law exhaustive: an arm added to the enum
+    /// arrives in it without anyone deciding to put it there, and the law then
+    /// asks the new arm the same question it asks the other five.
+    #[must_use]
+    pub fn arms() -> Vec<Self> {
+        std::iter::successors(Some(Self::ThisRepository), Self::after).collect()
+    }
 }
 
 /// The program a spawn site runs.
@@ -718,6 +750,14 @@ impl RustSpawn {
             uncounted,
             env: BTreeMap::new(),
             declared: Some(declared),
+            // THE SITE TRAVELS WITH THE DECLARATION AND SURVIVES `as_command_from`
+            // (R1277). A command read at a call site is attributed to the CALLER,
+            // which is where a person goes to change its words — so `origin` moves
+            // and the spawn that declared the arm is left spelled inside a display
+            // string. One site reached through five callers then reads as five
+            // sites to anything counting origins, which is measured: that is
+            // exactly what `item-citations::cargo` does.
+            site: Some(self.origin()),
         }
     }
 
@@ -825,8 +865,8 @@ pub struct RustSpawns {
     pub our_binaries: usize,
     /// Spawns of another program, named by a literal — `git`, `bash`, `tar`.
     pub other_programs: usize,
-    /// How many SITES declared each [`Declared`] arm, whatever became of their
-    /// words — see [`Declared::arm`].
+    /// WHICH SITES declared each [`Declared`] arm, whatever became of their
+    /// words — see [`Declared::arm`], keyed by [`RustSpawn::origin`].
     ///
     /// R1271, AND IT EXISTS BECAUSE A LAW ABOUT AN ARM ASKS ITS COMMANDS. A site
     /// that issues no readable command contributes none, so a site whose words
@@ -837,10 +877,17 @@ pub struct RustSpawns {
     /// that declare it — a green that meant "two sites are fine", read as "this
     /// repository's sites are fine".
     ///
-    /// R1228's shape once more: the count is handed over rather than left for a
+    /// R1277 MADE IT THE NAMES RATHER THAN A COUNT, because the count is a floor
+    /// of its own once more than one arm asks: a site leaving reach and another
+    /// arriving is a total that did not move, and the arm most of this
+    /// repository's gates declare has ten of them. The names also say WHICH one
+    /// went, which is the difference between a law a reader can act on and one
+    /// that reports a number changed. The count is `.len()`.
+    ///
+    /// R1228's shape once more: the set is handed over rather than left for a
     /// caller to reconstruct, because a caller that has to reconstruct it is a
     /// caller that will not.
-    pub declaring: BTreeMap<String, usize>,
+    pub declaring: BTreeMap<String, BTreeSet<String>>,
     /// Every tracked Rust file this walk parsed — the reach, which an empty
     /// finding list alone can never distinguish from a walk that did not run.
     pub files: usize,
@@ -1001,13 +1048,14 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                     continue;
                 }
             };
-            // COUNTED WHERE THE DECLARATION IS READ AND BEFORE ANY SORTING, so
-            // the number is about SITES rather than about whichever bucket their
+            // NAMED WHERE THE DECLARATION IS READ AND BEFORE ANY SORTING, so
+            // the set is about SITES rather than about whichever bucket their
             // words landed in.
-            *found
+            found
                 .declaring
                 .entry(declared.arm().to_string())
-                .or_default() += 1;
+                .or_default()
+                .insert(site.origin());
             found.ways_no_table_can_key_on += site.ways_no_table_can_key_on();
             match site.complete_words() {
                 Some(words) => found

@@ -1315,6 +1315,22 @@ pub struct CargoCommand {
     /// `None` is not "unknown" — it is "read it off the manifest", which is the
     /// right answer for every source whose words are written down.
     pub declared: Option<rust::Declared>,
+    /// The spawn site whose declaration this command carries, as
+    /// [`rust::RustSpawn::origin`] spells it — `path:line \`fn\``.
+    ///
+    /// R1277, AND IT IS PAIRED WITH `declared`: exactly the commands a Rust
+    /// source's own words produced carry both, and the five sources written as
+    /// data carry neither. The pairing is a law rather than a remark — see
+    /// `locked_resolution_smoke`, where a declaration without its site would
+    /// leave a whole arm unaskable.
+    ///
+    /// IT IS NOT [`CargoCommand::origin`] AND THE DIFFERENCE IS THE POINT.
+    /// `origin` says where a person goes to change the WORDS, which for a
+    /// command read at a call site is the caller; this says which spawn made the
+    /// DECLARATION. One site reached through five callers has five origins and
+    /// one site, and a law counting reach in origins would read that as five
+    /// sites answering for an arm one site declares.
+    pub site: Option<String>,
     /// Every word of this command that stands for a list of UNKNOWN LENGTH, and
     /// what its site said may be in it.
     ///
@@ -1950,6 +1966,7 @@ pub fn script_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
                 declared: None,
+                site: None,
                 uncounted: Vec::new(),
             });
         }
@@ -2003,6 +2020,7 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
                 harness_args: found.harness_args,
                 env: BTreeMap::new(),
                 declared: None,
+                site: None,
                 uncounted: Vec::new(),
             });
         }
@@ -2071,6 +2089,7 @@ pub fn sweep_cargo_commands(root: &Path) -> Vec<CargoCommand> {
             harness_args: found.harness_args,
             env: BTreeMap::new(),
             declared: None,
+            site: None,
             uncounted: Vec::new(),
         });
     }
@@ -2316,6 +2335,7 @@ pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
                     harness_args: found.harness_args,
                     env: step.env.clone(),
                     declared: None,
+                    site: None,
                     uncounted: Vec::new(),
                 });
             }
@@ -2751,6 +2771,7 @@ pub fn lister_declared_commands(listed: &Workspaces) -> Vec<CargoCommand> {
                 harness_args,
                 env: BTreeMap::new(),
                 declared: None,
+                site: None,
                 uncounted: Vec::new(),
             }
         })

@@ -55,6 +55,7 @@ fn issued(line: &str) -> CargoCommand {
         env: Default::default(),
         // A line, so whose lockfile it resolves is the manifest path's to say.
         declared: None,
+        site: None,
         uncounted: Vec::new(),
     }
 }

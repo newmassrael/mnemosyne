@@ -145,29 +145,36 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
 /// program can see. What no program here can see is whether the condition is
 /// OWNERSHIP rather than something else — the semantic ceiling every arm shares
 /// and the reason this one is not a way around the other four.
+/// WHICH SITES THIS LAW REACHES IS NOT ASKED HERE ANY MORE (R1277). R1271 put
+/// that half in this test because this arm was the one it had a defect in, and
+/// the question turned out to belong to all five —
+/// `every_site_that_declares_a_tree_issues_a_command_or_is_named` asks it of
+/// every arm at once, against a list of the sites nobody can read. Asking it
+/// twice would be two answers to one question.
 #[test]
 fn a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag() {
     let root = repository_root();
-    let declaring = ci_plan::commands_this_repository_issues(&root)
-        .rust
-        .declaring
-        .get("PinnedWhenItIsOurs")
-        .copied()
-        .unwrap_or(0);
     let commands = everything_this_repository_issues(&root);
     // THE SITE IS ASKED THROUGH ITS COMMANDS, because a site whose flag is
-    // unconditional issues exactly ONE and that is the whole defect. Commands
-    // from one site share the file and the function that wrote them, which is
-    // what `origin` is; a function holding two cargo spawns would be read as one
-    // site here, and the claim — that this function's `--locked` is decided
-    // while it runs — is still the right one to make about it.
+    // unconditional issues exactly ONE and that is the whole defect. The key is
+    // the SITE the command came from and not its `origin` (R1277): a command
+    // read at a call site is attributed to that caller, so one site reached
+    // through five callers reads as five, and two spawns in one function read as
+    // one. Neither is the number this law is about.
     let mut by_site: BTreeMap<String, (bool, bool)> = BTreeMap::new();
     for command in &commands {
         if matches!(
             command.declared,
             Some(ci_plan::rust::Declared::PinnedWhenItIsOurs(_))
         ) {
-            let seen = by_site.entry(command.origin()).or_insert((false, false));
+            let Some(site) = &command.site else {
+                panic!(
+                    "{} carries a declaration and names no site: {}",
+                    command.origin(),
+                    command.rendered()
+                );
+            };
+            let seen = by_site.entry(site.clone()).or_insert((false, false));
             if command.has("--locked") {
                 seen.0 = true;
             } else {
@@ -180,24 +187,6 @@ fn a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag() {
         "no command in this repository declares `Tree::PinnedWhenItIsOurs`, so \
          this law holds over nothing — the arm is either unnecessary or \
          unreachable, and both are things to know"
-    );
-    // AND EVERY SITE THAT DECLARES THE ARM IS ONE THIS LAW REACHED (R1271).
-    // A law about an arm asks its COMMANDS, and a site whose words stopped being
-    // readable issues none — so it leaves this law quietly, and the law goes on
-    // passing over the sites that remain. Measured: `stale-artifacts::apply`
-    // declares this arm and issued no judged command at all until R1271 read the
-    // list its helper returns, and this assertion was the missing half rather
-    // than the hop. "Not empty" was a floor of one.
-    assert_eq!(
-        by_site.len(),
-        declaring,
-        "{} site(s) declare `Tree::PinnedWhenItIsOurs` and this law reached {} \
-         of them — a site that issues no readable command is a site this law \
-         passes over in silence, which is exactly what it did for \
-         `stale-artifacts::apply` until the list its helper returns was read: {:?}",
-        declaring,
-        by_site.len(),
-        by_site.keys().collect::<Vec<_>>()
     );
     let broken: Vec<String> = by_site
         .iter()
@@ -590,5 +579,263 @@ fn a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile() {
         pinned_workspaces >= 10,
         "the separate workspaces this repository can pin all track a lockfile, \
          and {pinned_workspaces} of them is too few for that to have been read"
+    );
+}
+
+/// Every site that declares a tree and issues no command these laws can judge,
+/// with the reason its words cannot be read.
+///
+/// R1277, AND IT IS THE HALF A GREEN RUN ABOVE DOES NOT COVER. R1271 found that
+/// a site whose words stop being readable issues no command, so a law about its
+/// arm goes on passing over the sites that remain — and it fixed that for ONE
+/// arm by demanding every declaring site be reached. Measured over all five, the
+/// demand is false of two of them: seven sites hand their subcommand over as a
+/// caller's word, or build their word list from a value, and no reading of the
+/// syntax finishes them.
+///
+/// A NUMBER WOULD NOT HAVE DONE. `RustSpawns` already counts what it could not
+/// read — `ways_no_table_can_key_on`, `carried`, `ways_beyond_a_report` — and
+/// every one of those is a total, so a site leaving reach while another arrives
+/// is a total that did not move. This is the names, and a name is what makes the
+/// difference between a run that reports and a run that refuses: adding a site
+/// here is an edit somebody makes on purpose, with a reason, in a review.
+///
+/// THE LINE IS DELIBERATELY NOT PART OF THE KEY. A site is `path` + the function
+/// holding it, so an edit above it does not redden this list — a list that goes
+/// red for an unrelated change is a list people learn to renumber, which is the
+/// opposite of what it is for.
+const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [
+    (
+        "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+        "compiles_in_fixture",
+        "the subcommand is one of the words its caller hands over, and that \
+         caller builds the list while it runs — so no way through this site is \
+         one a table of subcommands can be keyed on",
+    ),
+    (
+        "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+        "run_in_fixture",
+        "this file's own measurement fixture: the subcommand AND the flag are \
+         both arguments, so what it runs is decided by the loop below rather \
+         than written at the spawn — it is the one site here that is asking \
+         cargo the question the rest of this file rests on",
+    ),
+    (
+        "tools/stale-artifacts/tests/pass.rs",
+        "in_fixture",
+        "both call sites hand over a list they assembled, so the words at the \
+         spawn are a hole this reader cannot count",
+    ),
+    (
+        "tools/uncompiled-sources/src/lib.rs",
+        "probe",
+        "the words are `command.cargo_args.iter().skip(1)` — another command's \
+         arguments, which is not a parameter any call site's literal answers",
+    ),
+    (
+        "tools/unreported-targets/src/lib.rs",
+        "run",
+        "the words are `asked[1..]`, a slice of a value rather than a parameter \
+         this reader can follow back",
+    ),
+    (
+        "tools/unrun-tests/src/lib.rs",
+        "build_test_binaries",
+        "the words are `cargo_args.iter().skip(1)`, another command's arguments \
+         again",
+    ),
+    (
+        "tools/unrun-tests/src/lib.rs",
+        "list_doc_tests",
+        "three lists this reader cannot count, and splitting one call site's \
+         literals between them is a second question",
+    ),
+];
+
+/// EVERY ARM IS ASKED THE QUESTION R1271 ASKED OF ONE.
+///
+/// A law about an arm asks its COMMANDS, so a site whose words stop being
+/// readable issues none and leaves in silence. R1271 measured that for
+/// `PinnedWhenItIsOurs` — `stale-artifacts::apply` had never issued a judged
+/// command, and the law over that arm was passing on two of the three sites that
+/// declare it. It fixed that arm and left the other four unasked, which is N196:
+/// whether they are even the sort of thing to ask the same number of was itself
+/// unmeasured.
+///
+/// Measured, and the answer is NO FOR TWO OF THEM — so the shape of the law is
+/// not the equality R1271 used but a PARTITION: every site that declares an arm
+/// either issues a command these laws judge, or is one of
+/// [`DECLARED_AND_UNREADABLE`] with its reason written down. Nothing may be in
+/// neither, and nothing may be in both.
+///
+/// THE ARMS COME FROM THE ENUM (`Declared::arms`), so a sixth one arrives here
+/// without anybody deciding to add it — and arrives failing, because an arm no
+/// site declares is a law holding over nothing.
+#[test]
+fn every_site_that_declares_a_tree_issues_a_command_or_is_named() {
+    let root = repository_root();
+    let issued = ci_plan::commands_this_repository_issues(&root);
+
+    // WHICH SITE, NOT WHICH ORIGIN. `origin` is where a person goes to change
+    // the WORDS, which for a command read at a call site is that caller — so
+    // `item-citations::cargo`, one site, has five of them. Counting reach in
+    // origins would read that as five sites answering for an arm one site
+    // declares, and as one site for a function holding two spawns.
+    let mut reached: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for command in &issued.commands {
+        match (&command.declared, &command.site) {
+            (Some(declared), Some(site)) => {
+                reached
+                    .entry(declared.arm().to_string())
+                    .or_default()
+                    .insert(site.clone());
+            }
+            (None, None) => {}
+            // THE PAIRING IS A LAW AND NOT A REMARK. Exactly the commands a Rust
+            // source's own words produced carry both; a declaration whose site
+            // went missing is an arm this law can no longer ask about, and it
+            // would go missing as a green.
+            (declared, site) => panic!(
+                "{} carries declared={declared:?} and site={site:?}, which is \
+                 half of a pair: {}",
+                command.origin(),
+                command.rendered()
+            ),
+        }
+    }
+
+    // The sites this walk could not finish, so an unreached one can be printed
+    // with the reason the walk itself gives rather than a reason this test
+    // invents.
+    let mut unfinished: BTreeMap<String, &ci_plan::rust::RustSpawn> = BTreeMap::new();
+    for site in issued.rust.conditional.iter().chain(&issued.rust.carried) {
+        unfinished.insert(site.origin(), site);
+    }
+
+    let mut found: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    let mut missing_from_the_walk = Vec::new();
+    let mut asked: BTreeSet<&str> = BTreeSet::new();
+    for arm in ci_plan::rust::Declared::arms() {
+        let name = arm.arm();
+        asked.insert(name);
+        let declared = issued.rust.declaring.get(name).cloned().unwrap_or_default();
+        let empty = BTreeSet::new();
+        let hit = reached.get(name).unwrap_or(&empty);
+        println!(
+            "[locked-resolution] arm {name}: {} site(s) declare it, {} issue a \
+             command this population judges",
+            declared.len(),
+            hit.len()
+        );
+        if matches!(arm, ci_plan::rust::Declared::Unreadable(_)) {
+            // NOT AN ARM A SITE CAN DECLARE. It is this reader failing to read a
+            // `Tree` expression, and such a spawn is set aside as
+            // `beside_the_door` for `one_door_for_cargo` to refuse — so a
+            // declaration counted under it here would mean an unreadable
+            // expression had been let through as a declaration.
+            assert!(
+                declared.is_empty() && hit.is_empty(),
+                "`Unreadable` is this reader failing to read a `Tree`, not \
+                 something a site declares — {declared:?} / {hit:?}"
+            );
+            continue;
+        }
+        assert!(
+            !declared.is_empty(),
+            "no site in this repository declares `Tree::{name}`, so every law \
+             about that arm holds over nothing — the arm is either unnecessary \
+             or unreachable, and both are things to know"
+        );
+        let invented: Vec<&String> = hit.difference(&declared).collect();
+        assert!(
+            invented.is_empty(),
+            "a command declares `Tree::{name}` and names a site nothing \
+             declared it at, so the two halves of the pair were read from \
+             different places: {invented:?}"
+        );
+        for origin in declared.difference(hit) {
+            match unfinished.get(origin) {
+                Some(site) => found
+                    .entry((site.source.clone(), site.owner.clone()))
+                    .or_default()
+                    .push(format!("{name} — {origin} — {}", site.reach())),
+                // A site that issues nothing and is in no bucket is the
+                // conservation failure `read_but_unanswered` exists for, one
+                // level up: it left every count at once.
+                None => missing_from_the_walk.push(format!("{name} — {origin}")),
+            }
+        }
+    }
+    assert!(
+        missing_from_the_walk.is_empty(),
+        "these sites declare a tree, issue no command, and are in neither the \
+         conditional nor the carried bucket — they left every number this walk \
+         keeps at the same time:\n  {}",
+        missing_from_the_walk.join("\n  ")
+    );
+
+    // AND THE LIST OF ARMS COVERED WHAT THE WALK ACTUALLY READ. `Declared::arms`
+    // is a chain the compiler keeps exhaustive over the ENUM, which is not the
+    // same as exhaustive over the tree: a chain that skipped a link would build,
+    // and the loop above would simply never ask about that arm — a hole of
+    // exactly the shape this whole law exists to close, one level up. So the
+    // arms this run asked about are held against the arms sites were found
+    // declaring.
+    let unasked: Vec<&String> = issued
+        .rust
+        .declaring
+        .keys()
+        .chain(reached.keys())
+        .filter(|name| !asked.contains(name.as_str()))
+        .collect();
+    assert!(
+        unasked.is_empty(),
+        "sites in this repository declare {unasked:?} and `Declared::arms` did \
+         not hand that arm over, so nothing above asked anything about it — the \
+         chain has a link that skips"
+    );
+
+    let doubled: Vec<String> = found
+        .iter()
+        .filter(|(_, why)| why.len() > 1)
+        .map(|((source, owner), why)| format!("{source} `{owner}`: {why:?}"))
+        .collect();
+    assert!(
+        doubled.is_empty(),
+        "two spawns in one function declare a tree and neither is readable, so \
+         the file-and-function key below no longer names one of them — the list \
+         needs the line back, or the function needs splitting:\n  {}",
+        doubled.join("\n  ")
+    );
+
+    let named: BTreeSet<(String, String)> = DECLARED_AND_UNREADABLE
+        .iter()
+        .map(|(source, owner, _)| ((*source).to_string(), (*owner).to_string()))
+        .collect();
+    let unnamed: Vec<String> = found
+        .iter()
+        .filter(|(key, _)| !named.contains(key))
+        .map(|((source, owner), why)| format!("{source} `{owner}` — {}", why.join("; ")))
+        .collect();
+    assert!(
+        unnamed.is_empty(),
+        "these sites declare a tree and issue no command any law over this \
+         population judges, and nothing says so — which is the silence R1271 \
+         found for one arm and this law asks of all of them. Add each to \
+         `DECLARED_AND_UNREADABLE` with the reason its words cannot be read, or \
+         make them readable:\n  {}",
+        unnamed.join("\n  ")
+    );
+    let stale: Vec<String> = named
+        .iter()
+        .filter(|key| !found.contains_key(key))
+        .map(|(source, owner)| format!("{source} `{owner}`"))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "these are listed as sites nobody can read and they are not — either \
+         the site is gone, or its words became readable and the list is now \
+         claiming a limit this repository does not have:\n  {}",
+        stale.join("\n  ")
     );
 }

@@ -5,6 +5,23 @@
   ],
   "complete": true,
   "fired": {
+    "a-command-carries-a-declaration-and-names-no-site": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            site: Some(self.origin()),",
+          "to": "            site: None,"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ]
+    },
     "a-command-with-a-hole-in-it-is-judged-as-if-whole": {
       "edits": [
         {
@@ -16,11 +33,13 @@
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     },
@@ -94,10 +113,12 @@
       ],
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
-        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ],
       "tests": [
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     },
@@ -116,6 +137,21 @@
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     },
+    "a-site-listed-as-unreadable-is-one-anybody-can-read": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [",
+          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 8] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ]
+    },
     "a-site-that-declares-the-arm-and-issues-nothing-leaves-in-silence": {
       "edits": [
         {
@@ -125,10 +161,27 @@
         }
       ],
       "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ]
+    },
+    "a-site-that-issues-nothing-is-in-no-bucket-either": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                            found.conditional.push(site);",
+          "to": "                            let _ = site;"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
       ],
       "tests": [
-        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     "a-site-that-pins-when-ours-spells-the-flag-on-every-path": {
@@ -155,10 +208,12 @@
         }
       ],
       "expect_red": [
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ],
       "tests": [
-        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     "a-workflow-step-resolves-freely": {
@@ -174,6 +229,21 @@
       ],
       "tests": [
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    "an-arm-the-chain-skips-is-an-arm-nobody-asks-about": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            Self::WhereverTheCallerPoints(_) => Self::PinnedWhereverItPoints(String::new()),",
+          "to": "            Self::WhereverTheCallerPoints(_) => Self::PinnedWhenItIsOurs(String::new()),"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     "every-workspace-is-this-repositorys-to-pin": {
@@ -292,11 +362,13 @@
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     }

@@ -1159,6 +1159,7 @@ fn issued(line: &str) -> CargoCommand {
         env: Default::default(),
         // Written down, so the manifest path is what says whose lockfile it is.
         declared: None,
+        site: None,
         uncounted: Vec::new(),
     }
 }
@@ -1417,6 +1418,7 @@ fn a_shell_line_is_split_where_cargo_stops_and_the_harness_starts() {
                 harness_args: found.harness_args,
                 env: Default::default(),
                 declared: None,
+                site: None,
                 uncounted: Vec::new(),
             })
             .collect::<Vec<_>>()

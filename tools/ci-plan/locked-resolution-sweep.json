@@ -113,7 +113,7 @@
     },
     {
       "name": "the-tracked-shell-is-not-in-the-population",
-      "why": "three sources are bolted together here and dropping one takes the count down without taking it to zero — fifty compliant workflow commands read exactly like a clean repository, which is why the non-vacuity floor is per source rather than a total",
+      "why": "three sources are bolted together here and dropping one takes the count down without taking it to zero — fifty compliant workflow commands read exactly like a clean repository, which is why the non-vacuity floor is per source rather than a total. R1277 ADDED A FOURTH RED AND IT IS NOT ABOUT ARMS: `script_files` refuses an empty answer itself, so every law over this population dies where it is assembled rather than where it is asked",
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
@@ -124,7 +124,8 @@
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     {
@@ -153,7 +154,7 @@
     },
     {
       "name": "a-command-with-a-hole-in-it-is-judged-as-if-whole",
-      "why": "R1262 — an `.args(expr)` hands over an unknown NUMBER of words, so a flag may be inside it; judging such a command answers about words nobody read, and the answer arrives with the same confidence as every other one in the tally",
+      "why": "R1262 — an `.args(expr)` hands over an unknown NUMBER of words, so a flag may be inside it; judging such a command answers about words nobody read, and the answer arrives with the same confidence as every other one in the tally. R1277 ADDED A FOURTH RED AND IT IS THE OTHER DIRECTION OF THE LIST: reading holes as words makes all SEVEN sites listed as unreadable readable at once, and a list still claiming a limit this repository no longer has is a claim as wrong as a missing entry",
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
@@ -164,7 +165,8 @@
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     {
@@ -217,7 +219,7 @@
     },
     {
       "name": "a-site-whose-words-depend-on-the-path-is-left-unjudged",
-      "why": "before R1265 a site written with a conditional word was one command nobody could read, and this law said nothing about it — which is the same silence as a clean answer. Dropping the paths again takes twelve commands out of the population, one of them the `RepairsWhatItShouldReport` R1265 found. THE ANCHOR MOVED IN R1268 and the injection followed it rather than being retired: the expansion used to live in this law, which is exactly why two of the other three laws never saw those commands, and it now lives in `RustSpawns::every_command` where every law reads it",
+      "why": "before R1265 a site written with a conditional word was one command nobody could read, and this law said nothing about it — which is the same silence as a clean answer. Dropping the paths again takes twelve commands out of the population, one of them the `RepairsWhatItShouldReport` R1265 found. THE ANCHOR MOVED IN R1268 and the injection followed it rather than being retired: the expansion used to live in this law, which is exactly why two of the other three laws never saw those commands, and it now lives in `RustSpawns::every_command` where every law reads it. R1277 ADDED A SECOND RED AND IT IS THE CLEAREST EVIDENCE THAT THE NEW LAW REACHES ARMS R1271 NEVER ASKED ABOUT: five sites leave reach unnamed across THREE arms — `tool_pin_smoke::run_in` (ThisRepository), `unrun-tests::has_library` (WhereverTheCallerPoints) and the three PinnedWhenItIsOurs ones",
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
@@ -226,12 +228,13 @@
         }
       ],
       "expect_red": [
-        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     {
       "name": "a-runtime-subcommand-is-read-as-one-a-table-knows",
-      "why": "this suite's own measurement fixture loops over every subcommand cargo has, so it writes `$subcommand`; classified as a subcommand a table can be keyed on, the law reports Unreadable and goes red on a fixture doing exactly what it should",
+      "why": "this suite's own measurement fixture loops over every subcommand cargo has, so it writes `$subcommand`; classified as a subcommand a table can be keyed on, the law reports Unreadable and goes red on a fixture doing exactly what it should. R1277 ADDED A THIRD RED: the two fixtures whose subcommand is the loop's word become readable, so the list naming them as sites nobody can read is claiming a limit that just went away",
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
@@ -241,7 +244,8 @@
       ],
       "expect_red": [
         "every_command_this_repository_issues_pins_the_lockfiles_it_can",
-        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
     },
     {
@@ -281,6 +285,64 @@
         }
       ],
       "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ]
+    },
+    {
+      "name": "a-command-carries-a-declaration-and-names-no-site",
+      "why": "R1277 — reach is counted in SITES and a command's `origin` is not one: a command read at a call site is attributed to that caller, so one site reached through five callers has five origins. The pairing of `declared` with `site` is what makes the count askable at all, and a declaration whose site went missing would leave every arm with fewer sites answering for it and nothing saying so",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            site: Some(self.origin()),",
+          "to": "            site: None,"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
+        "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
+      ]
+    },
+    {
+      "name": "an-arm-the-chain-skips-is-an-arm-nobody-asks-about",
+      "why": "R1277 — `Declared::arms` is a successor chain, so the compiler keeps it exhaustive over the ENUM and cannot keep it exhaustive over the CHAIN: a link that skips one builds fine, and the law over every arm then simply never asks about that one. That is the silence this law exists to close, one level up, so the arms asked about are held against the arms sites were found declaring",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "            Self::WhereverTheCallerPoints(_) => Self::PinnedWhereverItPoints(String::new()),",
+          "to": "            Self::WhereverTheCallerPoints(_) => Self::PinnedWhenItIsOurs(String::new()),"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ]
+    },
+    {
+      "name": "a-site-listed-as-unreadable-is-one-anybody-can-read",
+      "why": "R1277 — the list of sites nobody can read is the half a green run does not cover, so a list that may hold an entry no site answers to is a limit this repository claims and does not have. The direction matters as much as the other: a reader that got better, or a site that was deleted, leaves an entry standing that says a gate is blind where it is not",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 7] = [",
+          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 8] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named"
+      ]
+    },
+    {
+      "name": "a-site-that-issues-nothing-is-in-no-bucket-either",
+      "why": "R1277 — a site that issues no command is answered by the bucket it lands in, which is where the reason a reader can print comes from. A site in NEITHER bucket has left every number this walk keeps at the same time, which is the conservation failure `read_but_unanswered` exists for one level down, and the law has to say so rather than read the absence as nothing to report",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "                            found.conditional.push(site);",
+          "to": "                            let _ = site;"
+        }
+      ],
+      "expect_red": [
+        "every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag"
       ]
     }

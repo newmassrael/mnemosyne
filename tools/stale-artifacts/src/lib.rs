@@ -153,6 +153,7 @@ pub fn plan(at: &Path, command: &[String]) -> Plan {
         // The wrapped command's own words, read as written — this is not a site
         // declaring anything about a tree.
         declared: None,
+        site: None,
         uncounted: Vec::new(),
     };
     // AND A COMMAND THAT MEETS NO ARTIFACT NEEDS NO CLEAN IN FRONT OF IT
