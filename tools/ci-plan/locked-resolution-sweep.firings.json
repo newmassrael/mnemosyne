@@ -35,10 +35,12 @@
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
-        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "a_site_that_plants_a_lockfile_runs_both_ways"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::a_site_that_plants_a_lockfile_runs_both_ways",
         "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named",
@@ -58,6 +60,40 @@
       ],
       "tests": [
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ]
+    },
+    "a-measurement-pins-on-every-path": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "    if locked {\n        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
+          "to": "    cargo.arg(\"--locked\");\n    let out = cargo.output().expect(\"cargo runs\");\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_plants_a_lockfile_runs_both_ways",
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_plants_a_lockfile_runs_both_ways",
+        "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ]
+    },
+    "a-measurement-pins-on-no-path-at-all": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
+          "to": "        cargo.arg(\"--offline\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_plants_a_lockfile_runs_both_ways",
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ],
+      "tests": [
+        "locked_resolution_smoke::a_site_that_plants_a_lockfile_runs_both_ways",
+        "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     },
     "a-measurement-that-could-not-run-answers-anyway": {
@@ -226,8 +262,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [",
-          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 4] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
+          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 2] = [",
+          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
         }
       ],
       "expect_red": [
@@ -263,10 +299,12 @@
       "expect_red": [
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
-        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "a_site_that_plants_a_lockfile_runs_both_ways"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::a_site_that_plants_a_lockfile_runs_both_ways",
         "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
         "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named"
       ]
@@ -393,6 +431,23 @@
         "locked_resolution_smoke::the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
       ]
     },
+    "the-arm-the-measurement-left-stops-refusing-a-pin": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::MadeByThisRun(_)) => false,\n",
+          "to": "        Some(rust::Declared::MadeByThisRun(_)) => true,\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement",
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
+      ],
+      "tests": [
+        "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "locked_resolution_smoke::the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement"
+      ]
+    },
     "the-gate-pointed-at-a-workspace-resolves-it-freely": {
       "edits": [
         {
@@ -436,6 +491,21 @@
       ],
       "tests": [
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ]
+    },
+    "the-planted-lockfile-is-read-as-a-tree-to-refuse": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            return LockVerdict::PlantedForTheMeasurement\n",
+          "to": "            return LockVerdict::PinsWhatItDoesNotOwn\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement"
+      ],
+      "tests": [
+        "locked_resolution_smoke::the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement"
       ]
     },
     "the-relay-arms-verdict-is-not-the-one-already-recorded": {
@@ -482,14 +552,18 @@
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
-        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues",
+        "a_site_that_plants_a_lockfile_runs_both_ways",
+        "the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement"
       ],
       "tests": [
         "locked_resolution_smoke::a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
+        "locked_resolution_smoke::a_site_that_plants_a_lockfile_runs_both_ways",
         "locked_resolution_smoke::a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
         "locked_resolution_smoke::every_command_this_repository_issues_pins_the_lockfiles_it_can",
         "locked_resolution_smoke::every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "locked_resolution_smoke::the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues",
+        "locked_resolution_smoke::the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement",
         "locked_resolution_smoke::what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
       ]
     }

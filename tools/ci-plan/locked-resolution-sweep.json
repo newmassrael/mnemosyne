@@ -127,7 +127,9 @@
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
-        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+        "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues",
+        "a_site_that_plants_a_lockfile_runs_both_ways",
+        "the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement"
       ]
     },
     {
@@ -169,7 +171,8 @@
         "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
-        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "a_site_that_plants_a_lockfile_runs_both_ways"
       ]
     },
     {
@@ -326,8 +329,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [",
-          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 4] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
+          "from": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 2] = [",
+          "to": "const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [\n    (\"tools/blind-waits/src/lib.rs\", \"census\", \"an injected claim\"),"
         }
       ],
       "expect_red": [
@@ -347,7 +350,8 @@
       "expect_red": [
         "every_site_that_declares_a_tree_issues_a_command_or_is_named",
         "a_site_that_pins_when_the_tree_is_ours_says_so_with_a_conditional_flag",
-        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer"
+        "a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer",
+        "a_site_that_plants_a_lockfile_runs_both_ways"
       ]
     },
     {
@@ -450,6 +454,65 @@
       ],
       "expect_red": [
         "the_arm_a_relay_used_to_declare_contradicts_the_command_a_relay_issues"
+      ]
+    },
+    {
+      "name": "a-measurement-pins-on-every-path",
+      "why": "R1279 — the one arm where the pin is a VARIABLE rather than a forbidden word owes that the variable vary. A fixture that pins unconditionally is asserting a difference rather than measuring one, and it is the half that would otherwise be silent: unconditional words are words this reader can finish, so the site leaves both buckets and a law walking only the buckets would hold over fewer sites and say nothing. R1271's shape, caught by the equality against `declaring`",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "    if locked {\n        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
+          "to": "    cargo.arg(\"--locked\");\n    let out = cargo.output().expect(\"cargo runs\");\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_plants_a_lockfile_runs_both_ways",
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ]
+    },
+    {
+      "name": "a-measurement-pins-on-no-path-at-all",
+      "why": "R1279 — the other direction of the same obligation, and it stays inside the bucket so it exercises the word-reading half rather than the equality: a site whose conditional word is not the pin has no free-versus-pinned difference in it, and the arm it declares is a claim that it does",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "        cargo.arg(\"--locked\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n",
+          "to": "        cargo.arg(\"--offline\");\n    }\n    let out = cargo.output().expect(\"cargo runs\");\n"
+        }
+      ],
+      "expect_red": [
+        "a_site_that_plants_a_lockfile_runs_both_ways",
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ]
+    },
+    {
+      "name": "the-planted-lockfile-is-read-as-a-tree-to-refuse",
+      "why": "R1279 — the arm exists because neither boolean fits: read as ours the free path is `RepairsWhatItShouldReport`, read as not-ours the pinned path is `PinsWhatItDoesNotOwn`. Answering one of those instead of the arm's own verdict puts the measurement back in the position that made its old declaration false, and the only thing that would notice is the law that compares the two arms",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            return LockVerdict::PlantedForTheMeasurement\n",
+          "to": "            return LockVerdict::PinsWhatItDoesNotOwn\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement"
+      ]
+    },
+    {
+      "name": "the-arm-the-measurement-left-stops-refusing-a-pin",
+      "why": "R1279 — half of this round's measurement is that `MadeByThisRun` REFUSES a command that pins, which is what made the fixture's old declaration false. If that arm read its tree as ours, the old declaration would have been fine all along and the round's reason would be gone",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        Some(rust::Declared::MadeByThisRun(_)) => false,\n",
+          "to": "        Some(rust::Declared::MadeByThisRun(_)) => true,\n"
+        }
+      ],
+      "expect_red": [
+        "the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement",
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can"
       ]
     }
   ]

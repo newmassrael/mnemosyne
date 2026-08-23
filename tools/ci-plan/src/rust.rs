@@ -153,6 +153,12 @@ pub enum Declared {
     /// [`crate::lock_verdict`] reads. Held by
     /// `a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer`.
     AlreadyJudgedWhereItIsWritten(String),
+    /// `Tree::PlantedByThisMeasurement("…")`. The lockfile is the subject of the
+    /// experiment, so the pin is not forbidden here — it is the variable. What
+    /// the site owes is that the pin be CONDITIONAL, since a measurement that
+    /// always pins or never does is asserting rather than measuring. Held by
+    /// `a_site_that_plants_a_lockfile_runs_both_ways`.
+    PlantedByThisMeasurement(String),
     /// A `Tree` expression this reader cannot read — a variable, a call, a
     /// variant it does not know. NOT a pass.
     Unreadable(String),
@@ -174,6 +180,7 @@ impl Declared {
             Self::PinnedWhereverItPoints(_) => "PinnedWhereverItPoints",
             Self::PinnedWhenItIsOurs(_) => "PinnedWhenItIsOurs",
             Self::AlreadyJudgedWhereItIsWritten(_) => "AlreadyJudgedWhereItIsWritten",
+            Self::PlantedByThisMeasurement(_) => "PlantedByThisMeasurement",
             Self::Unreadable(_) => "Unreadable",
         }
     }
@@ -192,7 +199,8 @@ impl Declared {
             Self::WhereverTheCallerPoints(_) => Self::PinnedWhereverItPoints(String::new()),
             Self::PinnedWhereverItPoints(_) => Self::PinnedWhenItIsOurs(String::new()),
             Self::PinnedWhenItIsOurs(_) => Self::AlreadyJudgedWhereItIsWritten(String::new()),
-            Self::AlreadyJudgedWhereItIsWritten(_) => Self::Unreadable(String::new()),
+            Self::AlreadyJudgedWhereItIsWritten(_) => Self::PlantedByThisMeasurement(String::new()),
+            Self::PlantedByThisMeasurement(_) => Self::Unreadable(String::new()),
             Self::Unreadable(_) => return None,
         })
     }
@@ -466,7 +474,8 @@ impl RustSpawn {
                 | Declared::WhereverTheCallerPoints(why)
                 | Declared::PinnedWhereverItPoints(why)
                 | Declared::PinnedWhenItIsOurs(why)
-                | Declared::AlreadyJudgedWhereItIsWritten(why),
+                | Declared::AlreadyJudgedWhereItIsWritten(why)
+                | Declared::PlantedByThisMeasurement(why),
             ) => format!("cargo [{why}]"),
             Program::Cargo(Declared::Unreadable(written)) => format!("cargo [{written}?]"),
             Program::CargoBesideTheDoor(how)
@@ -680,7 +689,8 @@ impl RustSpawn {
                 | Declared::WhereverTheCallerPoints(_)
                 | Declared::PinnedWhereverItPoints(_)
                 | Declared::PinnedWhenItIsOurs(_)
-                | Declared::AlreadyJudgedWhereItIsWritten(_)),
+                | Declared::AlreadyJudgedWhereItIsWritten(_)
+                | Declared::PlantedByThisMeasurement(_)),
             ) => declared.clone(),
             Program::Cargo(Declared::Unreadable(_))
             | Program::CargoBesideTheDoor(_)
@@ -1043,7 +1053,8 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                     | Declared::WhereverTheCallerPoints(_)
                     | Declared::PinnedWhereverItPoints(_)
                     | Declared::PinnedWhenItIsOurs(_)
-                    | Declared::AlreadyJudgedWhereItIsWritten(_)),
+                    | Declared::AlreadyJudgedWhereItIsWritten(_)
+                    | Declared::PlantedByThisMeasurement(_)),
                 ) => declared.clone(),
                 // THE DOOR'S OWN SPAWN NEEDS NO EXCEPTION HERE, which is a
                 // finding rather than an omission. It ends in a `Command::new`,
@@ -2720,6 +2731,12 @@ fn one_declaration(expression: &syn::Expr) -> Declared {
             call.args.first().and_then(string_literal).map_or_else(
                 || Declared::Unreadable(rendered_text),
                 Declared::AlreadyJudgedWhereItIsWritten,
+            )
+        }
+        syn::Expr::Call(call) if ends_with(call, &["PlantedByThisMeasurement"]) => {
+            call.args.first().and_then(string_literal).map_or_else(
+                || Declared::Unreadable(rendered_text),
+                Declared::PlantedByThisMeasurement,
             )
         }
         _ => Declared::Unreadable(rendered_text),

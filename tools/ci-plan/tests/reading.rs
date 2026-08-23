@@ -3176,6 +3176,7 @@ fn every_cargo_spawn_in_tracked_rust_is_placed() {
                     | ci_plan::rust::Declared::PinnedWhereverItPoints(why)
                     | ci_plan::rust::Declared::PinnedWhenItIsOurs(why)
                     | ci_plan::rust::Declared::AlreadyJudgedWhereItIsWritten(why)
+                    | ci_plan::rust::Declared::PlantedByThisMeasurement(why)
                     | ci_plan::rust::Declared::Unreadable(why),
                 ) => why.clone(),
                 None => "undeclared".to_string(),

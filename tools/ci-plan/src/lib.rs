@@ -1835,6 +1835,19 @@ pub enum LockVerdict {
     /// THE MIRROR: `--locked` on a workspace whose resolution belongs to
     /// another tree, which fails on a commit nobody here made.
     PinsWhatItDoesNotOwn,
+    /// THE LOCKFILE IS THE SUBJECT OF THE EXPERIMENT — a measurement planted it
+    /// disagreeing on purpose and runs the same subcommand with the pin and
+    /// without, because the answer is the difference.
+    ///
+    /// R1279, AND IT IS A VERDICT OF ITS OWN BECAUSE NEITHER BOOLEAN FITS. Read
+    /// as a tree of ours, the free arm is `RepairsWhatItShouldReport`; read as a
+    /// tree that is not, the pinned arm is `PinsWhatItDoesNotOwn`. Both arms are
+    /// deliberate and both are the point, so the pair below cannot answer and
+    /// the honest thing is a third answer rather than whichever refusal is
+    /// quieter. The teeth for this arm are over the SITE
+    /// (`a_site_that_plants_a_lockfile_runs_both_ways`), where the claim — that
+    /// the pin is a variable — is a claim about two paths rather than one.
+    PlantedForTheMeasurement,
     /// This reader could not say which workspace the command resolves, or what
     /// its subcommand does to a lockfile. Not a pass.
     Unreadable(String),
@@ -1869,6 +1882,16 @@ pub fn lock_verdict(
     let ours = match &command.declared {
         Some(rust::Declared::ThisRepository) => true,
         Some(rust::Declared::MadeByThisRun(_)) => false,
+        // NEITHER BOOLEAN IS THE ANSWER, SO THE ANSWER IS NOT A BOOLEAN (R1279).
+        // The lockfile this command meets was planted by the measurement running
+        // it, and both arms of that measurement — pinned and free — are
+        // deliberate. `ours = false` would refuse the pinned arm and `ours =
+        // true` would refuse the free one, so the pair below is asked nothing
+        // and the site is held to its claim somewhere it can be: over the two
+        // paths rather than over one command.
+        Some(rust::Declared::PlantedByThisMeasurement(_)) => {
+            return LockVerdict::PlantedForTheMeasurement
+        }
         // THE ARM THAT DECLINED TO NAME THE TREE OWES THE MOST. Getting here
         // means the command resolves — the check above returned otherwise — so
         // the site is running something that can rewrite a lockfile over a

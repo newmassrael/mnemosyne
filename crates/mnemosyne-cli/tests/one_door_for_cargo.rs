@@ -124,6 +124,7 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
             Some(Declared::AlreadyJudgedWhereItIsWritten(_)) => {
                 "already judged where it is written"
             }
+            Some(Declared::PlantedByThisMeasurement(_)) => "planted by this measurement",
             Some(Declared::Unreadable(_)) | None => {
                 panic!("{origin} came through the door undeclared")
             }

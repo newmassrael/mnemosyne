@@ -231,8 +231,17 @@ fn every_command_this_repository_issues_pins_the_lockfiles_it_can() {
                     .to_string(),
             )
             .or_default() += 1;
+        // THE FOUR THAT PASS ARE SPELLED, AND THE WILDCARD BELOW IS THE ONLY
+        // `match` OVER `LockVerdict` IN THIS REPOSITORY (R1279, measured by
+        // adding a variant and finding that nothing failed to build). It refuses
+        // what it does not know, which is the direction a wildcard has to point
+        // when it is the only one: a new verdict arrives red here and is read
+        // rather than accepted.
         match verdict {
-            LockVerdict::Pinned | LockVerdict::ResolvesNothing | LockVerdict::NotOursToPin => {}
+            LockVerdict::Pinned
+            | LockVerdict::ResolvesNothing
+            | LockVerdict::NotOursToPin
+            | LockVerdict::PlantedForTheMeasurement => {}
             other => broken.push(format!(
                 "{} — {} => {other:?}",
                 command.origin(),
@@ -451,9 +460,10 @@ fn run_in_fixture(
     // three functions up, its lockfile is planted on the line above, and both
     // arms — free and `--locked` — are run on purpose, which is what makes this
     // a measurement rather than a check.
-    let mut cargo = issue::cargo(Tree::MadeByThisRun(
+    let mut cargo = issue::cargo(Tree::PlantedByThisMeasurement(
         "the one-package fixture this measurement builds, whose lockfile is \
-         planted disagreeing on purpose",
+         planted disagreeing on purpose, and which this function runs both \
+         pinned and free because the answer is the difference",
     ));
     cargo
         .arg(subcommand)
@@ -610,31 +620,37 @@ fn a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile() {
 /// command's, judged where it is written — and a shape four sites share is a
 /// shape that can carry a DECLARATION instead of a listing
 /// (`issue::Tree::AlreadyJudgedWhereItIsWritten`), which owes a falsifiable
-/// obligation where an entry here owes only a sentence. The three that remain
-/// are one shape too, and a different one: each is a measurement FIXTURE whose
-/// subcommand is the loop variable of a test asking cargo about every subcommand
-/// it has. A list nobody is trying to shorten is a list that grows.
-const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 3] = [
+/// obligation where an entry here owes only a sentence.
+///
+/// R1279 TOOK A FIFTH OFF IT, AND CORRECTED THE SENTENCE R1278 LEFT HERE. That
+/// sentence said the three remaining were one shape — each a measurement fixture
+/// whose subcommand is a test's loop variable — and the tree says otherwise: of
+/// the three, exactly ONE spells the pin (`run_in_fixture`, on some paths), and
+/// the other two spell no pin at all while handing over an `.args(..)` that MAY
+/// hold one, which a hole makes unclaimable either way (R1266). So the arm
+/// R1279 built for the one — its obligation is that the pin be CONDITIONAL —
+/// could not have been given to the other two: nothing here could hold them to
+/// it. The observation was written down without being run, which is the habit
+/// R1278's own entry names.
+///
+/// A list nobody is trying to shorten is a list that grows; a list shortened by
+/// a sentence nobody checked is worse than one that stayed long.
+const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 2] = [
     (
         "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
         "compiles_in_fixture",
         "the subcommand is one of the words its caller hands over, and that \
          caller builds the list while it runs — so no way through this site is \
-         one a table of subcommands can be keyed on",
-    ),
-    (
-        "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
-        "run_in_fixture",
-        "this file's own measurement fixture: the subcommand AND the flag are \
-         both arguments, so what it runs is decided by the loop below rather \
-         than written at the spawn — it is the one site here that is asking \
-         cargo the question the rest of this file rests on",
+         one a table of subcommands can be keyed on. It spells no pin, and \
+         whether the list it is handed holds one is not a question a hole can \
+         answer",
     ),
     (
         "tools/stale-artifacts/tests/pass.rs",
         "in_fixture",
         "both call sites hand over a list they assembled, so the words at the \
-         spawn are a hole this reader cannot count",
+         spawn are a hole this reader cannot count — and the same follows: no \
+         pin is spelled here and no claim about one is available",
     ),
 ];
 
@@ -771,6 +787,16 @@ fn every_site_that_declares_a_tree_issues_a_command_or_is_named() {
                  relay site that issued a judged command has words this reader \
                  finished — which means it added a subcommand of its own: {hit:?}"
             );
+            continue;
+        }
+        if matches!(arm, ci_plan::rust::Declared::PlantedByThisMeasurement(_)) {
+            // THE THIRD CELL (R1279), AND UNLIKE THE RELAY IT MAY ISSUE
+            // COMMANDS. A measurement whose subcommand is a literal enumerates
+            // its two paths and both are judged `PlantedForTheMeasurement`; one
+            // whose subcommand is a loop variable issues none. Either way what
+            // holds the site is `a_site_that_plants_a_lockfile_runs_both_ways`,
+            // which asserts every site declaring the arm is one it reached — so
+            // this cell cannot grow past that law either.
             continue;
         }
         let invented: Vec<&String> = hit.difference(&declared).collect();
@@ -984,6 +1010,180 @@ fn a_site_that_relays_a_judged_command_adds_nothing_that_changes_the_answer() {
          are written may add nothing a verdict is read from, or the verdict at \
          that other site is no longer the verdict here:\n  {}",
         broken.join("\n  ")
+    );
+}
+
+/// A SITE THAT PLANTS A LOCKFILE OWES BOTH ARMS OF ITS OWN MEASUREMENT.
+///
+/// R1279. `Tree::PlantedByThisMeasurement` is the one arm where the pin is not
+/// forbidden but a VARIABLE, so the thing that keeps it from being an exemption
+/// is that the variable has to vary: the site must spell `--locked` on some paths
+/// through the function and not others. A measurement that always pins, or never
+/// does, is asserting a difference rather than measuring one — R1259's question,
+/// asked of the arm that most needs it.
+///
+/// TWO HALVES, AND THE SECOND IS THE ONE THAT COULD OTHERWISE BE SILENT. A site
+/// whose pin is UNCONDITIONAL has words this reader can finish, so it leaves the
+/// conditional and carried buckets and a law that only walked them would hold
+/// over fewer sites and say nothing — R1271's shape, and the equality against
+/// `declaring` is what catches it. The first half is then the words themselves:
+/// the pin must be a `Word::Sometimes` rather than a `Word::Spelled`.
+///
+/// WHY THIS ARM COULD NOT BE HANDED TO THE TWO SIBLING FIXTURES, which is the
+/// correction R1279 makes to a sentence R1278 wrote without running it: they
+/// spell no pin at all and hand over an `.args(..)` that may hold one, so a hole
+/// makes the question unclaimable in both directions (R1266) and nothing here
+/// could hold them to anything.
+#[test]
+fn a_site_that_plants_a_lockfile_runs_both_ways() {
+    let root = repository_root();
+    let issued = ci_plan::commands_this_repository_issues(&root);
+    let arm = ci_plan::rust::Declared::PlantedByThisMeasurement(String::new());
+    let name = arm.arm();
+    let declared = issued.rust.declaring.get(name).cloned().unwrap_or_default();
+    assert!(
+        !declared.is_empty(),
+        "no site declares `Tree::{name}`, so this law holds over nothing — the \
+         arm is either unnecessary or unreachable, and both are things to know"
+    );
+
+    let mut reached = BTreeSet::new();
+    let mut broken = Vec::new();
+    for site in issued.rust.conditional.iter().chain(&issued.rust.carried) {
+        let ci_plan::rust::Program::Cargo(spelled) = &site.program else {
+            continue;
+        };
+        if spelled.arm() != name {
+            continue;
+        }
+        reached.insert(site.origin());
+        let mut conditional_pin = 0;
+        let mut unconditional_pin = 0;
+        for word in &site.words {
+            match word {
+                ci_plan::rust::Word::Sometimes(text, _) if text == "--locked" => {
+                    conditional_pin += 1;
+                }
+                ci_plan::rust::Word::Spelled(text) if text == "--locked" => {
+                    unconditional_pin += 1;
+                }
+                _ => {}
+            }
+        }
+        if unconditional_pin > 0 {
+            broken.push(format!(
+                "{} — it spells `--locked` on every path, so the pin is not the \
+                 variable this arm says it is",
+                site.origin()
+            ));
+        }
+        if conditional_pin == 0 {
+            broken.push(format!(
+                "{} — it spells `--locked` on no path at all, so there is no \
+                 free-versus-pinned difference here to measure: {}",
+                site.origin(),
+                site.rendered()
+            ));
+        }
+    }
+    println!(
+        "[locked-resolution] {} site(s) plant a lockfile for a measurement, each \
+         spelling the pin on some paths through the function and not others",
+        reached.len()
+    );
+    // EVERY SITE THAT DECLARES THE ARM IS ONE THIS LAW REACHED (R1271's
+    // assertion, in the place it belongs). A site whose pin is unconditional has
+    // words this reader can finish, which takes it out of both buckets — so the
+    // half of the obligation that would otherwise be invisible is caught here
+    // rather than in the loop above.
+    assert_eq!(
+        reached,
+        declared,
+        "{} site(s) declare `Tree::{name}` and this law reached {} of them — a \
+         site missing here is one whose words this reader could finish, and for \
+         this arm that means no word in them depends on the path taken: {:?}",
+        declared.len(),
+        reached.len(),
+        declared.difference(&reached).collect::<Vec<_>>()
+    );
+    assert!(
+        broken.is_empty(),
+        "a site declaring that it planted the lockfile it resolves is claiming \
+         the pin is its measurement's variable, and a variable that does not \
+         vary is an assertion wearing a measurement's declaration:\n  {}",
+        broken.join("\n  ")
+    );
+}
+
+/// THE ARM THE MEASUREMENT FIXTURE LEFT WOULD HAVE REFUSED ITS PINNED PATH.
+///
+/// R1279, and it is the same discipline R1278 used one arm over: "the old
+/// declaration was false" is a claim, and a claim about a mechanism in this tree
+/// can be RUN. `run_in_fixture` declared `Tree::MadeByThisRun`, whose obligation
+/// `lock_verdict` enforces as `ours = false` — so a command under it that spells
+/// the pin is `PinsWhatItDoesNotOwn`, a refusal. The fixture spells the pin on
+/// half its paths on purpose, because that IS the measurement.
+///
+/// WHY NOTHING EVER REFUSED IT: its subcommand is the loop variable of the test
+/// above, so no way through the site is one a table can be keyed on, so no
+/// command of its own was ever in the population. False and unreachable at the
+/// same time, exactly as R1278 found for the four relays.
+#[test]
+fn the_arm_the_measurement_left_refuses_the_pinned_half_of_a_measurement() {
+    let root = repository_root();
+    let tracked = tracked_manifests(&root);
+    let foreign = workspaces_this_repository_cannot_pin(&root);
+    let commands = everything_this_repository_issues(&root);
+
+    let mut checked = 0;
+    for pinned in &commands {
+        if pinned.declared.is_some() || !pinned.has("--locked") {
+            continue;
+        }
+        let Some(subcommand) = pinned.subcommand() else {
+            continue;
+        };
+        if resolves_the_lockfile(subcommand) != Some(true) {
+            continue;
+        }
+        let under = |declared: ci_plan::rust::Declared| {
+            let mut command = pinned.clone();
+            command.declared = Some(declared);
+            command.site = Some("a measurement that planted this lockfile".to_string());
+            lock_verdict(&command, &tracked, &foreign)
+        };
+        assert_eq!(
+            under(ci_plan::rust::Declared::MadeByThisRun(
+                "the obligation this arm carries".to_string()
+            )),
+            LockVerdict::PinsWhatItDoesNotOwn,
+            "`{}` spells the pin, so under `MadeByThisRun` it pins a tree that \
+             arm says is not ours — and a measurement's pinned path is exactly \
+             that command",
+            pinned.rendered()
+        );
+        assert_eq!(
+            under(ci_plan::rust::Declared::PlantedByThisMeasurement(
+                "the lockfile is the subject".to_string()
+            )),
+            LockVerdict::PlantedForTheMeasurement,
+            "the arm that says the lockfile is the measurement's own has to \
+             accept the pinned path as readily as the free one, and for `{}` it \
+             did not",
+            pinned.rendered()
+        );
+        checked += 1;
+    }
+    println!(
+        "[locked-resolution] {checked} pinned command(s) were put under both \
+         arms: `MadeByThisRun` refuses every one of them, and the arm the \
+         fixture declares now accepts every one"
+    );
+    assert!(
+        checked >= 20,
+        "this repository issues far more than twenty pinned resolving cargo \
+         commands written as data, and {checked} of them is too few for the \
+         comparison above to be about anything"
     );
 }
 

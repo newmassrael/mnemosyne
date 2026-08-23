@@ -50,7 +50,7 @@ use std::process::Command;
 
 /// Whose lockfile a cargo command resolves — the fact only the call site has.
 ///
-/// SIX ARMS AND EACH ONE OWES SOMETHING. Three of them decline to name a tree,
+/// SEVEN ARMS AND EACH ONE OWES SOMETHING. Three of them decline to name a tree,
 /// because a gate's census is pointed at a manifest by whoever calls it and its
 /// author honestly cannot say which — and declining is the HARDEST position
 /// rather than the easiest, with three ways to pay for it: resolve nothing at
@@ -152,6 +152,36 @@ pub enum Tree {
     /// shares, and it is why the obligation above is about the words this site
     /// ADDS rather than about the words it passes on.
     AlreadyJudgedWhereItIsWritten(&'static str),
+    /// THE LOCKFILE IS THE SUBJECT OF THE EXPERIMENT. A measurement that asks
+    /// cargo itself what it does to a disagreeing lockfile writes a throwaway
+    /// workspace, plants a lockfile that disagrees on purpose, and then runs the
+    /// same subcommand twice — once free and once pinned — because the answer is
+    /// the DIFFERENCE between the two. Every claim in `locked_resolution_smoke`
+    /// about what cargo does rests on exactly that.
+    ///
+    /// SO IT SPELLS THE PIN OVER A TREE IT MADE, AND [`Tree::MadeByThisRun`]
+    /// FORBIDS THAT — correctly, for every site that is not measuring. Under
+    /// that arm `lock_verdict` reads the flag as `PinsWhatItDoesNotOwn`, which
+    /// is a refusal, and R1279 found the fixture had been carrying that
+    /// declaration all along: the words say `--locked` on some paths and the
+    /// only reason nothing refused them is that a `$subcommand` behind a
+    /// runtime word keeps the command out of the population. Precisely R1278's
+    /// shape, one arm over — a false declaration kept alive by being
+    /// unreachable.
+    ///
+    /// THE OBLIGATION IS THE MEASUREMENT ITSELF AND IT IS FALSIFIABLE: the pin
+    /// must be a word this site adds ON SOME PATHS AND NOT OTHERS. A measurement
+    /// that always pins, or never does, is not measuring a difference — it is
+    /// asserting one, which is what R1259 spent a round on. That is the same
+    /// falsifiable shape [`Tree::PinnedWhenItIsOurs`] carries, and it is why
+    /// this arm cannot be handed to the two sibling fixtures that spell no pin
+    /// at all: their `.args(..)` MAY hold one and a hole cannot be claimed
+    /// either way (R1266), so nothing here could hold them to it.
+    ///
+    /// WHAT NO PROGRAM HERE CAN CHECK is that the two paths are actually
+    /// compared rather than merely both taken. That is the semantic ceiling
+    /// every arm shares.
+    PlantedByThisMeasurement(&'static str),
 }
 
 impl Tree {
@@ -164,7 +194,8 @@ impl Tree {
             | Self::WhereverTheCallerPoints(why)
             | Self::PinnedWhereverItPoints(why)
             | Self::PinnedWhenItIsOurs(why)
-            | Self::AlreadyJudgedWhereItIsWritten(why) => Some(why),
+            | Self::AlreadyJudgedWhereItIsWritten(why)
+            | Self::PlantedByThisMeasurement(why) => Some(why),
         }
     }
 }
