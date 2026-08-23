@@ -1,0 +1,71 @@
+# unasked-variant — a catch-all over an enum this workspace owns decides a
+# future variant's behaviour before anyone writes it.
+#
+# WHAT IT IS FOR, in two measurements this repository already paid for:
+#
+#   - R1278 added a sixth arm to `ci_plan::rust::Declared`. Two of the three
+#     places that enumerate that enum are exhaustive `match`es and the compiler
+#     stopped the change at both. The third ended in `_ => return None`, so it
+#     COMPILED — and would have answered "this site issues no commands" for every
+#     site declaring the new arm, which is precisely the condition R1277's law
+#     exists to catch, arriving as a PASS.
+#   - R1279 added a variant to `ci_plan::LockVerdict`. The compiler stopped it
+#     NOWHERE. Every reader of that enum is an equality assertion or the single
+#     `match` in `locked_resolution_smoke`, and that one carries a wildcard which
+#     happens to refuse what it does not know. Happens to: nothing chose the
+#     direction, and nothing counted the places.
+#
+# WHY IT IS NOT "BAN THE WILDCARD". Most wildcards are correct. A `match` that
+# names ONE variant and ignores twenty is a FILTER, and writing out twenty arms
+# to say "not this one" would be worse code and a worse gate. What went wrong
+# above is a different shape: a match that ENUMERATES — names several variants of
+# one enum, and still ends in a catch-all, so the enum's own exhaustiveness stops
+# reaching it. The distinction this gate makes is therefore DENSITY, and the
+# threshold is measured rather than chosen.
+#
+# AND DIRECTION IS THE SECOND HALF. A catch-all whose body REFUSES is the safe
+# one; a catch-all that returns `None`, `false`, or a default accepts. Both of
+# the measurements above are the same clause with opposite consequences, so a
+# census that only counted them would rank them the same.
+#
+# ITS OWN WORKSPACE, like every other gate under `tools/`: the root workspace's
+# build never compiles it, and `scripts/check-side-workspaces.sh` finds it by
+# walking for manifests that carry their own `[workspace]`, so there is no list
+# to update.
+[workspace]
+
+[package]
+name = "unasked-variant"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — a catch-all over an enum this workspace owns is a variant nobody will be asked about"
+keywords = ["lint", "enum", "gate"]
+categories = ["development-tools"]
+
+[dependencies]
+# THE PARSER, and the reason this gate is not a grep — the question is which
+# ARMS a `match` has and what its enum's variants are, and neither is a line
+# pattern. `full` for expression syntax, `visit` for the borrowing walk,
+# `extra-traits` for the Debug the tests read.
+syn = { version = "3", features = ["full", "visit", "extra-traits"] }
+# `span-locations` turns a matched expression into a line a person can open;
+# without it every finding reports line 1.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+# WHICH FILES THIS REPOSITORY TRACKS, ASKED OF THE PROGRAM THAT OWNS THE ANSWER.
+# A second reading would be a glob, and a glob answers about the working
+# directory rather than about the repository — build output and a stale copy read
+# the same as source. The same path dependency five other gates under `tools/`
+# already carry.
+ci-plan = { path = "../ci-plan" }
+
+[dev-dependencies]
+# The cases parse fixtures written as strings rather than files: what varies per
+# case is SOURCE TEXT, and text is not a file that can be busy (see
+# `crates/mnemosyne-cli/tests/stubs/README.md`).
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

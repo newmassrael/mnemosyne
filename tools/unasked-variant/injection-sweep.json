@@ -1,0 +1,86 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THIS LAW IS NOT VACUOUS — run it from the repository",
+    "root:",
+    "    cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml \\",
+    "        -- sweep tools/unasked-variant/injection-sweep.json",
+    "",
+    "THE FIRST THREE ARE THE TREE AS IT STOOD. R1282 found exactly three matches",
+    "in this repository that enumerate one of its own enums and still carry a",
+    "catch-all, and fixed all three rather than listing them. Each injection puts",
+    "one back, which is the only honest way to keep the evidence: a law whose",
+    "findings were all repaired has nothing left to point at, and a green run then",
+    "looks the same whether the law works or not.",
+    "",
+    "THE FOURTH IS ABOUT THE WALK RATHER THAN THE TREE. A reader that finds no",
+    "enums reports a clean repository, and that is the failure this whole gate",
+    "exists to name one level down — so the denominators are asserted and this",
+    "proves the assertion fires.",
+    "",
+    "THE SUITE IS THIS CRATE'S OWN and it parses the root workspace's sources",
+    "without compiling them, so an injection into `crates/` costs a parse rather",
+    "than a build."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--manifest-path",
+    "tools/unasked-variant/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 4000,
+  "red_set": "exhaustive",
+  "injections": [
+    {
+      "name": "an-enum-that-may-not-be-exhausted-is-held-to-exhaustiveness",
+      "why": "R1282 — this is the gate's own first mistake, kept as evidence. The walk excluded enums from OUTSIDE the workspace and not enums this tree marks `#[non_exhaustive]`, so it found `mnemosyne-render::door_label` naming all three `Door` variants beside a catch-all — and the repair it licensed DID NOT BUILD, because rustc requires that wildcard in every crate but the one defining the enum. Dropping the attribute check puts that finding back: a gate that refuses the code the compiler demands is one people learn to ignore, and there are 32 such enums in this tree for it to be wrong about",
+      "edits": [
+        {
+          "file": "tools/unasked-variant/src/lib.rs",
+          "from": "            if item\n                .attrs\n                .iter()\n                .any(|attribute| attribute.path().is_ident(\"non_exhaustive\"))\n            {\n                return;\n            }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
+    },
+    {
+      "name": "a-sixth-orphan-kind-joins-neither-ledger",
+      "why": "R1282 — 2 of 5 variants named, `_ => {}`, and the direction is the one that reads as compliance: a new `OrphanKind` falls into it, contributes to neither ledger set, and the difference against the actual orphans then reports it as a new orphan or as one nobody registered. The orphan ledger is what `validate-workspace` subtracts before saying `new = +0`",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "            OrphanKind::MarkdownRef | OrphanKind::CodeCitation | OrphanKind::InventoryCitation => {}\n",
+          "to": "            _ => {}\n"
+        }
+      ],
+      "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
+    },
+    {
+      "name": "a-new-verdict-is-refused-without-being-read",
+      "why": "R1282 — 4 of 7 named, and this is the match R1279 measured: adding a `LockVerdict` variant compiled at every reader in the tree because this was the only `match` over it and it ended in `other =>`. Refusing was the right DIRECTION and still the wrong SHAPE — the catch-all is what stopped the compiler asking the one reader that has to decide",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "            defect @ (LockVerdict::RepairsWhatItShouldReport\n            | LockVerdict::PinsWhatItDoesNotOwn\n            | LockVerdict::Unreadable(_)) => broken.push(format!(\n",
+          "to": "            defect => broken.push(format!(\n"
+        }
+      ],
+      "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
+    },
+    {
+      "name": "the-walk-finds-no-enums-and-calls-the-tree-clean",
+      "why": "R1282 — the reader half. A walk that collected no enum definitions would recognise no match as being over one of this workspace's enums, find nothing, and pass; that is the shape of every gate this repository has caught reporting a clean answer because it did not look. The denominators are asserted for exactly this, and this is what says the assertion fires rather than decorating the test",
+      "edits": [
+        {
+          "file": "tools/unasked-variant/src/lib.rs",
+          "from": "            self.0\n                .entry(item.ident.to_string())\n                .or_default()\n                .extend(variants);\n",
+          "to": "            let _ = variants;\n"
+        }
+      ],
+      "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
+    }
+  ]
+}

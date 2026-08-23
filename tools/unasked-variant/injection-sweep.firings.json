@@ -1,0 +1,89 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-new-verdict-is-refused-without-being-read": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "            defect @ (LockVerdict::RepairsWhatItShouldReport\n            | LockVerdict::PinsWhatItDoesNotOwn\n            | LockVerdict::Unreadable(_)) => broken.push(format!(\n",
+          "to": "            defect => broken.push(format!(\n"
+        }
+      ],
+      "expect_red": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ],
+      "tests": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ]
+    },
+    "a-sixth-orphan-kind-joins-neither-ledger": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "            OrphanKind::MarkdownRef | OrphanKind::CodeCitation | OrphanKind::InventoryCitation => {}\n",
+          "to": "            _ => {}\n"
+        }
+      ],
+      "expect_red": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ],
+      "tests": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ]
+    },
+    "an-enum-that-may-not-be-exhausted-is-held-to-exhaustiveness": {
+      "edits": [
+        {
+          "file": "tools/unasked-variant/src/lib.rs",
+          "from": "            if item\n                .attrs\n                .iter()\n                .any(|attribute| attribute.path().is_ident(\"non_exhaustive\"))\n            {\n                return;\n            }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ],
+      "tests": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ]
+    },
+    "the-walk-finds-no-enums-and-calls-the-tree-clean": {
+      "edits": [
+        {
+          "file": "tools/unasked-variant/src/lib.rs",
+          "from": "            self.0\n                .entry(item.ident.to_string())\n                .or_default()\n                .extend(variants);\n",
+          "to": "            let _ = variants;\n"
+        }
+      ],
+      "expect_red": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ],
+      "tests": [
+        "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+      ]
+    }
+  },
+  "forgotten": {
+    "a-door-nobody-wrote-renders-as-nothing": {
+      "because": "R1282 replaced its subject rather than renaming it: it claimed door_label's catch-all was a defect, and Door is #[non_exhaustive], so rustc REQUIRES that wildcard in every crate but the one defining the enum — the repair it licensed did not build. What has teeth in its place is the exclusion that finding produced, which an-enum-that-may-not-be-exhausted-is-held-to-exhaustiveness proves.",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-render/src/lib.rs",
+            "from": "        Door::Ask { question, .. } => question.clone(),\n    }\n",
+            "to": "        Door::Ask { question, .. } => question.clone(),\n        _ => String::new(),\n    }\n"
+          }
+        ],
+        "expect_red": [
+          "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+        ],
+        "tests": [
+          "no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"
+        ]
+      }
+    }
+  }
+}

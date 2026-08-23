@@ -231,19 +231,24 @@ fn every_command_this_repository_issues_pins_the_lockfiles_it_can() {
                     .to_string(),
             )
             .or_default() += 1;
-        // THE FOUR THAT PASS ARE SPELLED, AND THE WILDCARD BELOW IS THE ONLY
-        // `match` OVER `LockVerdict` IN THIS REPOSITORY (R1279, measured by
-        // adding a variant and finding that nothing failed to build). It refuses
-        // what it does not know, which is the direction a wildcard has to point
-        // when it is the only one: a new verdict arrives red here and is read
-        // rather than accepted.
+        // EVERY VERDICT IS SPELLED, AND R1282 IS WHY. This is the only `match`
+        // over `LockVerdict` in the repository — R1279 measured that by adding a
+        // variant and finding that nothing failed to build — and until now it
+        // ended in `other =>`, which refused what it did not know. Refusing was
+        // the right direction and it was still the wrong shape: a catch-all is
+        // what stopped the enum's own exhaustiveness from reaching the one reader
+        // that has to decide. Written out, a new verdict is a compile error here,
+        // which is a question asked of whoever adds it rather than an answer
+        // chosen for them.
         match verdict {
             LockVerdict::Pinned
             | LockVerdict::ResolvesNothing
             | LockVerdict::NotOursToPin
             | LockVerdict::PlantedForTheMeasurement => {}
-            other => broken.push(format!(
-                "{} — {} => {other:?}",
+            defect @ (LockVerdict::RepairsWhatItShouldReport
+            | LockVerdict::PinsWhatItDoesNotOwn
+            | LockVerdict::Unreadable(_)) => broken.push(format!(
+                "{} — {} => {defect:?}",
                 command.origin(),
                 command.rendered()
             )),

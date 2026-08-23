@@ -205,7 +205,14 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
             OrphanKind::AtomicSectionRef => {
                 atomic_section_ledger.insert((entry.from.clone(), entry.to.clone()));
             }
-            _ => {}
+            // SPELLED RATHER THAN SWEPT (R1282). This ended in `_ => {}`, which
+            // is the direction that reads as compliance: a SIXTH orphan kind
+            // would fall into it, contribute to neither ledger set, and the
+            // difference against the actual orphans would then report it as a
+            // NEW orphan — or, on the other side, as one nobody registered. The
+            // three below are handled by their own readers and saying so is what
+            // makes a new kind a compile error here rather than a silent one.
+            OrphanKind::MarkdownRef | OrphanKind::CodeCitation | OrphanKind::InventoryCitation => {}
         }
     }
     let atomic_new_entries: Vec<(String, String)> = atomic_entry_actual

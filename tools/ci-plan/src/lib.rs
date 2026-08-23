@@ -1798,7 +1798,21 @@ pub fn script_files(root: &Path) -> Vec<String> {
     found
 }
 
-fn tracked_files(root: &Path, args: &[&str]) -> Vec<String> {
+/// The files this repository TRACKS, as git lists them.
+///
+/// PUBLIC SINCE R1282, AND FOR THE REASON EVERY OTHER SHARED READER HERE IS. A
+/// gate that wants "every tracked `.rs`" and reaches for a glob is asking about
+/// the WORKING DIRECTORY rather than about the repository: build output, a
+/// scratch copy and an untracked draft all answer, and they answer in the
+/// direction that adds findings nobody can act on. Worse, the two populations
+/// drift silently — this one already refuses an empty answer, and a glob's empty
+/// answer looks like a clean run.
+///
+/// # Panics
+///
+/// When git cannot be run or refuses the question. A listing that failed is not
+/// an empty repository, and the caller cannot tell the two apart from a `Vec`.
+pub fn tracked_files(root: &Path, args: &[&str]) -> Vec<String> {
     let out = Command::new("git")
         .args(args)
         .current_dir(root)

@@ -75,6 +75,15 @@ fn place_with_exits(named: &str, exits: &[&str]) -> String {
 /// The default label for a door, ignoring style — the diegetic text a plain
 /// theme shows. `Examine` supplies a default English verb (chrome a localized
 /// theme would override); `Fork`/`Ask` are already authored labels.
+///
+/// THE CATCH-ALL IS REQUIRED HERE AND R1282 LEARNED IT FROM THE COMPILER. It
+/// reads like the shape that round's gate is about — every one of `Door`'s three
+/// variants is named above it, so the arm cannot be taken — and removing it does
+/// not build: `Door` is `#[non_exhaustive]`, so a crate other than the one
+/// defining it must carry a wildcard whatever it names. That attribute is a
+/// decision already written down, that adding a variant is not to be a compile
+/// error for readers, and a gate demanding exhaustiveness over such an enum is
+/// demanding the impossible. `unasked-variant` skips them for that reason.
 fn door_label(door: &Door) -> String {
     match door {
         Door::Fork { label, .. } => label.clone(),
