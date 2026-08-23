@@ -114,8 +114,24 @@ if ! cargo fmt --all --check; then
     exit 1
 fi
 
+# ⚠ ROUTED THROUGH THE BUILD-MACHINE WRAPPER WHEN ONE IS CONFIGURED (`$BX`).
+# Same reasoning as the pre-commit hook's Gate 5, and the same three rules:
+# `$BX` is an opt-in whose absence is the old behaviour; nothing about a machine
+# is named in this tree; and the wrapper's verdict is final — it already fails
+# open on its own, so a refusal is a verdict rather than an outage and is never
+# papered over by re-running the gate here.
+#
+# ⚠ `cargo fmt --all --check` above is deliberately NOT routed: it parses rather
+# than compiles, so it costs a fraction of a transfer and would be slower away
+# from home. What is worth moving is what actually compiles the workspace.
 echo "pre-push: cargo clippy --workspace --locked --all-targets -- -D warnings ..." >&2
-if ! cargo clippy --workspace --locked --all-targets -- -D warnings; then
+if [ -n "${BX:-}" ] && [ -x "${BX}" ]; then
+    clippy_run=("${BX}" --label pre-push-clippy --
+                cargo clippy --workspace --locked --all-targets -- -D warnings)
+else
+    clippy_run=(cargo clippy --workspace --locked --all-targets -- -D warnings)
+fi
+if ! "${clippy_run[@]}"; then
     echo "pre-push: clippy failed — fix violations before push" >&2
     exit 1
 fi

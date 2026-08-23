@@ -171,9 +171,38 @@ fi
 # Gate 5 — clippy on .rs changes. R308 D9 closure: `-D warnings` lifts
 # every warning to deny. Workspace allow list (root Cargo.toml) carries
 # stylistic exemptions; per-site `#[allow]` for API-shape exemptions.
+#
+# ⚠ ROUTED THROUGH THE BUILD-MACHINE WRAPPER WHEN ONE IS CONFIGURED (`$BX`),
+# because this is the heaviest thing this hook does to the machine it runs on:
+# `--workspace --all-targets` compiles every target in the tree.
+#
+# MEASURED 2026-08-20, and the measurement is about the FLEET rather than about
+# this gate. Across six repositories 17 build runs were placed in ten minutes
+# and 81 in thirty, yet not one process tree under a hook reached the wrapper:
+# every heavy command a hook launches, it launches itself. So the workstation
+# sat at load 33 on 32 cores with 11GB in swap while three build machines idled
+# at 0.11, 1.00 and 0.00. The wrapper cannot place work it is never handed.
+#
+# `$BX` IS AN OPT-IN AND ITS ABSENCE IS THE OLD BEHAVIOUR. No host, path or
+# account is named in this tree — those belong to a machine, not to a
+# repository — so a checkout without it runs clippy here, exactly as before.
+#
+# ⚠⚠ AND THE WRAPPER'S OWN VERDICT IS FINAL — NO SECOND FALLBACK. It already
+# fails open by itself: when no build machine is a candidate and this one can
+# hold the work, it runs it here and says `where=local`. It refuses only when it
+# cannot proceed safely — an untracked file it does not carry, a working tree
+# the far side does not match — and every one of those is the author's to fix.
+# A refusal is a verdict, not an outage; re-running the gate locally to paper
+# over it is how a hook reports green about a tree nobody checked. A sibling
+# repository measured six consecutive commits taking exactly that path.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --locked --all-targets -- -D warnings" >&2
-    cargo clippy --workspace --locked --all-targets -- -D warnings
+    if [ -n "${BX:-}" ] && [ -x "${BX}" ]; then
+        "${BX}" --label pre-commit-clippy -- \
+            cargo clippy --workspace --locked --all-targets -- -D warnings
+    else
+        cargo clippy --workspace --locked --all-targets -- -D warnings
+    fi
 fi
 
 # Gate 5a — item citations, the sibling `validate-code-refs` never had. That
@@ -561,7 +590,21 @@ fi
 # not match `_version` (schema_version etc. are real version numbers).
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     echo "[mnemosyne pre-commit] .rs staged — vN version-postfix ban" >&2
-    vn_hits=$(git diff --cached --unified=0 --diff-filter=ACM -- '*.rs' \
+    # THE READ AND THE SEARCH ARE SEPARATED, AND R1283 IS WHY (R1281 fixed the
+    # same defect nine lines up and did not look at this one). `grep` answers 1
+    # when it finds NOTHING, which is the ordinary case here, so a `|| true` is
+    # needed — and under `set -o pipefail` that same clause also swallowed a
+    # FAILED `git diff --cached`, leaving `vn_hits` empty and the gate passing.
+    # One clause cannot tell "no hits" from "could not look", so the read is
+    # checked on its own and only the search is allowed to come back empty.
+    if ! added=$(git diff --cached --unified=0 --diff-filter=ACM -- '*.rs'); then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — the staged diff could not be read"
+            echo "  the vN ban is a search over it, and an unreadable diff is not an empty one"
+        } >&2
+        exit 1
+    fi
+    vn_hits=$(printf '%s\n' "$added" \
         | grep -E '^\+' | grep -vE '^\+\+\+' \
         | grep -E '[A-Za-z0-9]_v[0-9]|[a-z0-9]V[0-9]' || true)
     if [[ -n "$vn_hits" ]]; then
