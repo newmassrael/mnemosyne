@@ -5,6 +5,21 @@
   ],
   "complete": false,
   "fired": {
+    "a-tree-gate-loses-the-hosted-step-that-took-it": {
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          cargo run -q --locked --manifest-path tools/named-environment/Cargo.toml\n          --bin named-environment -- --workspace Cargo.toml",
+          "to": "          cargo run -q --locked --manifest-path tools/blind-waits/Cargo.toml\n          --bin named-environment -- --workspace Cargo.toml"
+        }
+      ],
+      "expect_red": [
+        "every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
+      ],
+      "tests": [
+        "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
+      ]
+    },
     "a-wrapper-that-could-not-place-the-gate-is-called-a-lint-finding": {
       "edits": [
         {
@@ -48,6 +63,21 @@
       ],
       "tests": [
         "git_hooks_smoke::pre_commit_refuses_when_it_cannot_read_what_is_staged"
+      ]
+    },
+    "the-key-stops-telling-two-scopes-apart": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/git_hooks_smoke.rs",
+          "from": "        Some((sub, over, scope(command)))",
+          "to": "        Some((sub, over, String::new()))"
+        }
+      ],
+      "expect_red": [
+        "every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
+      ],
+      "tests": [
+        "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
       ]
     },
     "the-push-gate-does-not-ask-whether-a-test-is-run-at-all": {

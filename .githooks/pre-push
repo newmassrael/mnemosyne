@@ -114,54 +114,33 @@ if ! cargo fmt --all --check; then
     exit 1
 fi
 
-# ⚠ ROUTED THROUGH THE BUILD-MACHINE WRAPPER WHEN ONE IS CONFIGURED (`$BX`).
-# `$BX` is an opt-in whose absence is the old behaviour, and nothing about a
-# machine is named in this tree.
+# WHERE THE WORKSPACE CLIPPY GATE WENT (R1287), and why nothing stands here.
 #
-# ⚠ `cargo fmt --all --check` above is deliberately NOT routed: it parses rather
-# than compiles, so it costs a fraction of a transfer and would be slower away
-# from home. What is worth moving is what actually compiles the workspace.
+# `cargo clippy --workspace --locked --all-targets` ran on this line and on no
+# hosted runner, which nobody could tell by reading either file — the census that
+# says so is `git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs`,
+# and its FIRST form got it wrong in the reassuring direction: keyed by
+# subcommand and manifest, this gate and `server-features`' one-package clippy
+# both resolve to the root and read as covered. They are two gates. The key
+# carries the scope now.
 #
-# ⚠⚠ AND THE WRAPPER'S REFUSAL IS NOT A LINT FINDING (R1285). `bx` exits 2 from
-# every one of its own refusals — its `die` does nothing else — and passes the
-# wrapped command's status through otherwise. The first form of this block read
-# `if ! "${clippy_run[@]}"` and printed `clippy failed — fix violations` for
-# both, which is the distinction this repository has built five laws about,
-# arriving in the hook that gates every push. MEASURED THE DAY IT LANDED: a
-# sibling checkout held the build machine, `bx` said "refusing to send mnemosyne
-# to pc2 — a second run in one tree corrupts both", and this hook told its author
-# to go and fix clippy violations in a tree whose clippy had never been run.
+# THE OWNER'S WORD IS WHY IT MOVED RATHER THAN GAINING A TWIN. Twice in one
+# session: move the heavy things to CI, verification here is too slow. This was
+# the heaviest thing a push paid for, `validate` had 62 minutes of unused budget
+# on the last green run, and a step there meets a warm cargo home.
 #
-# A REFUSAL IS STILL A REFUSAL — the push stops either way, because a gate that
-# could not run has not passed. What changes is the sentence, and the sentence is
-# the whole of what the person reading it does next.
+# WHAT IT COSTS, WRITTEN RATHER THAN DISCOVERED: a lint-dirty commit now reaches
+# `origin/main` and is read one round later, which is the trade `RULEBOOK.md`
+# states for the whole population. `cargo fmt --all --check` above STAYS — it
+# parses instead of compiling, so it is a second, not a venue question.
 #
-# THE ONE COLLISION, said rather than hidden: a wrapped command that itself exits
-# 2 would be read as a placement refusal. `cargo` uses 101 for errors and 1 for
-# test failures, so nothing this hook routes does that today.
-echo "pre-push: cargo clippy --workspace --locked --all-targets -- -D warnings ..." >&2
-routed=0
-if [ -n "${BX:-}" ] && [ -x "${BX}" ]; then
-    routed=1
-    clippy_run=("${BX}" --label pre-push-clippy --
-                cargo clippy --workspace --locked --all-targets -- -D warnings)
-else
-    clippy_run=(cargo clippy --workspace --locked --all-targets -- -D warnings)
-fi
-clippy_verdict=0
-"${clippy_run[@]}" || clippy_verdict=$?
-if [[ $routed -eq 1 && $clippy_verdict -eq 2 ]]; then
-    {
-        echo "pre-push: the build-machine wrapper could not place the clippy gate" \
-             "(exit 2); its own message is above"
-        echo "  this is not a lint finding — clippy has not run. Clear what the" \
-             "wrapper names, or run without \$BX to gate here."
-    } >&2
-    exit 1
-elif [[ $clippy_verdict -ne 0 ]]; then
-    echo "pre-push: clippy failed — fix violations before push" >&2
-    exit 1
-fi
+# AND THE BUILD-MACHINE WRAPPER LEFT WITH IT. This was the only `$BX` in any
+# hook, so R1285's distinction — a wrapper that could not PLACE a gate is not a
+# gate that found something — has no subject in this file any more, and its law
+# and fixture went with the block rather than being kept as scenery for a branch
+# that cannot run. The distinction itself is not retired: N232 is the count of
+# every OTHER place in this repository that reads a wrapper's exit as the wrapped
+# command's verdict, and that census is where it lives next.
 
 # 4. The SEPARATE in-repo workspaces, WHOLE — fmt, clippy, citations, waits AND
 #    their suites (Round 1156).

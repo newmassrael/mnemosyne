@@ -152,10 +152,15 @@ is no install script to run and no copy to keep in sync (the old
 `scripts/install-hooks.sh` copy-based flow was retired in Round 306). You get:
 
 - `pre-commit` — atomic-sidecar gate, code-citation defense, workspace
-  validate when a doc is staged, `cargo fmt --check` + clippy when `.rs` is
+  validate when a doc is staged, `cargo fmt --all --check` when `.rs` is
   staged.
 - `commit-msg` — enforces `COMMIT_FORMAT.md`.
-- `pre-push` — re-runs validate + clippy before publishing.
+- `pre-push` — re-runs validate and the format check, the
+  separate-workspace gate, and the previous commit's hosted-run report.
+
+Linting the workspace is CI's: `cargo clippy --workspace --all-targets`
+is a step in the hosted `validate` job, not a hook. The hooks hold what a
+runner cannot do or what must stop a commit outright.
 
 ## 7. LLM agent citation hygiene
 

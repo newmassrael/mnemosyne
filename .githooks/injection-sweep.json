@@ -75,7 +75,7 @@
     "git_hooks_smoke::pre_commit_refuses_when_it_cannot_read_what_is_staged",
     "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run",
     "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs",
-    "git_hooks_smoke::pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding",
+    "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs",
     "git_hooks_smoke::the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree",
     "git_hooks_smoke::the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged",
     "git_hooks_smoke::the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
@@ -310,16 +310,28 @@
       "expect_red": ["pre_commit_refuses_when_it_cannot_read_what_is_staged"]
     },
     {
-      "name": "a-wrapper-that-could-not-place-the-gate-is-called-a-lint-finding",
-      "why": "R1285 — the collapse as it shipped, and it shipped for about two hours. `bx` exits 2 from every one of its own refusals and passes the wrapped status through otherwise, so the two answers were always distinguishable; `if ! \"${clippy_run[@]}\"` printed `clippy failed — fix violations` for both. MEASURED IN THE WILD rather than reasoned about: a sibling checkout held the build machine, the wrapper said `refusing to send mnemosyne to pc2 — a second run in one tree corrupts both`, and this hook told its author to fix lint violations in a tree whose clippy had never run",
+      "name": "a-tree-gate-loses-the-hosted-step-that-took-it",
+      "why": "R1287 — the census's whole claim is that a compiling gate a hook runs has a hosted twin, and this is what makes the claim refusable: point the hosted `named-environment` step at a different workspace and the `pre-commit` gate it was covering has nothing on any runner. The first injection written for this law aimed at the hosted CLIPPY step and came back MISSED, correctly: clippy had already left the hooks in the same round, so removing its twin cannot orphan anything. An expectation that cannot be reached is a misaimed injection, and the harness said so",
       "edits": [
         {
-          "file": ".githooks/pre-push",
-          "from": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $routed -eq 1 && $clippy_verdict -eq 2 ]]; then\n    {\n        echo \"pre-push: the build-machine wrapper could not place the clippy gate\" \\\n             \"(exit 2); its own message is above\"\n        echo \"  this is not a lint finding — clippy has not run. Clear what the\" \\\n             \"wrapper names, or run without \\$BX to gate here.\"\n    } >&2\n    exit 1\nelif [[ $clippy_verdict -ne 0 ]]; then\n",
-          "to": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $clippy_verdict -ne 0 ]]; then\n"
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          cargo run -q --locked --manifest-path tools/named-environment/Cargo.toml\n          --bin named-environment -- --workspace Cargo.toml",
+          "to": "          cargo run -q --locked --manifest-path tools/blind-waits/Cargo.toml\n          --bin named-environment -- --workspace Cargo.toml"
         }
       ],
-      "expect_red": ["pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"]
+      "expect_red": ["every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"]
+    },
+    {
+      "name": "the-key-stops-telling-two-scopes-apart",
+      "why": "R1287 — THE HALF NO ORPHAN INJECTION CAN REACH. Dropping the scope from the key only ever LOOSENS the comparison: more commands match, fewer orphans, and the assertion about orphans stays green while the census answers `covered` for gates nothing covers. That is not hypothetical — it is what the first form of this test did to `pre-push`'s workspace clippy, whose apparent twin was `server-features`' one-package clippy over the same manifest, and the answer would have licensed deleting a gate with nothing behind it. So the property is asserted directly, and this edit is what proves that assertion is not scenery",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/git_hooks_smoke.rs",
+          "from": "        Some((sub, over, scope(command)))",
+          "to": "        Some((sub, over, String::new()))"
+        }
+      ],
+      "expect_red": ["every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"]
     }
   ]
 }

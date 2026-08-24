@@ -84,6 +84,14 @@ until a gate.
     are not optional — plus the sweeps whose manifests the round touched. A
     sweep's evidence (`*.firings.json`) is TRACKED, so it cannot be produced
     anywhere else; that is the one thing on this list CI cannot take.
+    - **And what the hooks run is itself decided by a census, not by taste
+      (R1287).** `git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs`
+      asks which of the COMPILING gates a hook makes this workstation pay for a
+      hosted job also pays, and it refuses a gate that a hook runs and no runner
+      does — either it gets a job, or it goes in `CANNOT_LEAVE_THIS_MACHINE`
+      with a reason. So "should this be local?" is answered by running that
+      test, and the same run prints the gates already paid in BOTH places,
+      which is the list to move next.
   - **In CI**: the population. Read its verdict at the START of the next round,
     in ONE call, never by polling. That is the standing rule already, and
     `ci-state` prints the previous run's answer inside every push.

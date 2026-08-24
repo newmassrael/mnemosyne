@@ -273,13 +273,19 @@ This repo ships its git hooks under `.githooks/` (tracked, source of
 truth). The directory contains three hooks:
 
 - `pre-commit` — atomic-sidecar gate, code-citation defense,
- workspace validate (when a doc is staged), clippy (when `.rs` is
- staged).
+ workspace validate (when a doc is staged), `cargo fmt --all --check`
+ (when `.rs` is staged), the vN ban, and the tree gates. It has NOT
+ linted since R1284 moved the heavy gates off the commit path.
 - `commit-msg` — enforces `COMMIT_FORMAT.md`: subject ≤ 72 bytes,
  body line ≤ 72 bytes, 1–3 bullets, no continuation lines, English
  + typographic whitelist (`§ – — • … →`).
-- `pre-push` — re-runs `validate-workspace` + clippy before
- publishing.
+- `pre-push` — `validate-workspace`, `cargo fmt --all --check`, the
+ separate-workspace gate, the test-nothing-runs gate, and what a
+ machine that is not this one found here. It does NOT lint the
+ workspace: `cargo clippy --workspace --all-targets` is a step in
+ the hosted `validate` job since R1287, and
+ `git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs`
+ is what keeps that true.
 
 Install (one-time per clone):
 

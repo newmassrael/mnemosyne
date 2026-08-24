@@ -35,6 +35,7 @@
 //! a file some process holds open for writing, and the holder is a sibling
 //! test's fork rather than this thread (Round 1192).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -562,107 +563,21 @@ fn every_gate_the_commit_hook_stopped_running_is_one_the_hosted_workflow_runs() 
     }
 }
 
-/// THE LINT GATE MOVED TO THE PUSH HOOK AND ITS LAW MOVED WITH IT (R1284).
-///
-/// A gate that leaves one hook and a law that stays behind is how a repair comes
-/// to be believed twice: the old law goes red for the right reason and gets
-/// deleted, and nothing is left asserting the gate anywhere. So this case is the
-/// same fixture through `pre-push`, which is where `cargo clippy --workspace
-/// --all-targets` now runs — and where, since `24b4fce`, it is routed to a build
-/// machine when one is configured.
-///
-/// IT IS ALSO THE ONE THAT HAS NO HOSTED JOB. `item-citations` and the
-/// separate-workspace script each have their own job in the hosted workflow, so
-/// moving them off the commit path left them checked in two places; workspace
-/// clippy has none, and this hook is its only run. That is why the law is here
-/// rather than deleted with a note pointing at CI.
-#[test]
-fn pre_push_rejects_lint_dirty_rust() {
-    let f = Fixture::new();
-    // rustfmt-clean but clippy-dirty (`needless_return`), so this case reaches
-    // the clippy gate rather than stopping at the format gate before it.
-    f.write(
-        "src/lib.rs",
-        "pub fn one() -> u8 {\n    let x = 1;\n    return x;\n}\n",
-    );
-    f.stage_all();
-    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): lint"]);
-    let sha = head_sha(&f);
-
-    let out = f.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&sha),
-        &[],
-    );
-    assert!(
-        !out.status.success(),
-        "a clippy warning must be denied under -D warnings"
-    );
-    let err = stderr_of(&out);
-    assert!(
-        err.contains("cargo clippy"),
-        "the run must have reached the clippy gate:\n{err}"
-    );
-    assert!(
-        !err.contains("unformatted code"),
-        "this case must not be stopped by the format gate:\n{err}"
-    );
-}
-
-/// A WRAPPER THAT COULD NOT PLACE THE WORK IS NOT A LINT FINDING.
-///
-/// R1285, and it was measured the day the routing landed rather than imagined:
-/// a sibling checkout held the build machine, `bx` said "refusing to send
-/// mnemosyne to pc2 — a second run in one tree corrupts both", and this hook
-/// told its author to go and fix clippy violations in a tree whose clippy had
-/// never been run. `bx` exits 2 from every one of its own refusals and passes
-/// the wrapped status through otherwise, so the two answers were always
-/// distinguishable; the hook read `if ! wrapper …` and collapsed them.
-///
-/// THE FIXTURE IS CLEAN ON PURPOSE. If it were lint-dirty the push would stop
-/// for the right reason by accident, and the case would pass with the
-/// distinction gone — which is the failure mode this whole family of laws
-/// exists to prevent.
-#[test]
-fn pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding() {
-    let f = Fixture::new();
-    f.write("src/lib.rs", "pub fn two() -> u8 {\n    2\n}\n");
-    f.stage_all();
-    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): clean"]);
-    let sha = head_sha(&f);
-
-    let shim = f.path().join("shim-bx");
-    link_stub(BX_THAT_REFUSES, &shim.join("bx"));
-    let bx = shim.join("bx");
-    let out = f.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&sha),
-        &[("BX", bx.to_str().expect("shim path is utf-8"))],
-    );
-    let err = stderr_of(&out);
-    assert!(
-        !out.status.success(),
-        "a gate that could not run has not passed, whichever way it failed:\n{err}"
-    );
-    assert!(
-        err.contains("could not place the clippy gate"),
-        "the refusal must say the wrapper could not place the work:\n{err}"
-    );
-    // THE MIRROR, and the whole point of the case: the sentence the OTHER exit
-    // prints sends somebody hunting for violations that were never looked for.
-    assert!(
-        !err.contains("fix violations before push"),
-        "a wrapper that could not place the gate is not a tree with lint \
-         findings in it:\n{err}"
-    );
-    // AND THE WRAPPER'S OWN WORDS REACH THE SAME STREAM the hook points at.
-    assert!(
-        err.contains("another run of it is already alive"),
-        "the hook promises its reader the wrapper's message is above:\n{err}"
-    );
-}
+// R1287 — TWO CASES ABOUT THE PUSH HOOK'S WORKSPACE CLIPPY GATE STOOD HERE AND
+// LEFT WITH IT. `pre_push_rejects_lint_dirty_rust` (R1284) asserted the gate
+// stopped a lint-dirty push; `pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding`
+// (R1285) asserted it told a build machine's REFUSAL apart from a finding, a
+// defect measured in the wild the day the routing landed. The gate is now a step
+// in the `validate` job — `every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs`
+// is what says so and would go red if it were deleted instead of moved — and a
+// law asserting a branch that cannot run is scenery, which this file has a
+// standing rule against.
+//
+// THE R1285 DISTINCTION IS NOT RETIRED WITH ITS CASE. `$BX` appeared in no other
+// hook, so nothing in this file can still ask it; N232 is the uncounted
+// population of every OTHER reader in this repository of a wrapper's exit status,
+// and that census is where the law goes next. Written here because a deleted test
+// leaves no trace of what it used to prove.
 
 #[test]
 fn pre_commit_rejects_a_test_that_waits_on_a_clock() {
@@ -1899,7 +1814,6 @@ fn the_side_workspace_gate_names_every_unformatted_manifest_in_one_run() {
 const GREP_WITHOUT_PCRE: &str = "grep-without-pcre";
 const GIT_WITHOUT_A_STAGED_LIST: &str = "git-that-cannot-list-what-is-staged";
 const GIT_WITHOUT_A_STAGED_DIFF: &str = "git-that-cannot-read-the-staged-diff";
-const BX_THAT_REFUSES: &str = "bx-that-refuses-to-place";
 
 #[test]
 fn commit_msg_enforces_its_content_rules_in_a_locale_that_cannot_read_characters() {
@@ -2609,5 +2523,231 @@ fn pre_push_reports_what_a_second_machine_found_and_never_blocks() {
             || err.contains("no machine has been asked"),
         "a tree nothing was dispatched for must SAY so — that state reports zero \
          findings, and zero findings is what a clean tree looks like:\n{err}"
+    );
+}
+
+/// The compiling gates a hook runs that a hosted runner CANNOT, and why.
+///
+/// R1287. Every other entry in the census below is either hosted or a debt; these
+/// two are neither, and the difference is not about cost. Both ask about the
+/// FLEET THIS PUSH IS LEAVING FROM rather than about the tree, so a runner asking
+/// them would be asking a question with no subject — and a job that always
+/// answers "nothing to report" is the shape this repository keeps finding under
+/// the name "a green that means nobody looked".
+///
+/// A LIST RATHER THAN A COMMENT, for the reason `ci_plan::LAWS_OVER_THIS_POPULATION`
+/// is one: a sentence stays true by luck. This is read by the test, each row is
+/// checked to still name a gate a hook issues, and adding a row is an edit
+/// somebody makes on purpose.
+const CANNOT_LEAVE_THIS_MACHINE: [(&str, &str, &str); 2] = [
+    (
+        "run",
+        "tools/one-machine/Cargo.toml",
+        "it dispatches THIS tree to a second machine and reads what that machine \
+         found; a runner has no second machine, and the census it would take is \
+         of itself",
+    ),
+    (
+        "run",
+        "tools/ci-state/Cargo.toml",
+        "it reports what the HOSTED RUN of the commit being built on concluded, \
+         which is the one thing a push cannot learn from the run it is about to \
+         start; inside that run it would be reading itself",
+    ),
+];
+
+/// EVERY COMPILING GATE A GIT HOOK RUNS IS ONE A HOSTED JOB RUNS TOO (R1287).
+///
+/// THE OWNER'S WORD IS THE OCCASION AND THE MEASUREMENT IS THE POINT. "Move the
+/// heavy things to CI" is a placement instruction, and placement is only
+/// decidable against a fact nobody in this repository held: which of the gates a
+/// hook makes this machine pay for are ALSO paid by a hosted runner. A gate run
+/// in both places is the same work twice and the local copy is the one competing
+/// for the cores; a gate run in ONE place cannot be moved without being lost,
+/// and the difference between those two is invisible from either file alone.
+///
+/// COMPILING, because that is the axis that costs. [`ci_plan::compiles`] is a
+/// measured table rather than a guess, and `cargo fmt` sits on the other side of
+/// it for the reason `pre-push` states beside its own: it parses rather than
+/// builds, so it costs a fraction of a transfer. What a push waits on is what
+/// compiles the workspace.
+///
+/// THE KEY IS THE SUBCOMMAND, THE WORKSPACE AND THE SCOPE, NOT THE ARGV. Two
+/// commands that clippy the whole root workspace are the same gate whether or
+/// not one of them spells `--locked`; two that clippy different workspaces — or
+/// the same one at different widths — are not the same gate at all. Dropping the
+/// scope is not a theoretical worry: it is the form this test shipped in first,
+/// and it is recorded as an injection rather than only as this sentence.
+///
+/// WHAT A FAILURE HERE MEANS, both ways round. A hook-only compiling gate is
+/// either one that needs a hosted job — and then this test is the ask — or one
+/// that genuinely cannot leave this machine, and that second answer belongs in
+/// [`CANNOT_LEAVE_THIS_MACHINE`], where a reader meets it and an author has to
+/// edit it. The absence of a job is what `pre-push`'s workspace clippy was for
+/// its whole life, and nothing could tell that from a decision.
+#[test]
+fn every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs() {
+    let root = repo_root();
+    let issued = ci_plan::commands_this_repository_issues(&root);
+    let tracked = ci_plan::tracked_files(&root, &["ls-files"]);
+
+    // THE MANIFEST IS ONLY HALF OF "WHICH GATE", AND THE FIRST FORM OF THIS TEST
+    // FOUND OUT BY BEING WRONG. `cargo clippy --workspace` in `pre-push` and
+    // `cargo clippy -p mnemosyne-server --all-features` in the `server-features`
+    // job both carry no `--manifest-path`, so both resolve to the root — and a
+    // key of subcommand-and-manifest read them as ONE gate and reported the push
+    // hook's workspace clippy as already hosted. It is not: nothing on a runner
+    // clippies this workspace, which is the debt this test was written to ask
+    // about, and the first key answered `covered` for it.
+    //
+    // SO THE SCOPE IS PART OF THE KEY: what a command COMPILES is decided by
+    // `--workspace` / `-p` / `--all-targets`, not by which manifest it resolves.
+    // Asked through `spells_a_flag`, which answers in three, because a command
+    // assembled by a Rust program can carry a list this cannot see — and a scope
+    // read off half a command line is the same false equality one layer down.
+    let scope = |command: &ci_plan::CargoCommand| -> String {
+        let mut parts: Vec<String> = Vec::new();
+        for (flag, like) in [
+            ("--workspace", &["--workspace", "--all"][..]),
+            ("--all-targets", &["--all-targets"][..]),
+        ] {
+            match command.spells_a_flag(ci_plan::Side::Cargo, &|word: &str| like.contains(&word)) {
+                ci_plan::Spelled::Yes(_) => parts.push(flag.to_string()),
+                ci_plan::Spelled::No => {}
+                ci_plan::Spelled::Unreadable(why) => parts.push(format!("<{flag}? {why}>")),
+            }
+        }
+        let mut packages: Vec<&str> = command.values(&["-p", "--package"]);
+        packages.sort_unstable();
+        packages.dedup();
+        for package in packages {
+            parts.push(format!("-p {package}"));
+        }
+        if parts.is_empty() {
+            "<the default package>".to_string()
+        } else {
+            parts.join(" ")
+        }
+    };
+
+    let key = |command: &ci_plan::CargoCommand| -> Option<(String, String, String)> {
+        let sub = command.subcommand()?.to_string();
+        if ci_plan::compiles(&sub) != Some(true) {
+            return None;
+        }
+        let over = match command.manifest(&tracked) {
+            ci_plan::ManifestTarget::Root => "<root workspace>".to_string(),
+            ci_plan::ManifestTarget::Named(path) => path,
+            ci_plan::ManifestTarget::Unreadable(why) => format!("<unreadable: {why}>"),
+        };
+        Some((sub, over, scope(command)))
+    };
+
+    let mut hooks: BTreeMap<(String, String, String), Vec<String>> = BTreeMap::new();
+    let mut hosted: BTreeSet<(String, String, String)> = BTreeSet::new();
+    for command in &issued.commands {
+        let Some(k) = key(command) else { continue };
+        if command.source.starts_with(".githooks/") {
+            hooks.entry(k).or_default().push(command.origin());
+        } else if command.source.starts_with(".github/workflows/") {
+            hosted.insert(k);
+        }
+    }
+    assert!(
+        !hooks.is_empty(),
+        "no git hook issues a compiling command at all — the empty answer that \
+         looks like a clean one"
+    );
+    println!("[venue] the hooks compile: {hooks:#?}");
+    println!("[venue] the hosted jobs compile: {hosted:#?}");
+
+    // THE SCOPE IN THE KEY IS LOAD-BEARING, AND THIS IS WHAT MAKES THAT
+    // FALSIFIABLE. Dropping it can only ever LOOSEN the comparison — more
+    // commands match, fewer orphans — so no injection over the orphan assertion
+    // below can catch its absence: a blanked scope leaves that half green while
+    // silently answering "covered" for gates nothing covers. That is not a
+    // hypothetical. It is what the first form of this test did to `pre-push`'s
+    // workspace clippy, whose twin was `server-features`' ONE-PACKAGE clippy over
+    // the same manifest, and the answer would have licensed deleting the gate.
+    //
+    // SO THE PROPERTY IS ASSERTED DIRECTLY: this repository issues at least one
+    // pair of commands that share a subcommand and a workspace and differ ONLY in
+    // what they compile of it. While such a pair exists, a key that ignores the
+    // scope is a key that reports two different gates as one — and if the pair
+    // ever stops existing, this line is the notice that the third component has
+    // stopped earning its place here rather than something to quietly keep.
+    let mut scopes_by_gate: BTreeMap<(&String, &String), BTreeSet<&String>> = BTreeMap::new();
+    for (sub, over, scope) in hooks.keys().chain(hosted.iter()) {
+        scopes_by_gate.entry((sub, over)).or_default().insert(scope);
+    }
+    let split: Vec<String> = scopes_by_gate
+        .iter()
+        .filter(|(_, scopes)| scopes.len() > 1)
+        .map(|((sub, over), scopes)| format!("cargo {sub} over {over}: {scopes:?}"))
+        .collect();
+    assert!(
+        !split.is_empty(),
+        "the key's third component is the SCOPE, and nothing in this tree \
+         exercises it: no two commands share a subcommand and a workspace while \
+         compiling different amounts of it. A key that ignores the scope reports \
+         two gates as one and can only ever under-report orphans, so its absence \
+         cannot be caught by the assertion below — this is the only place that \
+         asks"
+    );
+    println!(
+        "[venue] the scope separates {} gate(s) a coarser key would merge:\n  {}",
+        split.len(),
+        split.join("\n  ")
+    );
+
+    // THE OTHER HALF OF THE SAME MEASUREMENT, REPORTED RATHER THAN ASSERTED. A
+    // gate in both places is the same work twice, and the local copy is the one
+    // paid for on a workstation that is also building three sibling repositories.
+    // It is NOT automatically wrong — a cheap parse-level gate is worth having at
+    // the commit, where it costs a second and saves a round trip — so this prints
+    // the list and leaves the judgement to whoever reads it. Turning it into an
+    // assertion would be inventing a rule nobody stated.
+    let twice: Vec<String> = hooks
+        .iter()
+        .filter(|(k, _)| hosted.contains(*k))
+        .map(|((sub, over, scope), sites)| format!("cargo {sub} ({scope}) over {over} — {sites:?}"))
+        .collect();
+    println!(
+        "[venue] paid in BOTH places, {} of them:\n  {}",
+        twice.len(),
+        twice.join("\n  ")
+    );
+
+    let excused: BTreeSet<(String, String)> = CANNOT_LEAVE_THIS_MACHINE
+        .iter()
+        .map(|(sub, over, _)| ((*sub).to_string(), (*over).to_string()))
+        .collect();
+    let orphans: Vec<String> = hooks
+        .iter()
+        .filter(|(k, _)| !hosted.contains(*k))
+        .filter(|((sub, over, _), _)| !excused.contains(&(sub.clone(), over.clone())))
+        .map(|((sub, over, scope), sites)| format!("cargo {sub} ({scope}) over {over} — {sites:?}"))
+        .collect();
+
+    // AN EXCUSE FOR A GATE THAT IS NOT THERE IS AN EXCUSE NOBODY WILL DELETE.
+    // The list below is prose with teeth only while each row names a command a
+    // hook actually issues; a row that outlives its gate reads as a considered
+    // exemption and is a leftover. Checked here rather than trusted, because the
+    // whole point of the list is that somebody has to edit it.
+    for (sub, over, why) in CANNOT_LEAVE_THIS_MACHINE {
+        assert!(
+            hooks.keys().any(|(s, o, _)| s == sub && o == over),
+            "`cargo {sub}` over {over} is excused from needing a hosted job \
+             because \"{why}\" — and no git hook issues it any more, so the \
+             excuse outlived the gate"
+        );
+    }
+    assert!(
+        orphans.is_empty(),
+        "these compiling gates are paid by every push on this workstation and by \
+         no hosted job, so they cannot be MOVED to CI — moving them would lose \
+         them:\n  {}\nEither give each one a job in .github/workflows, or write \
+         here why it cannot leave this machine.",
+        orphans.join("\n  ")
     );
 }

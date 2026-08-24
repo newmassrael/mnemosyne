@@ -2276,9 +2276,22 @@ pub fn commands_this_repository_issues(root: &Path) -> IssuedCommands {
 ///   it runs over — this repository's, a fixture the run built, or wherever its
 ///   caller points. A law about what this repository's own commands must do is
 ///   a law about the first of those.
-pub const LAWS_OVER_THIS_POPULATION: [&str; 5] = [
+pub const LAWS_OVER_THIS_POPULATION: [&str; 6] = [
     "crates/mnemosyne-cli/tests/build_width.rs",
     "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
+    // R1287 — the sixth law asks WHERE a command is issued rather than what it
+    // spells: which of the compiling gates a git hook makes a workstation pay for
+    // are also paid by a hosted runner. Its three answers, in the order the list
+    // above asks for them. A CONDITIONAL SITE: read like any other command, and
+    // none of them is a hook — the sixth source's spawns are Rust, and a hook is
+    // shell. A HOLE: it asks only whether a flag is PRESENT, through
+    // `spells_a_flag`, so an unreadable scope becomes part of the key rather than
+    // an absence it claims — two commands whose widths cannot be read are not
+    // proven to be the same gate. A DECLARATION about another tree: irrelevant
+    // here for a reason worth stating rather than assuming, since a fixture's
+    // command is not written in `.githooks/` or `.github/workflows/` and so is in
+    // neither of the two buckets this law compares.
+    "crates/mnemosyne-cli/tests/git_hooks_smoke.rs",
     "crates/mnemosyne-cli/tests/judged_test_runs.rs",
     "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
     "tools/ci-plan/tests/reading.rs",

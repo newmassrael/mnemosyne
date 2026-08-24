@@ -277,12 +277,20 @@ git config core.hooksPath .githooks
 
 Three hooks then run automatically:
 - `pre-commit` — code-citation defense, workspace validate (when the
-  atomic sidecar is staged), and fmt + clippy (when `.rs` is staged).
+  atomic sidecar is staged), and `cargo fmt --all --check` (when `.rs`
+  is staged).
 - `commit-msg` — enforces `COMMIT_FORMAT.md` (subject ≤ 72 bytes,
   body ≤ 72 bytes per line, 1–3 bullets, English + typographic
   whitelist).
-- `pre-push` — re-runs `validate-workspace` + clippy before
-  publishing, catching state drift since the last `pre-commit`.
+- `pre-push` — re-runs `validate-workspace` and the format check,
+  the separate-workspace gate, and the report of what the previous
+  commit's hosted run found.
+
+Neither hook lints the workspace. `cargo clippy --workspace
+--all-targets -- -D warnings` runs in the hosted `validate` job, and
+the local hooks hold only what a runner cannot do or what must stop a
+commit outright — the placement rule `RULEBOOK.md` states and
+`git_hooks_smoke` enforces.
 
 Once the citation-defense baseline is clean, promote `severity_*`
 from `warn` to `reject` in `mnemosyne.toml` and the hook will block

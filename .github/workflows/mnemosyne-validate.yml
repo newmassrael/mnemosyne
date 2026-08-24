@@ -374,6 +374,65 @@ jobs:
           ./scripts/verify.sh --no-fresh --label ci-workspace --
           cargo test --workspace --locked --no-fail-fast
 
+      # R1287 — THE GATE THAT HAD RUN NOWHERE BUT A WORKSTATION. `pre-push` had
+      # clippied this workspace since long before there was a hosted run to
+      # compare against, and nothing here ever did: `server-features` clippies
+      # ONE package with its features on, and a census keyed by subcommand and
+      # manifest reads those two as the same gate, because neither spells
+      # `--manifest-path`. They are not. A checkout that never ran
+      # `git config core.hooksPath .githooks` had no lint gate at all, and the
+      # push that was supposed to be the backstop could be refused by a build
+      # machine holding another checkout — which is how this was found.
+      #
+      # HERE RATHER THAN IN A JOB OF ITS OWN, and the numbers are the reason.
+      # Measured on run 32641022360, ten jobs green: this job took 27m33s of a
+      # 90-minute budget and the longest job in the run took 34m40s. A step here
+      # meets a warm cargo home and a registry this job's cache already holds; a
+      # separate job would pay a cold dependency build and take a second slice of
+      # a 10 GB per-repository cache, which is the trade `side-workspaces`
+      # records having lost.
+      #
+      # `--all-targets` BECAUSE THE HOOK SPELLED IT: test and bench targets are
+      # most of this repository's Rust, and a lint gate that skips them is a
+      # different gate wearing the same name.
+      - name: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --locked --all-targets -- -D warnings
+
+      # R1287 — AND THE FOUR TREE GATES THE COMMIT HOOK WAS THE ONLY READER OF.
+      # Each asks a question about THIS REPOSITORY rather than about the machine
+      # running it — an environment variable nobody names, a scratch file no
+      # workspace owns, a tracked file whose mode disagrees with its shebang, a
+      # declaration nothing reads — so a runner can ask them, and until now no
+      # runner did. They cost seconds and they sit beside `blind-waits` below,
+      # which is here for the same reason and was the first of this shape.
+      #
+      # WHAT IS DELIBERATELY NOT HERE, so the absence is a decision rather than
+      # an oversight: `one-machine` and `ci-state`. Both are about the fleet this
+      # push is leaving FROM — one dispatches this tree to a second machine and
+      # reads what it found, the other reports what a hosted run of the previous
+      # commit concluded. On a runner the first has no second machine and the
+      # second would be reading itself. `git_hooks_smoke` holds that reasoning as
+      # a list the compiler makes somebody edit, not as this comment.
+      - name: named-environment (every environment variable is named)
+        run: >
+          cargo run -q --locked --manifest-path tools/named-environment/Cargo.toml
+          --bin named-environment -- --workspace Cargo.toml
+
+      - name: unowned-scratch (every scratch path a workspace owns)
+        run: >
+          cargo run -q --locked --manifest-path tools/unowned-scratch/Cargo.toml
+          --bin unowned-scratch -- --workspace Cargo.toml
+
+      - name: written-executable (a file's mode agrees with what it is)
+        run: >
+          cargo run -q --locked --manifest-path tools/written-executable/Cargo.toml
+          --bin written-executable -- --workspace Cargo.toml
+
+      - name: unread-declaration (every declaration has a reader)
+        run: >
+          cargo run -q --locked --manifest-path tools/unread-declaration/Cargo.toml
+          --bin unread-declaration -- --repo .
+
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace
 
