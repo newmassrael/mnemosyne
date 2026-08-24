@@ -282,15 +282,15 @@ Three hooks then run automatically:
 - `commit-msg` — enforces `COMMIT_FORMAT.md` (subject ≤ 72 bytes,
   body ≤ 72 bytes per line, 1–3 bullets, English + typographic
   whitelist).
-- `pre-push` — re-runs `validate-workspace` and the format check,
-  the separate-workspace gate, and the report of what the previous
-  commit's hosted run found.
+- `pre-push` — re-runs `validate-workspace` and the format check, and
+  reports what the previous commit's hosted run found.
 
-Neither hook lints the workspace. `cargo clippy --workspace
---all-targets -- -D warnings` runs in the hosted `validate` job, and
-the local hooks hold only what a runner cannot do or what must stop a
-commit outright — the placement rule `RULEBOOK.md` states and
-`git_hooks_smoke` enforces.
+Neither hook compiles the tree. Workspace clippy, the separate
+in-repo workspaces and the "every test compiled is one CI runs" gate
+are all hosted jobs, so a push costs seconds; the hooks hold only what
+a runner cannot do or what must stop a commit outright. That is the
+placement rule `RULEBOOK.md` states, and `git_hooks_smoke` refuses a
+gate that leaves a hook for nowhere.
 
 Once the citation-defense baseline is clean, promote `severity_*`
 from `warn` to `reject` in `mnemosyne.toml` and the hook will block

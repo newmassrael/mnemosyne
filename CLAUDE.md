@@ -280,12 +280,14 @@ truth). The directory contains three hooks:
  body line ≤ 72 bytes, 1–3 bullets, no continuation lines, English
  + typographic whitelist (`§ – — • … →`).
 - `pre-push` — `validate-workspace`, `cargo fmt --all --check`, the
- separate-workspace gate, the test-nothing-runs gate, and what a
- machine that is not this one found here. It does NOT lint the
- workspace: `cargo clippy --workspace --all-targets` is a step in
- the hosted `validate` job since R1287, and
- `git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs`
- is what keeps that true.
+ CI-state report, and what a machine that is not this one found here.
+ Nothing in it COMPILES the tree any more: workspace clippy went to
+ the hosted `validate` job (R1287), and the whole separate-workspace
+ gate and `unrun-tests` went to their own jobs (R1288). A push is
+ seconds now, and
+ `git_hooks_smoke::every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs`
+ plus `…every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs`
+ are what keep those moves from being deletions.
 
 Install (one-time per clone):
 

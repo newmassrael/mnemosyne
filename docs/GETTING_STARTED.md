@@ -155,12 +155,13 @@ is no install script to run and no copy to keep in sync (the old
   validate when a doc is staged, `cargo fmt --all --check` when `.rs` is
   staged.
 - `commit-msg` — enforces `COMMIT_FORMAT.md`.
-- `pre-push` — re-runs validate and the format check, the
-  separate-workspace gate, and the previous commit's hosted-run report.
+- `pre-push` — re-runs validate and the format check, and reports what
+  the previous commit's hosted run found.
 
-Linting the workspace is CI's: `cargo clippy --workspace --all-targets`
-is a step in the hosted `validate` job, not a hook. The hooks hold what a
-runner cannot do or what must stop a commit outright.
+Compiling is CI's. Workspace clippy, the separate in-repo workspaces and
+the unrun-tests gate are hosted jobs, not hooks, so a push costs seconds;
+the hooks hold what a runner cannot do or what must stop a commit
+outright.
 
 ## 7. LLM agent citation hygiene
 

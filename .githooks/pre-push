@@ -24,29 +24,7 @@
 #   2. `cargo fmt --all --check`
 #      - rustfmt 4-space repo-wide baseline (rustfmt.toml, edition 2021).
 #
-#   3. `cargo clippy --workspace --all-targets -- -D warnings`
-#      - R308 D9 closure: every warning lifts to deny. Workspace allow
-#        list (root Cargo.toml) carries stylistic exemptions
-#        (`doc_lazy_continuation`, `inconsistent_digit_grouping`);
-#        per-site `#[allow]` for API-shape exemptions.
-#      - Unconditional (push validates publishable state, so the clippy
-#        budget is paid once per push regardless of which files changed).
-#
-#   4. `scripts/check-side-workspaces.sh` — every SEPARATE in-repo workspace,
-#      WHOLE (fmt, clippy, citations, waits and its SUITE). R1156.
-#      - `--workspace` above means the ROOT one. Until this round the side
-#        workspaces' suites ran only on CI, and pre-commit reached them only
-#        when a `.rs` inside one was STAGED, lint-half only. Editing ROOT
-#        source can rot a side workspace's test — `sweeps.rs` anchors are
-#        exact text naming root files — and that is how R1151/R1152 put a red
-#        on `origin/main` behind five green root runs.
-#
-#   5. `tools/unrun-tests` — every test this commit publishes is one some CI
-#      command runs (R1230). CI ran this and nothing here did, so a test
-#      nothing executes reached `origin/main` and was found by the runner
-#      (R1193, repaired by R1195). `--ours-only`, for the reason gate 4 has it.
-#
-#   6. CI state of `origin/main` (R890, R893) — REPORT ONLY, never blocks.
+#   3. CI state of `origin/main` (R890, R893) — REPORT ONLY, never blocks.
 #      - Nothing here could see a red CI; four consecutive red runs went
 #        unnoticed for eleven hours. See the block at the bottom for why
 #        this reports rather than gates, and what it cannot see.
@@ -58,11 +36,38 @@
 #        this hook up stubs `gh` with already-filtered lines, so nothing
 #        could ask whether they still named fields GitHub still sends.
 #
-#   7. `tools/one-machine --read` — what a machine that is not this one found
-#      in this tree (R1234). REPORT ONLY, on gate 6's argument. `pre-commit`
+#   4. `tools/one-machine --read` — what a machine that is not this one found
+#      in this tree (R1234). REPORT ONLY, on gate 3's argument. `pre-commit`
 #      dispatched the census when the round's bytes stopped moving; this reads
 #      the answer. The census is a claim about a MACHINE and has been wrong
 #      four times, every one found where its author was not sitting.
+#
+# WHAT THIS HOOK NO LONGER DOES, AND WHERE IT WENT (R1287, R1288). Three gates
+# that COMPILE the tree stood between 2 and 4 above, and every one of them is now
+# a hosted job's:
+#
+#   - `cargo clippy --workspace --all-targets -- -D warnings` → a step in the
+#     `validate` job (R1287). It had run HERE and on no runner at all, which
+#     nothing could tell by reading either file until a census asked.
+#   - `scripts/check-side-workspaces.sh --ours-only`, WHOLE → the
+#     `side-workspaces` job (R1288), which invokes the same script.
+#   - `tools/unrun-tests --ours-only` → the `unrun-tests` job (R1288).
+#
+# THE OWNER ASKED FOR THIS THREE TIMES and the last time named the reason: the
+# verification was too slow to sit through. Measured on the push interrupted to
+# make the change, the side gate alone had spent 817 seconds and was 2 workspaces
+# of 24 into its citations phase; the hosted job does the whole thing in 19m00s,
+# beside nine other jobs, on a machine that is not also building three sibling
+# repositories.
+#
+# THE RESIDUE, STATED RATHER THAN DISCOVERED. Each of those three gates was put
+# where it was BECAUSE a red had reached `origin/main` — R1151/R1152 for the side
+# workspaces, R1193 for a doc-test nothing ran. Those reds can reach `main` again
+# and be read one round later, which is the trade `RULEBOOK.md` states for the
+# whole population. What keeps the move from being a deletion is
+# `git_hooks_smoke::every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs`,
+# which asks the workflow to declare work for each and asks BOTH hooks not to be
+# running them.
 #
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
@@ -142,126 +147,50 @@ fi
 # every OTHER place in this repository that reads a wrapper's exit as the wrapped
 # command's verdict, and that census is where it lives next.
 
-# 4. The SEPARATE in-repo workspaces, WHOLE — fmt, clippy, citations, waits AND
-#    their suites (Round 1156).
-#
-# The gates above say `--workspace`, and that word means the ROOT workspace. The
-# others carry their own `[workspace]` precisely so the root gates never compile
-# them, and until this round the only thing that ran their SUITES was CI. The
-# pre-commit hook reaches them, but only when a `.rs` file INSIDE one is staged,
-# and only for the lint half.
-#
-# THAT LEFT THE CROSS-WORKSPACE DIRECTION UNGUARDED, which is the one that broke.
-# `tools/injection-harness/tests/sweeps.rs` asks whether every tracked injection
-# still APPLIES — an anchor is exact text naming a file in the ROOT workspace —
-# so editing root source can rot a side workspace's test while nothing that runs
-# before a push touches it. Rounds 1151 and 1152 rewrote two of those files, five
-# root-workspace runs stayed green, the pre-commit side gate never fired because
-# no side `.rs` was staged, and the red arrived on `origin/main`.
-#
-# ONE DEFINITION, `scripts/check-side-workspaces.sh`, asked here for the WHOLE
-# gate rather than `--lint-only`: this is the last point before the answer
-# becomes shared, and the half that was missing is the suites. Resolved from THIS
-# HOOK's checkout, for the reason the CI reporter below is — the hook may run
-# over another tree, and a gate that vanishes when its script is not under the
-# caller's cwd is a gate that stops existing without saying so.
-# `${BASH_SOURCE[0]%/*}` rather than `dirname`: a BUILTIN, because this hook is
-# also run on a deliberately hermetic PATH holding only `bash`, `git` and a cargo
-# stub — and `dirname` is not on it. The case that found this is the CI
-# reporter's, which proves the hook still works when almost nothing is reachable.
-#
 # ONE SPELLING OF "THE CHECKOUT THIS HOOK CAME FROM", used by every gate below
 # that runs a program of this repository's over whatever tree it was invoked in.
-# Three gates need it now and this file held two spellings of it, the second
-# reaching for `dirname` where this one is a BUILTIN — the difference the block
-# below records having been bitten by, on the deliberately hermetic PATH its own
-# smoke case runs this hook under.
+# This file once held two spellings of it, the second reaching for `dirname`
+# where this one is a BUILTIN — the difference the CI reporter below records
+# having been bitten by, on the deliberately hermetic PATH its own smoke case
+# runs this hook under.
 hook_checkout="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
-side_gate="$hook_checkout/scripts/check-side-workspaces.sh"
-if [[ ! -x "$side_gate" ]]; then
-    echo "pre-push: push rejected — the separate-workspace gate is missing at $side_gate" >&2
-    exit 1
-fi
-# `--ours-only` SINCE ROUND 1225, and the flag is the whole of what this hook
-# gives up. `studio` path-depends on the sibling `pinion` checkout, so running
-# its gate here asks whether SOMEBODY ELSE'S working tree compiles at this
-# instant. On 2026-08-16 the answer was no — a session in that repository was
-# mid-edit — and three finished, locally-verified rounds could not be published
-# for a reason nothing in this repository could fix. A hook that blocks on that
-# is not answering the question it claims to.
-#
-# The flag names no workspace: the gate already decides ownership per workspace
-# and prints it (`LOCK <ws> ours|foreign`), and this consumes that answer.
-# The skipped ones are NAMED in the gate's closing line, so a green push never
-# means "and something was quietly not looked at".
-#
-# WHAT IS GIVEN UP, so the next reader does not have to re-derive it: `studio`
-# now has no unconditional automated reader. CI has no sibling checkout and
-# skips it; what remains is the pre-commit gate when a side `.rs` is staged, and
-# the whole-gate run the round checklist asks for. Round 784 repaired this crate
-# precisely because no gate was watching it.
-echo "pre-push: scripts/check-side-workspaces.sh (every workspace this repo owns, whole) ..." >&2
-if ! "$side_gate" --ours-only; then
-    echo "pre-push: a separate in-repo workspace does not pass its own gate" >&2
-    echo "  run: scripts/check-side-workspaces.sh" >&2
-    exit 1
-fi
 
-# 5. EVERY TEST THIS PUSH PUBLISHES IS ONE SOME CI COMMAND RUNS (Round 1230).
+# WHERE GATES 4 AND 5 WENT (R1288), and this is the owner's instruction carried
+# the whole way rather than to the edge of what one census could see.
 #
-# This gate had run on CI and NOWHERE ELSE since it was written. What that cost
-# is on the record: R1193 put a ```` ```ignore ```` fence in a doc comment, which
-# makes a doc-test no command in this repository runs; every local gate was
-# green, the push went out, and `origin/main` went red on the runner. R1195 paid
-# it. The gate that found it is this one, and the first reader it had was a
-# hosted job — the shape R890 recorded for CI state and R1156 for the separate
-# workspaces, met a third time.
+# Gate 4 ran `scripts/check-side-workspaces.sh --ours-only` WHOLE — fmt, clippy,
+# citations, waits and the suites, over every workspace this repository owns.
+# Gate 5 ran `tools/unrun-tests --ours-only`, which builds every test target the
+# lister offers and asks each binary what it holds.
 #
-# WHY PUSH AND NOT COMMIT: measured on this workstation, warm, 88 seconds — it
-# builds every test target of every workspace the lister offers and asks each
-# binary what it holds. Gate 5a of `pre-commit` is seconds; this is not a
-# per-commit price, and push is where the answer becomes shared anyway.
+# BOTH ARE RUN BY A HOSTED JOB ALREADY: `side-workspaces` invokes the same script
+# and `unrun-tests` has a job of its own, which is why R1287's census listed the
+# second among the eight gates paid in both places. The first it could NOT list,
+# and the reason is worth keeping: `check-side-workspaces.sh` is dropped from
+# `ci_plan`'s shell source on purpose — the workspace lister reports the same
+# commands assembled, so reading the text as well would ask twice about words
+# that are `"${locked[@]}"` on the page — and the cost therefore lands on the
+# lister rather than on the hook that invokes it. A gate can be invisible to the
+# instrument that is supposed to find it, and this one was.
 #
-# `--ours-only`, FOR THE REASON GATE 4 HAS IT, and this gate needed it more: it
-# BUILDS what the lister offers, so on the machine holding the sibling checkout
-# its verdict depended on whether somebody else's working tree compiles at this
-# instant. On 2026-08-17 it answered 2 — could not judge — for exactly that
-# reason while everything in this repository was green. The flag names no
-# workspace; the lister decides ownership and this consumes that answer, and
-# what was left out is printed by name.
+# WHAT IT COST, MEASURED ON THE PUSH THAT WAS INTERRUPTED TO WRITE THIS: gate 4
+# had spent 817 seconds and was 2 workspaces into the citations phase of 24. The
+# hosted `side-workspaces` job does the whole thing in 19m00s, in parallel with
+# nine other jobs, on a machine that is not also building three sibling
+# repositories. The local copy is the expensive one and it is the same work.
 #
-# THE THREE CODES, READ AS THREE (the shape `pre-commit` Gate 5a records): 0 is
-# clean, 1 is "a test exists that nothing runs", 2 is "I could not read enough
-# of this tree to have an opinion". A gate that could not judge is not a gate
-# that passed, so both non-zero codes block — and they say which they were.
+# WHAT IS GIVEN UP, STATED RATHER THAN DISCOVERED. R1156 put gate 4 here BECAUSE
+# a red reached `origin/main`: editing root source can rot a side workspace's
+# test, and nothing before a push touched it. That red can now reach `main`
+# again, one round earlier than it is read. It is the trade `RULEBOOK.md` states
+# for the whole population and the owner has now asked for three times — and it
+# is a real cost, not a technicality. The same goes for gate 5's own case: R1193
+# published a doc-test nothing runs, and the first reader was a hosted job.
 #
-# `|| dark_verdict=$?` rather than a bare call: this file runs under `set -e`
-# and would be killed at the failing command before any branch could read a code.
-#
-# NO `-f` GUARD IN FRONT OF IT, for the reason the CI reporter below states: the
-# program is resolved from THIS checkout, where it always exists, so the guard is
-# a branch nothing could reach — and a branch with no reader is the shape R1127
-# to R1129 measured three times over. A gate that is not there makes `cargo run`
-# fail, and that is the `-ne 0` arm, which prints the true sentence.
-echo "pre-push: tools/unrun-tests (every test this publishes is one CI runs) ..." >&2
-dark_verdict=0
-cargo run -q --locked --manifest-path "$hook_checkout/tools/unrun-tests/Cargo.toml" \
-    --bin unrun-tests -- --ours-only || dark_verdict=$?
-if [[ $dark_verdict -eq 1 ]]; then
-    {
-        echo "pre-push: push rejected — this tree compiles a test no CI command runs"
-        echo "  the gate named them above. Fix: run it from a job (a feature it"
-        echo "  hides behind needs --all-features; an #[ignore] needs a command that"
-        echo "  passes --ignored), or delete it."
-    } >&2
-    exit 1
-elif [[ $dark_verdict -ne 0 ]]; then
-    {
-        echo "pre-push: push rejected — the unrun-tests gate could not judge this" \
-             "tree (exit $dark_verdict); its own message is above"
-    } >&2
-    exit 1
-fi
+# `studio` KEEPS WHAT IT HAD AND NO LESS: gate 4 ran `--ours-only`, so it was
+# already skipping the workspace that path-depends on a sibling checkout. What
+# still reads `studio` is the pre-commit gate when a side `.rs` is staged, and
+# the whole-gate run the round checklist asks for.
 
 # 6. Report what CI said about the commit this push builds on (R890).
 #

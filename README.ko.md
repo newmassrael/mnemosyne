@@ -265,14 +265,15 @@ git config core.hooksPath .githooks
   일 때).
 - `commit-msg` — `COMMIT_FORMAT.md` 강제 (subject ≤ 72 bytes, body
   ≤ 72 bytes / line, 1–3 bullets, English + 타이포그래픽 화이트리스트).
-- `pre-push` — `validate-workspace` + 포맷 검사, 별도 워크스페이스
-  게이트, 그리고 직전 커밋의 호스티드 런이 무엇을 찾았는지 보고.
+- `pre-push` — `validate-workspace` + 포맷 검사, 그리고 직전 커밋의
+  호스티드 런이 무엇을 찾았는지 보고.
 
-두 hook 중 어느 쪽도 워크스페이스를 lint 하지 않는다. `cargo clippy
---workspace --all-targets -- -D warnings` 는 호스티드 `validate` job
-에서 돌고, 로컬 hook 은 러너가 못 하는 것과 커밋을 즉시 멈춰야 하는
-것만 진다 — `RULEBOOK.md` 가 적고 `git_hooks_smoke` 가 강제하는
-배치 규칙이다.
+두 hook 중 어느 쪽도 트리를 컴파일하지 않는다. 워크스페이스 clippy,
+별도 in-repo 워크스페이스, 「컴파일한 테스트는 CI 가 돈다」 게이트가
+모두 호스티드 job 이라 push 는 초 단위다. 로컬 hook 은 러너가 못 하는
+것과 커밋을 즉시 멈춰야 하는 것만 진다 — `RULEBOOK.md` 가 적는 배치
+규칙이고, `git_hooks_smoke` 는 「hook 에서 나가 아무 데도 안 간」
+게이트를 거절한다.
 
 Citation defense baseline 이 깨끗해지면 `mnemosyne.toml` 에서
 `severity_*` 를 `warn` → `reject` 로 승격하면, 이후 새 hallucinated

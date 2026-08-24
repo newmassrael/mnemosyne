@@ -79,52 +79,62 @@
       "tests": [
         "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
       ]
-    },
-    "the-push-gate-does-not-ask-whether-a-test-is-run-at-all": {
-      "edits": [
-        {
-          "file": ".githooks/pre-push",
-          "from": "cargo run -q --locked --manifest-path \"$hook_checkout/tools/unrun-tests/Cargo.toml\" \\\n    --bin unrun-tests -- --ours-only || dark_verdict=$?",
-          "to": ": the gate is not run || dark_verdict=$?"
-        }
-      ],
-      "expect_red": [
-        "pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
-      ],
-      "tests": [
-        "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
-      ]
-    },
-    "the-push-gate-publishes-a-tree-the-gate-could-not-read": {
-      "edits": [
-        {
-          "file": ".githooks/pre-push",
-          "from": "elif [[ $dark_verdict -ne 0 ]]; then",
-          "to": "elif false; then"
-        }
-      ],
-      "expect_red": [
-        "pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
-      ],
-      "tests": [
-        "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
-      ]
-    },
-    "the-push-gate-reports-an-unreadable-tree-as-a-dark-test": {
-      "edits": [
-        {
-          "file": ".githooks/pre-push",
-          "from": "if [[ $dark_verdict -eq 1 ]]; then",
-          "to": "if [[ $dark_verdict -ne 0 ]]; then"
-        }
-      ],
-      "expect_red": [
-        "pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
-      ],
-      "tests": [
-        "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
-      ]
     }
   },
-  "forgotten": {}
+  "forgotten": {
+    "the-push-gate-does-not-ask-whether-a-test-is-run-at-all": {
+      "because": "R1288 — the gate it aimed at left this hook for the hosted unrun-tests job; a push no longer runs it, so the expectation names a branch that cannot be reached",
+      "was": {
+        "edits": [
+          {
+            "file": ".githooks/pre-push",
+            "from": "cargo run -q --locked --manifest-path \"$hook_checkout/tools/unrun-tests/Cargo.toml\" \\\n    --bin unrun-tests -- --ours-only || dark_verdict=$?",
+            "to": ": the gate is not run || dark_verdict=$?"
+          }
+        ],
+        "expect_red": [
+          "pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
+        ],
+        "tests": [
+          "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
+        ]
+      }
+    },
+    "the-push-gate-publishes-a-tree-the-gate-could-not-read": {
+      "because": "R1288 — the gate it aimed at left this hook for the hosted unrun-tests job; a push no longer runs it, so the expectation names a branch that cannot be reached",
+      "was": {
+        "edits": [
+          {
+            "file": ".githooks/pre-push",
+            "from": "elif [[ $dark_verdict -ne 0 ]]; then",
+            "to": "elif false; then"
+          }
+        ],
+        "expect_red": [
+          "pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
+        ],
+        "tests": [
+          "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
+        ]
+      }
+    },
+    "the-push-gate-reports-an-unreadable-tree-as-a-dark-test": {
+      "because": "R1288 — the gate it aimed at left this hook for the hosted unrun-tests job; a push no longer runs it, so the expectation names a branch that cannot be reached",
+      "was": {
+        "edits": [
+          {
+            "file": ".githooks/pre-push",
+            "from": "if [[ $dark_verdict -eq 1 ]]; then",
+            "to": "if [[ $dark_verdict -ne 0 ]]; then"
+          }
+        ],
+        "expect_red": [
+          "pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
+        ],
+        "tests": [
+          "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"
+        ]
+      }
+    }
+  }
 }

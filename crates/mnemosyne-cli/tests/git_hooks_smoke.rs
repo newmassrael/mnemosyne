@@ -522,8 +522,19 @@ fn pre_commit_rejects_unformatted_rust() {
 /// must not still be running them, or the move would be a sentence rather than a
 /// change. The second half is what makes this a law about placement instead of a
 /// list of job names.
+///
+/// AND IT ASKS BOTH HOOKS SINCE R1288, because the gate that cost the most left
+/// the PUSH hook, not the commit hook. `check-side-workspaces.sh` was moved off
+/// `pre-commit` by R1284 and went on running WHOLE in `pre-push`, where a single
+/// interrupted push measured it at 817 seconds and two workspaces into the
+/// citations phase of twenty-four; `tools/unrun-tests` was only ever a push gate.
+/// A law that reads one hook would have called both of those moves complete.
+/// `R1287`'s census could not see the first of them at all — the workspace lister
+/// reports that script's commands assembled, so its cost is attributed to the
+/// lister rather than to the hook — which is exactly why this list is named
+/// rather than derived.
 #[test]
-fn every_gate_the_commit_hook_stopped_running_is_one_the_hosted_workflow_runs() {
+fn every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs() {
     let root = repo_root();
     let workflow = "mnemosyne-validate.yml";
     let raw = fs::read_to_string(root.join(".github/workflows").join(workflow))
@@ -535,31 +546,40 @@ fn every_gate_the_commit_hook_stopped_running_is_one_the_hosted_workflow_runs() 
         .collect();
     println!("[hooks] {workflow} declares work in {jobs:?}");
 
-    let hook = fs::read_to_string(root.join(".githooks/pre-commit")).expect("the commit hook");
-    // COMMENTS ARE PROSE ABOUT A GATE AND NOT ONE, and this hook's own record of
-    // where each gate went names both of them.
-    let runs: String = hook
-        .lines()
-        .filter(|line| !line.trim_start().starts_with('#'))
-        .collect::<Vec<_>>()
-        .join("\n");
+    // COMMENTS ARE PROSE ABOUT A GATE AND NOT ONE, and each hook's own record of
+    // where its gates went names them all.
+    let invocations = |hook: &str| -> String {
+        fs::read_to_string(root.join(".githooks").join(hook))
+            .unwrap_or_else(|why| panic!("the {hook} hook: {why}"))
+            .lines()
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let hooks: Vec<(&str, String)> = ["pre-commit", "pre-push"]
+        .into_iter()
+        .map(|name| (name, invocations(name)))
+        .collect();
 
     for (gate, job) in [
         ("item-citations", "item-citations"),
         ("check-side-workspaces.sh", "side-workspaces"),
+        ("unrun-tests", "unrun-tests"),
     ] {
         assert!(
             jobs.contains(job),
-            "`{gate}` left the commit hook for the hosted `{job}` job, and \
+            "`{gate}` left the git hooks for the hosted `{job}` job, and \
              {workflow} declares work in {jobs:?} — a gate that left one place \
              for nowhere is not a move"
         );
-        assert!(
-            !runs.contains(gate),
-            "`{gate}` is named in the hosted workflow AND still invoked by the \
-             commit hook, so the sentence saying it moved is wrong about the \
-             file it is written in"
-        );
+        for (name, runs) in &hooks {
+            assert!(
+                !runs.contains(gate),
+                "`{gate}` is named in the hosted workflow AND still invoked by \
+                 the {name} hook, so the sentence saying it moved is wrong about \
+                 the file it is written in"
+            );
+        }
     }
 }
 
@@ -702,54 +722,59 @@ const CITATION_GATE_REFUSES: &[(&str, &str)] = &[
 ];
 
 #[test]
-fn pre_push_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_defect() {
-    // GATE 5a's OTHER NON-ZERO EXIT, and the one nothing had ever run. The two
-    // gates BELOW it in this hook have read three codes since R1183; this one
+fn the_side_workspace_gate_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_defect()
+{
+    // THE OTHER NON-ZERO EXIT OF THE CITATION GATE, and the one nothing had ever
+    // run. The two gates beside it have read three codes since R1183; this one
     // read `if !` and printed `a citation names no item` for both.
     //
-    // It is the recorded shape of Z15 arriving at the person committing. A
+    // It is the recorded shape of Z15 arriving at whoever is publishing. A
     // concurrent prune of this repository's one shared build directory left
     // `librocksdb-sys` uncompilable, the citation gate answered 2 and said so,
     // and the caller printed a finding about a citation that does not exist.
     // R1185 repaired the separate-workspace lister and left this line, because
-    // the fixture that would have caught it is the one below: a tree that gets
-    // past fmt and clippy and still cannot be read.
+    // the fixture that would have caught it is this one: a tree that gets past
+    // fmt and clippy and still cannot be read.
+    //
+    // THROUGH THE SCRIPT SINCE R1288, NOT THROUGH A HOOK. This case reached the
+    // citation phase because `pre-push` ran `check-side-workspaces.sh` WHOLE; that
+    // gate is the hosted `side-workspaces` job's now, and a case driving it
+    // through the hook would be asserting a call the hook no longer makes. The LAW
+    // is about the script's own two answers, so the script is what it asks — and
+    // nothing about what it proves is weaker for it. Only the caller changed.
     let f = Fixture::new();
     for (path, body) in CITATION_GATE_REFUSES {
         f.write(path, body);
     }
     f.generate_lockfile("tools/cited/Cargo.toml");
-    f.stage_all();
-    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): cited"]);
-    let sha = head_sha(&f);
 
-    let out = f.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&sha),
-        &[],
-    );
+    let out = Command::new(repo_root().join("scripts/check-side-workspaces.sh"))
+        .arg("tools/cited")
+        .current_dir(f.path())
+        .env("CARGO_TARGET_DIR", f.path().join("target"))
+        .output()
+        .expect("the gate runs");
     assert!(
         !out.status.success(),
-        "a tree the citation gate could not read must not pass a push"
+        "a tree the citation gate could not read must not pass"
     );
     let err = both_of(&out);
     assert!(
         err.contains("the item-citation gate could not read tools/cited (exit 2)"),
         "the rejection must say the gate could not judge, and with which code:\n{err}"
     );
-    // THE MIRROR, and the whole point of this case. A hook that answered `1`
-    // here sends somebody hunting for a broken citation in a tree whose
-    // citations are all fine — and there is nothing in this fixture to find.
+    // THE MIRROR, and the whole point of this case. A caller that answered `1`
+    // here sends somebody hunting for a broken citation in a tree whose citations
+    // are all fine — and there is nothing in this fixture to find.
     assert!(
         !err.contains("a citation names no item"),
         "a tree it could not read is not a tree with a bad citation in it:\n{err}"
     );
-    // AND THE GATE'S OWN WORDS ARE ABOVE, which is what the hook's sentence
-    // promises the reader will find.
+    // AND THE GATE'S OWN WORDS ARE THERE, which is what the refusal promises its
+    // reader will be above it.
     assert!(
         err.contains("only as a dev-dependency"),
-        "the gate's own message must reach the same stream the hook points at:\n{err}"
+        "the gate's own message must reach the stream the refusal points at:\n{err}"
     );
 }
 
@@ -1109,7 +1134,7 @@ fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_
     // `the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged`
     // below, which drives every arm through a shim and needs no order at
     // all. What is left HERE is the end-to-end fact that shim cannot show: a
-    // real gate, refusing a real tree, through the real hook.
+    // real gate refusing a real tree.
     let f = Fixture::new();
     f.write(
         "tools/sub/Cargo.toml",
@@ -1118,24 +1143,23 @@ fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_
     f.write("tools/sub/src/lib.rs", CLEAN_LIB);
     f.write("tools/sub/src/orphan.rs", UNREADABLE_ORPHAN);
     f.generate_lockfile("tools/sub/Cargo.toml");
-    f.stage_all();
-    // THROUGH THE PUSH HOOK SINCE R1284, which is where the script runs now —
-    // and it runs WHOLE there rather than `--lint-only`, so this case reaches
-    // the same phase by a shorter argument than it used to.
-    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): sub"]);
-    let sha = head_sha(&f);
 
-    let out = f.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&sha),
-        &[],
-    );
+    // THROUGH THE SCRIPT SINCE R1288. It went through `pre-push` while that hook
+    // ran the gate whole; the gate is the hosted `side-workspaces` job's now, and
+    // a case driving it through the hook would assert a call the hook no longer
+    // makes. What this law is about — which of two sentences a phase prints, and
+    // that it names the WORKSPACE — belongs to the script either way.
+    let out = Command::new(repo_root().join("scripts/check-side-workspaces.sh"))
+        .arg("tools/sub")
+        .current_dir(f.path())
+        .env("CARGO_TARGET_DIR", f.path().join("target"))
+        .output()
+        .expect("the gate runs");
     assert!(
         !out.status.success(),
         "a separate workspace the gate could not read must not pass"
     );
-    let err = stderr_of(&out);
+    let err = both_of(&out);
     assert!(
         err.contains("the scratch-ownership gate could not read tools/sub (exit 2)"),
         "the refusal must name the workspace and the code:\n{err}"
@@ -1269,14 +1293,23 @@ fn ours_only_drops_the_workspaces_this_repository_does_not_own() {
         );
     }
 
-    // AND THE HOOK PASSES IT. Without this half the flag could be correct and
-    // unreached; with only this half it could be passed and inert.
+    // AND NO HOOK PASSES IT ANY MORE (R1288), which is a change in what this case
+    // can claim rather than a weakening it should hide. The assertion that stood
+    // here read `pre-push` for `"$side_gate" --ours-only`, and that gate is the
+    // hosted `side-workspaces` job's now — the flag's remaining callers are a
+    // person or an agent running the gate from a checkout that HOLDS the sibling,
+    // which is the only place the drop can happen at all and the one place no test
+    // can stand. So the flag keeps a reader for its SEMANTICS, above, and has none
+    // for its REACH; that is the honest shape and it is registered rather than
+    // papered over. CI passing the flag would prove nothing: a runner has no
+    // sibling checkout, so there the drop is inert by construction.
     let hook = std::fs::read_to_string(repo_root().join(".githooks/pre-push"))
         .expect("the pre-push hook is tracked");
     assert!(
-        hook.contains("\"$side_gate\" --ours-only"),
-        "`pre-push` does not run the side gate with `--ours-only`, so a sibling \
-         repository's working tree can still block a push from this one"
+        !hook.contains("\"$side_gate\" --ours-only"),
+        "`pre-push` runs the whole separate-workspace gate again, which is the \
+         work the hosted `side-workspaces` job already does — and the measurement \
+         that moved it was 817 seconds spent on 2 workspaces of 24"
     );
 }
 
@@ -2117,218 +2150,31 @@ fn pre_push_skips_delete_only_pushes_and_gates_on_the_workspace() {
     );
 }
 
-/// PRE-PUSH RUNS THE SEPARATE WORKSPACES, AND WHOLE (R1156).
-///
-/// `--workspace` in the three gates above means the ROOT workspace. The others
-/// carry their own `[workspace]` so the root gates never compile them, and until
-/// this round the only thing that ran their SUITES was CI: pre-commit reaches
-/// them only when a `.rs` INSIDE one is staged, and only for the lint half.
-///
-/// WHAT THAT COST, measured rather than argued. `tools/injection-harness`'s
-/// `sweeps.rs` asks whether every tracked injection still APPLIES, and an anchor
-/// is exact text naming a file in the ROOT workspace. Rounds 1151 and 1152
-/// rewrote two such files; five root-workspace runs stayed green, no side `.rs`
-/// was ever staged so the pre-commit gate never fired, and the red arrived on
-/// `origin/main`. This case is the reader that branch was missing.
-#[test]
-fn pre_push_gates_on_every_separate_workspace_and_names_the_one_that_fails() {
-    // The baseline fixture's separate workspace, made unformatted.
-    let dirty = Fixture::new();
-    dirty.write("tools/sub/src/lib.rs", "pub fn two()->u8{2}\n");
-    dirty.stage_all();
-    dirty.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
-    let sha = head_sha(&dirty);
-
-    let out = dirty.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&sha),
-        &[],
-    );
-    assert!(
-        !out.status.success(),
-        "a separate workspace that fails its own gate must block the push:\n{}",
-        stderr_of(&out)
-    );
-    let err = stderr_of(&out);
-    assert!(
-        err.contains("UNFORMATTED tools/sub/Cargo.toml"),
-        "the block must name the manifest to fix, and with it the separate \
-         workspace it is in:\n{err}"
-    );
-    assert!(
-        err.contains("separate in-repo workspace does not pass its own gate"),
-        "and it must be this hook's own refusal, not a message from some other \
-         gate the push happened to trip:\n{err}"
-    );
-
-    // THE MIRROR, and it is what stops the assertion above from holding for a
-    // hook wired to reject every push that has a side workspace at all: the
-    // baseline tree, whose separate workspace is clean, passes AND the gate is
-    // seen to have run its SUITE on it.
-    let clean = Fixture::new();
-    clean.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
-    let sha = head_sha(&clean);
-
-    let out = clean.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&sha),
-        &[],
-    );
-    assert!(
-        out.status.success(),
-        "a clean separate workspace must not block the push:\n{}",
-        both_of(&out)
-    );
-    let both = both_of(&out);
-    assert!(
-        both.contains("check-side-workspaces.sh"),
-        "the hook must say it ran the ONE gate CI runs, not a copy of its \
-         commands:\n{both}"
-    );
-    // AND THE SUITE HALF RAN, which is the half that was missing: `--lint-only`
-    // stops after fmt and clippy, and this hook asking for that would rebuild the
-    // hole one notch smaller. Read off the GATE'S OWN command line rather than
-    // off cargo's wording, and from STDOUT as well as stderr — the gate narrates
-    // on stdout, which is why the first version of this case failed while the
-    // suite had in fact run.
-    assert!(
-        both.contains("COMMAND tools/sub suite"),
-        "the whole gate includes the separate workspace's SUITE, and that is the \
-         half CI alone was carrying:\n{both}"
-    );
-    assert!(
-        !both.contains("--lint-only"),
-        "the mirror of the assertion above — the lint-only form must be gone \
-         from this call, not merely joined by the suite:\n{both}"
-    );
-}
-
-/// A tree whose only test outside the baseline is one nothing runs.
-///
-/// `#[ignore]` rather than a feature or a filter, because it is the cheapest
-/// dark test there is: `--list` prints it, `--list --ignored` prints it too, and
-/// a command that passes neither runs its list minus its ignored list. The name
-/// is read back by the assertions, so a fixture that stopped holding it could
-/// not pass by spelling the name a second time.
-const DARK_LIB: &str = "pub fn one() -> u8 {\n    1\n}\n\
-                        \n\
-                        #[cfg(test)]\n\
-                        mod tests {\n\
-                        \x20   #[test]\n\
-                        \x20   fn one_is_one() {\n\
-                        \x20       assert_eq!(super::one(), 1);\n\
-                        \x20   }\n\
-                        \n\
-                        \x20   #[test]\n\
-                        \x20   #[ignore]\n\
-                        \x20   fn nothing_runs_this() {}\n\
-                        }\n";
-
-const DARK_TEST: &str = "tests::nothing_runs_this";
-
-/// A PUSH DOES NOT PUBLISH A TEST NOTHING RUNS (Round 1230).
-///
-/// `tools/unrun-tests` had run on CI and nowhere else since it was written, and
-/// the cost of that is on the record rather than argued: R1193 wrote a
-/// ```` ```ignore ```` fence, which makes a doc-test no command in this
-/// repository runs; every local gate was green, the push went out, and the
-/// runner turned `origin/main` red. R1195 paid it. This case is the reader that
-/// branch was missing — the same repair R1156 made for the separate workspaces'
-/// suites and R890 for CI state.
-///
-/// THREE ARMS, because this gate answers THREE things and a hook that read two
-/// of them would publish the third as a pass:
-///   - a dark test is a refusal, and the test is named,
-///   - a gate that could not judge is a refusal too, and says which it was,
-///   - and the mirror: the same tree whose CI DOES run that test is pushed, with
-///     the gate's own clean sentence in the output — which is what stops the
-///     first arm from holding for a hook that rejects every push.
-///
-/// The three trees differ in ONE line each — the workflow's command, and the
-/// lister's mode — so the verdict is attributable to it.
-#[test]
-fn pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs() {
-    let dark = Fixture::new();
-    dark.write("src/lib.rs", DARK_LIB);
-    dark.stage_all();
-    dark.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
-    let out = dark.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&head_sha(&dark)),
-        &[],
-    );
-    let both = both_of(&out);
-    assert!(
-        !out.status.success(),
-        "a test this push would publish and nothing runs must block it:\n{both}"
-    );
-    assert!(
-        both.contains(DARK_TEST),
-        "and the block is worth nothing without the test's name:\n{both}"
-    );
-    assert!(
-        both.contains("compiles a test no CI command runs"),
-        "and it must be this hook's own refusal, not a message from some other \
-         gate the push happened to trip:\n{both}"
-    );
-
-    // THE SECOND ANSWER. A gate that could not read the tree has not found it
-    // clean, and the two look identical in an exit code alone — which is the
-    // failure `tools/unrun-tests` was given a third code for.
-    let unjudged = Fixture::new();
-    unjudged.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
-    let out = unjudged.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&head_sha(&unjudged)),
-        &[("LISTER_MODE", "offers-what-is-not-there")],
-    );
-    let both = both_of(&out);
-    assert!(
-        !out.status.success(),
-        "a gate that could not judge is not a gate that passed:\n{both}"
-    );
-    assert!(
-        both.contains("could not judge this tree (exit 2)"),
-        "and the hook says WHICH of the two refusals it is, with the code:\n{both}"
-    );
-    assert!(
-        !both.contains("compiles a test no CI command runs"),
-        "the two answers must not be reported as each other:\n{both}"
-    );
-
-    // THE MIRROR. The same dark tree, and one CI command that selects the
-    // ignored tests — so nothing is dark and the push goes.
-    let covered = Fixture::new();
-    covered.write("src/lib.rs", DARK_LIB);
-    covered.write(
-        ".github/workflows/ci.yml",
-        "jobs:\n  build:\n    steps:\n      - run: cargo test --workspace --locked\n\
-         \x20     - run: cargo test --workspace --locked -- --ignored\n",
-    );
-    covered.stage_all();
-    covered.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
-    let out = covered.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &push_line(&head_sha(&covered)),
-        &[],
-    );
-    let both = both_of(&out);
-    assert!(
-        out.status.success(),
-        "a tree whose CI runs every test it compiles must be pushable:\n{both}"
-    );
-    assert!(
-        both.contains("every test this repository compiles is run by CI"),
-        "and the gate must be SEEN to have run — a pass that skipped it looks \
-         the same from here:\n{both}"
-    );
-}
-
+// R1288 — TWO PUSH-HOOK LAWS STOOD HERE AND WENT WITH THE GATES THEY ASSERT.
+// `pre_push_gates_on_every_separate_workspace_and_names_the_one_that_fails`
+// (R1156) drove `scripts/check-side-workspaces.sh --ours-only` WHOLE through the
+// hook; `pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs`
+// (R1230) drove `tools/unrun-tests`. Both gates are now the hosted
+// `side-workspaces` and `unrun-tests` jobs ONLY, and
+// `every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs` is what
+// keeps that from being a deletion: it names both, asks the workflow to declare
+// work for each, and asks BOTH hooks not to be running them.
+//
+// WHAT THE DELETED CASES PROVED, kept because a deleted test leaves no trace of
+// it: that the hook ran the ONE definition rather than a copy of its commands,
+// that it asked for the WHOLE gate rather than `--lint-only`, that a dark test
+// was named in the refusal, and that the three exit codes were read as three. The
+// programs still answer all of that — `tools/unrun-tests` and the side gate have
+// their own suites, and six injections still aim at the lister — what is gone is
+// the assertion that a HOOK consumes those answers. Three injections were retired
+// with `injection-harness forget` in the same change rather than left to rot.
+//
+// WHY, IN ONE LINE: measured on the push that was interrupted to make this
+// change, the side gate had spent 817 seconds and was 2 workspaces of 24 into its
+// citations phase, and the hosted job does the whole thing in 19m00s beside nine
+// others. The residue is real and stated in `.githooks/pre-push`: the cross-
+// workspace red R1156 was built for can reach `main` again, one round before it
+// is read.
 #[test]
 fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
     let f = Fixture::new();
