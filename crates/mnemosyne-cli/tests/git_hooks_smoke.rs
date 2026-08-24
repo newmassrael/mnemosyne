@@ -506,8 +506,78 @@ fn pre_commit_rejects_unformatted_rust() {
     );
 }
 
+/// WHAT LEFT THE COMMIT PATH IS RUN SOMEWHERE, AND THIS ASKS THE WORKFLOW
+/// RATHER THAN THE COMMENT THAT SAYS SO.
+///
+/// R1284 took three gates that compile or document the whole tree off the commit
+/// path because the hook could not finish a commit on a contended workstation.
+/// Two of them were sent to the hosted workflow, and the sentence recording that
+/// is prose in `.githooks/pre-commit` — the exact shape this repository has been
+/// caught by before, most recently in R1276, where a design decision rested on a
+/// claim about a gate that nobody had asked the machine about.
+///
+/// SO BOTH HALVES ARE ASKED. The workflow must declare a job that RUNS something
+/// for each of them — a job with no `run:` step declares no work — and the hook
+/// must not still be running them, or the move would be a sentence rather than a
+/// change. The second half is what makes this a law about placement instead of a
+/// list of job names.
 #[test]
-fn pre_commit_rejects_lint_dirty_rust() {
+fn every_gate_the_commit_hook_stopped_running_is_one_the_hosted_workflow_runs() {
+    let root = repo_root();
+    let workflow = "mnemosyne-validate.yml";
+    let raw = fs::read_to_string(root.join(".github/workflows").join(workflow))
+        .expect("the workflow this repository pushes to");
+    let doc = ci_plan::parse_workflow(&raw, workflow);
+    let jobs: std::collections::BTreeSet<String> = ci_plan::run_steps(&doc)
+        .into_iter()
+        .map(|step| step.job)
+        .collect();
+    println!("[hooks] {workflow} declares work in {jobs:?}");
+
+    let hook = fs::read_to_string(root.join(".githooks/pre-commit")).expect("the commit hook");
+    // COMMENTS ARE PROSE ABOUT A GATE AND NOT ONE, and this hook's own record of
+    // where each gate went names both of them.
+    let runs: String = hook
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    for (gate, job) in [
+        ("item-citations", "item-citations"),
+        ("check-side-workspaces.sh", "side-workspaces"),
+    ] {
+        assert!(
+            jobs.contains(job),
+            "`{gate}` left the commit hook for the hosted `{job}` job, and \
+             {workflow} declares work in {jobs:?} — a gate that left one place \
+             for nowhere is not a move"
+        );
+        assert!(
+            !runs.contains(gate),
+            "`{gate}` is named in the hosted workflow AND still invoked by the \
+             commit hook, so the sentence saying it moved is wrong about the \
+             file it is written in"
+        );
+    }
+}
+
+/// THE LINT GATE MOVED TO THE PUSH HOOK AND ITS LAW MOVED WITH IT (R1284).
+///
+/// A gate that leaves one hook and a law that stays behind is how a repair comes
+/// to be believed twice: the old law goes red for the right reason and gets
+/// deleted, and nothing is left asserting the gate anywhere. So this case is the
+/// same fixture through `pre-push`, which is where `cargo clippy --workspace
+/// --all-targets` now runs — and where, since `24b4fce`, it is routed to a build
+/// machine when one is configured.
+///
+/// IT IS ALSO THE ONE THAT HAS NO HOSTED JOB. `item-citations` and the
+/// separate-workspace script each have their own job in the hosted workflow, so
+/// moving them off the commit path left them checked in two places; workspace
+/// clippy has none, and this hook is its only run. That is why the law is here
+/// rather than deleted with a note pointing at CI.
+#[test]
+fn pre_push_rejects_lint_dirty_rust() {
     let f = Fixture::new();
     // rustfmt-clean but clippy-dirty (`needless_return`), so this case reaches
     // the clippy gate rather than stopping at the format gate before it.
@@ -516,8 +586,15 @@ fn pre_commit_rejects_lint_dirty_rust() {
         "pub fn one() -> u8 {\n    let x = 1;\n    return x;\n}\n",
     );
     f.stage_all();
+    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): lint"]);
+    let sha = head_sha(&f);
 
-    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let out = f.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&sha),
+        &[],
+    );
     assert!(
         !out.status.success(),
         "a clippy warning must be denied under -D warnings"
@@ -633,25 +710,30 @@ fn pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defec
 /// in front of it. The other obvious one, a package that does not compile, is
 /// stopped by that same clippy gate. What is left is a tree that BUILDS and
 /// that the citation gate still cannot read.
+/// UNDER A SEPARATE WORKSPACE SINCE R1284, because that is where the citation
+/// gate is still run locally: the commit hook no longer calls it at all, and
+/// `check-side-workspaces.sh` — which `pre-push` runs whole — has a `citations`
+/// phase per separate workspace. The root workspace's own citations are the
+/// hosted job's, and that is the widened window this round wrote down.
 const CITATION_GATE_REFUSES: &[(&str, &str)] = &[
     (
-        "Cargo.toml",
+        "tools/cited/Cargo.toml",
         "[package]\nname = \"fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
          [[bench]]\nname = \"measured\"\npath = \"benches/measured.rs\"\nharness = false\n\n\
          [dev-dependencies]\nhelper = { path = \"helper\" }\n\n\
          [workspace]\nmembers = [\"helper\"]\n",
     ),
     (
-        "helper/Cargo.toml",
+        "tools/cited/helper/Cargo.toml",
         "[package]\nname = \"helper\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
          [[bin]]\nname = \"helper\"\npath = \"src/main.rs\"\n",
     ),
-    ("helper/src/main.rs", "fn main() {}\n"),
-    ("benches/measured.rs", "fn main() {}\n"),
+    ("tools/cited/helper/src/main.rs", "fn main() {}\n"),
+    ("tools/cited/benches/measured.rs", "fn main() {}\n"),
 ];
 
 #[test]
-fn pre_commit_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_defect() {
+fn pre_push_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_defect() {
     // GATE 5a's OTHER NON-ZERO EXIT, and the one nothing had ever run. The two
     // gates BELOW it in this hook have read three codes since R1183; this one
     // read `if !` and printed `a citation names no item` for both.
@@ -667,17 +749,24 @@ fn pre_commit_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_de
     for (path, body) in CITATION_GATE_REFUSES {
         f.write(path, body);
     }
-    f.generate_lockfile("Cargo.toml");
+    f.generate_lockfile("tools/cited/Cargo.toml");
     f.stage_all();
+    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): cited"]);
+    let sha = head_sha(&f);
 
-    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let out = f.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&sha),
+        &[],
+    );
     assert!(
         !out.status.success(),
-        "a tree the citation gate could not read must not pass a commit"
+        "a tree the citation gate could not read must not pass a push"
     );
     let err = both_of(&out);
     assert!(
-        err.contains("the item-citation gate could not read this tree (exit 2)"),
+        err.contains("the item-citation gate could not read tools/cited (exit 2)"),
         "the rejection must say the gate could not judge, and with which code:\n{err}"
     );
     // THE MIRROR, and the whole point of this case. A hook that answered `1`
@@ -1021,59 +1110,16 @@ fn pre_commit_tells_a_requirement_gate_that_could_not_judge_from_one_that_found_
     );
 }
 
-#[test]
-fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
-    // `cargo fmt --all` / `clippy --workspace` only see root members, so a
-    // crate carrying its OWN `[workspace]` is invisible to Gates 4 and 5. This
-    // is the gate that walks up to the owning workspace root and runs there.
-    let dirty = Fixture::new();
-    dirty.write(
-        "tools/sub/Cargo.toml",
-        "[package]\nname = \"sub\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
-    );
-    dirty.write("tools/sub/src/lib.rs", "pub fn two()->u8{2}\n");
-    dirty.generate_lockfile("tools/sub/Cargo.toml");
-    dirty.stage_all();
-
-    let out = dirty.run_hook("pre-commit", &[], "", &[]);
-    assert!(
-        !out.status.success(),
-        "unformatted code in a separate workspace must be rejected"
-    );
-    let err = stderr_of(&out);
-    assert!(
-        err.contains("UNFORMATTED tools/sub/Cargo.toml"),
-        "the rejection must name the manifest to fix, and with it the separate \
-         workspace it is in:\n{err}"
-    );
-    assert!(
-        err.contains("side-workspaces"),
-        "and it must come from the ONE gate CI runs too, not from a copy of its \
-         two commands that this hook used to carry (R1066):\n{err}"
-    );
-
-    // The other direction: the walk-up must not reject a clean one, or the
-    // assertion above would hold with the gate wired to always fail.
-    let clean = Fixture::new();
-    clean.write(
-        "tools/sub/Cargo.toml",
-        "[package]\nname = \"sub\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
-    );
-    clean.write("tools/sub/src/lib.rs", "pub fn two() -> u8 {\n    2\n}\n");
-    clean.generate_lockfile("tools/sub/Cargo.toml");
-    clean.stage_all();
-    let out = clean.run_hook("pre-commit", &[], "", &[]);
-    assert!(
-        out.status.success(),
-        "a formatted separate workspace must pass:\n{}",
-        stderr_of(&out)
-    );
-    assert!(
-        stderr_of(&out).contains("separate workspace 'tools/sub'"),
-        "the gate must have actually run on it:\n{}",
-        stderr_of(&out)
-    );
-}
+// THE WALK-UP GATE IS GONE AND SO IS ITS LAW (R1284). A `.rs` staged inside a
+// separate workspace used to make the commit hook walk up to that workspace's
+// root and run the lint half of `check-side-workspaces.sh` there. What replaced
+// it is not a weaker check but a wider one: `pre_push_gates_on_every_separate_
+// workspace_and_names_the_one_that_fails` below runs that script WHOLE over
+// EVERY separate workspace, not the ones a particular commit happened to touch,
+// and the hosted `separate in-repo workspaces` job does the same. A law asserting
+// the walk-up would now be asserting a mechanism that does not exist, which is
+// worse than no law: it goes red for the right reason, gets deleted, and takes
+// the coverage question with it.
 
 #[test]
 fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_defect() {
@@ -1104,8 +1150,18 @@ fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_
     f.write("tools/sub/src/orphan.rs", UNREADABLE_ORPHAN);
     f.generate_lockfile("tools/sub/Cargo.toml");
     f.stage_all();
+    // THROUGH THE PUSH HOOK SINCE R1284, which is where the script runs now —
+    // and it runs WHOLE there rather than `--lint-only`, so this case reaches
+    // the same phase by a shorter argument than it used to.
+    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): sub"]);
+    let sha = head_sha(&f);
 
-    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let out = f.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&sha),
+        &[],
+    );
     assert!(
         !out.status.success(),
         "a separate workspace the gate could not read must not pass"
@@ -1788,6 +1844,7 @@ fn the_side_workspace_gate_names_every_unformatted_manifest_in_one_run() {
 /// missing and the hook must answer for both.
 const GREP_WITHOUT_PCRE: &str = "grep-without-pcre";
 const GIT_WITHOUT_A_STAGED_LIST: &str = "git-that-cannot-list-what-is-staged";
+const GIT_WITHOUT_A_STAGED_DIFF: &str = "git-that-cannot-read-the-staged-diff";
 
 #[test]
 fn commit_msg_enforces_its_content_rules_in_a_locale_that_cannot_read_characters() {
@@ -1964,7 +2021,30 @@ fn pre_commit_refuses_when_it_cannot_read_what_is_staged() {
          one:\n{err}"
     );
 
-    // THE CONTROL, and it is the half that keeps the assertion above from being
+    // AND THE SAME QUESTION ONE GATE DEEPER (R1283). R1281 repaired the line it
+    // was looking at; nine lines below it the vN ban read the staged DIFF
+    // through a `|| true` that had to be there — `grep` answers 1 when it finds
+    // nothing, which is the ordinary case — and under `set -o pipefail` that one
+    // clause also swallowed a failed `git diff`, leaving the search empty and the
+    // gate passing. One clause cannot tell "no hits" from "could not look", and
+    // a census of this repository's shell found this was the only one of eight
+    // such clauses that could not.
+    let deeper = f.path().join("shim-blind-diff");
+    link_stub(GIT_WITHOUT_A_STAGED_DIFF, &deeper.join("git"));
+    let hobbled = format!(
+        "{}:{}",
+        deeper.to_str().expect("shim path is utf-8"),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = f.run_hook("pre-commit", &[], "", &[("PATH", &hobbled)]);
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success() && err.contains("the staged diff could not be read"),
+        "the vN ban is a search over the staged diff, and a diff it could not \
+         read is not one with no hits in it:\n{err}"
+    );
+
+    // THE CONTROL, and it is the half that keeps the assertions above from being
     // satisfied by a hook that refuses everything: the same fixture through an
     // unhobbled hook is rejected BY GATE 6, naming the identifier. Refusing for
     // the right reason and refusing for any reason are different facts.

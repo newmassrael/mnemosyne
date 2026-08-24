@@ -498,7 +498,15 @@ impl DecisionStatus {
     /// are still audited. Single source for the exemption set so the axes cannot
     /// drift apart (CLAUDE.md half-enforced-invariant guard).
     pub fn is_axiom_exempt(self) -> bool {
-        matches!(self, DecisionStatus::Removed | DecisionStatus::Open)
+        // BOTH HALVES NAMED (R1283). This was `matches!`, whose catch-all cannot
+        // be written out — so a FIFTH status would be silently non-exempt, and
+        // the comment above is an argument about which statuses are exempt and
+        // why. That argument is exactly the thing a new status has to be held
+        // against, and a match is what holds it.
+        match self {
+            DecisionStatus::Removed | DecisionStatus::Open => true,
+            DecisionStatus::Active | DecisionStatus::Superseded => false,
+        }
     }
 }
 

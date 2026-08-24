@@ -178,7 +178,14 @@ impl Origin {
     /// fetched crate compiled anyway is one whose sources arrived and whose
     /// compiled form did not.
     pub fn fetched(self) -> bool {
-        matches!(self, Origin::Registry | Origin::Git)
+        // THE THIRD IS NAMED TOO (R1283). A `matches!` here answers `false` for
+        // any origin added later, so a new way for a crate to arrive would
+        // silently be "not fetched" — in the one predicate a cache's worth is
+        // asked through.
+        match self {
+            Origin::Registry | Origin::Git => true,
+            Origin::Tree => false,
+        }
     }
 
     /// How a reader says it.

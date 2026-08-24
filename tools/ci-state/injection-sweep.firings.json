@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": true,
+  "complete": false,
   "fired": {
     "a-cap-that-does-not-say-what-it-dropped": {
       "edits": [
@@ -1062,8 +1062,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "            Unmeasured::NotFinished { .. }\n                | Unmeasured::Retired { .. }\n                | Unmeasured::Skipped { .. }",
-          "to": "            Unmeasured::Retired { .. } | Unmeasured::Skipped { .. }"
+          "from": "        Unmeasured::NotFinished { .. }\n        | Unmeasured::Retired { .. }\n        | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NoSuchJob { .. }\n",
+          "to": "        Unmeasured::Retired { .. } | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NotFinished { .. }\n        | Unmeasured::NoSuchJob { .. }\n"
         }
       ],
       "expect_red": [

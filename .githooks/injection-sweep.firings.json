@@ -20,6 +20,21 @@
         "git_hooks_smoke::pre_commit_refuses_when_it_cannot_read_what_is_staged"
       ]
     },
+    "one-clause-answers-both-no-hits-and-could-not-look": {
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "    if ! added=$(git diff --cached --unified=0 --diff-filter=ACM -- '*.rs'); then\n        {\n            echo \"[mnemosyne pre-commit] commit rejected — the staged diff could not be read\"\n            echo \"  the vN ban is a search over it, and an unreadable diff is not an empty one\"\n        } >&2\n        exit 1\n    fi\n    vn_hits=$(printf '%s\\n' \"$added\" \\\n",
+          "to": "    vn_hits=$(git diff --cached --unified=0 --diff-filter=ACM -- '*.rs' \\\n"
+        }
+      ],
+      "expect_red": [
+        "pre_commit_refuses_when_it_cannot_read_what_is_staged"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_commit_refuses_when_it_cannot_read_what_is_staged"
+      ]
+    },
     "the-push-gate-does-not-ask-whether-a-test-is-run-at-all": {
       "edits": [
         {

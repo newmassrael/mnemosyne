@@ -1015,13 +1015,21 @@ pub fn budget_report(spent: &[Spent], unread: &[Unmeasured]) -> Vec<String> {
              absence of a measurement rather than a job that cost nothing"
         ));
     }
-    for why in unread.iter().filter(|why| {
-        !matches!(
-            why,
-            Unmeasured::NotFinished { .. }
-                | Unmeasured::Retired { .. }
-                | Unmeasured::Skipped { .. }
-        )
+    // THE ORDINARY REASONS ARE NAMED, AND SO ARE THE REST (R1283). This was a
+    // negated `matches!`, whose catch-all cannot be written out — so a NEW
+    // reason a job goes unmeasured would fall into the half this loop PRINTS,
+    // which is the safe direction, and a reader would still never have been
+    // asked which half it belongs in. The direction is why this was not a defect
+    // in the field; naming both halves is why the next reason is a decision.
+    for why in unread.iter().filter(|why| match why {
+        Unmeasured::NotFinished { .. }
+        | Unmeasured::Retired { .. }
+        | Unmeasured::Skipped { .. } => false,
+        Unmeasured::NoSuchJob { .. }
+        | Unmeasured::Ambiguous { .. }
+        | Unmeasured::BudgetIsAnExpression { .. }
+        | Unmeasured::Unreadable { .. }
+        | Unmeasured::Workflow { .. } => true,
     }) {
         lines.push(format!("  NOT MEASURED {why}"));
     }

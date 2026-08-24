@@ -127,12 +127,18 @@ fn named(at: &Where, step: &RunStep) -> String {
 /// a reason to look away.
 fn the_shared_reading_calls_it_an_install(step: &RunStep) -> bool {
     shell_commands(&step.script).iter().any(|words| {
-        matches!(
-            read_command(words),
+        // `Nothing` IS NAMED (R1283). This was a `matches!`, and its catch-all
+        // cannot be written out: a FIFTH `InstallCommand` would answer `false`,
+        // so a new way of reaching the network would silently not be an install
+        // — in the reading whose whole subject is "does this wait on somebody
+        // else's server", and whose doc above says unreadable is not a reason to
+        // look away.
+        match read_command(words) {
             InstallCommand::Read { .. }
-                | InstallCommand::Recognised { .. }
-                | InstallCommand::Refused { .. }
-        )
+            | InstallCommand::Recognised { .. }
+            | InstallCommand::Refused { .. } => true,
+            InstallCommand::Nothing => false,
+        }
     })
 }
 

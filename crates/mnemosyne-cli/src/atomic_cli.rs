@@ -4272,12 +4272,14 @@ pub fn cmd_set_section_decision_status(
     // against [plugins.set_equality_validator].paths and surface citing locations to stderr.
     // Informational only — never alters the mutate's success/failure.
     // No-op when [plugins.set_equality_validator] is unconfigured (5-min setup promise carry).
-    if mutate_result.is_ok()
-        && matches!(
-            new_status,
-            DecisionStatus::Superseded | DecisionStatus::Removed
-        )
-    {
+    // NAMED ON BOTH SIDES (R1283): a `matches!` here would answer `false` for a
+    // fifth status, so a new way for a decision to stop being in force would
+    // silently skip the decay scan this block exists to run.
+    let leaves_citations_behind = match new_status {
+        DecisionStatus::Superseded | DecisionStatus::Removed => true,
+        DecisionStatus::Active | DecisionStatus::Open => false,
+    };
+    if mutate_result.is_ok() && leaves_citations_behind {
         print_section_decay_trigger(workspace_root, &section, new_status);
     }
 

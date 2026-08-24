@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": true,
+  "complete": false,
   "fired": {
     "a-command-carries-a-declaration-and-names-no-site": {
       "edits": [
@@ -51,8 +51,8 @@
       "edits": [
         {
           "file": ".githooks/pre-push",
-          "from": "if ! cargo clippy --workspace --locked --all-targets -- -D warnings; then",
-          "to": "if ! cargo clippy --workspace --all-targets -- -D warnings; then"
+          "from": "    clippy_run=(\"${BX}\" --label pre-push-clippy --\n                cargo clippy --workspace --locked --all-targets -- -D warnings)\nelse\n    clippy_run=(cargo clippy --workspace --locked --all-targets -- -D warnings)\nfi\n",
+          "to": "    clippy_run=(\"${BX}\" --label pre-push-clippy --\n                cargo clippy --workspace --all-targets -- -D warnings)\nelse\n    clippy_run=(cargo clippy --workspace --all-targets -- -D warnings)\nfi\n"
         }
       ],
       "expect_red": [

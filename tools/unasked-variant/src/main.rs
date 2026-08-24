@@ -59,10 +59,48 @@ fn main() {
         println!("[unasked-variant]   {tenth:>3}/10                  | {with:>4}             | {without:>4}");
     }
 
+    // AND BY SPELLING (R1283), because R1282's law read one of the three and the
+    // distribution is what says whether that mattered.
+    let mut by_shape: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    for found in &census.found {
+        let cell = by_shape.entry(format!("{:?}", found.shape)).or_default();
+        if found.catch_all.is_some() {
+            cell.0 += 1;
+        } else {
+            cell.1 += 1;
+        }
+    }
+    println!(
+        "[unasked-variant] spelling | with a catch-all | exhaustive ({} matches! call(s) unread)",
+        census.unreadable
+    );
+    for (shape, (with, without)) in &by_shape {
+        println!("[unasked-variant]   {shape:<14} | {with:>4}             | {without:>4}");
+    }
+
+    // AND HOW MANY CATCH-ALLS DO NOTHING AT ALL (R1283) — the one part of
+    // "direction" a program can settle, split by whether the place is an
+    // enumeration or a filter, because the first is already refused and the
+    // second is the open question.
+    let mut discarding = (0usize, 0usize);
+    for found in census.found.iter().filter(|e| e.discards) {
+        if found.named.len() >= 2 && found.named.len() * 3 >= found.variants {
+            discarding.0 += 1;
+        } else {
+            discarding.1 += 1;
+        }
+    }
+    println!(
+        "[unasked-variant] catch-alls whose body does nothing at all: {} on an \
+         enumeration, {} on a filter",
+        discarding.0, discarding.1
+    );
+
     for found in census.enumerating_with_a_catch_all(2) {
         println!(
-            "[unasked-variant]   {} — names {} of {} variant(s), catch-all {:?}: {:?}",
+            "[unasked-variant]   {} {:?} — names {} of {} variant(s), catch-all {:?}: {:?}",
             found.origin(),
+            found.shape,
             found.named.len(),
             found.variants,
             found.catch_all.expect("filtered on it"),

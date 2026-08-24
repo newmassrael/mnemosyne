@@ -497,8 +497,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "            Unmeasured::NotFinished { .. }\n                | Unmeasured::Retired { .. }\n                | Unmeasured::Skipped { .. }",
-          "to": "            Unmeasured::Retired { .. } | Unmeasured::Skipped { .. }"
+          "from": "        Unmeasured::NotFinished { .. }\n        | Unmeasured::Retired { .. }\n        | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NoSuchJob { .. }\n",
+          "to": "        Unmeasured::Retired { .. } | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NotFinished { .. }\n        | Unmeasured::NoSuchJob { .. }\n"
         }
       ],
       "expect_red": ["a_job_near_its_budget_is_named_and_the_unfinished_are_counted"]

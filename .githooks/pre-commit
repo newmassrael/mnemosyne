@@ -168,42 +168,44 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     fi
 fi
 
-# Gate 5 — clippy on .rs changes. R308 D9 closure: `-D warnings` lifts
-# every warning to deny. Workspace allow list (root Cargo.toml) carries
-# stylistic exemptions; per-site `#[allow]` for API-shape exemptions.
+# ── WHAT THIS HOOK NO LONGER DOES, AND WHERE IT IS DONE INSTEAD (R1284) ──
 #
-# ⚠ ROUTED THROUGH THE BUILD-MACHINE WRAPPER WHEN ONE IS CONFIGURED (`$BX`),
-# because this is the heaviest thing this hook does to the machine it runs on:
-# `--workspace --all-targets` compiles every target in the tree.
+# THREE GATES THAT COMPILE OR DOCUMENT THE WHOLE TREE LEFT THE COMMIT PATH:
+# workspace clippy, `item-citations`, and the separate-workspace lint. Each is
+# still run — none of them was dropped — and each is named below with where.
 #
-# MEASURED 2026-08-20, and the measurement is about the FLEET rather than about
-# this gate. Across six repositories 17 build runs were placed in ten minutes
-# and 81 in thirty, yet not one process tree under a hook reached the wrapper:
-# every heavy command a hook launches, it launches itself. So the workstation
-# sat at load 33 on 32 cores with 11GB in swap while three build machines idled
-# at 0.11, 1.00 and 0.00. The wrapper cannot place work it is never handed.
+# WHY THEY LEFT, MEASURED RATHER THAN FELT. On 2026-08-23 this hook could not
+# finish a single commit across eleven attempts: `item-citations` documents every
+# target in the workspace, and the workstation was at load 17–35 with three
+# sibling repositories building on it. A gate that cannot complete does not
+# protect anything — it stops the round, and the pressure it puts on the author
+# is pressure toward `--no-verify`, which is the one thing no exemption here
+# covers. The 2026-08-20 note that used to sit under Gate 5 said the wrapper
+# cannot place work it is never handed; the answer to that is not to hand a
+# workstation more work, it is to stop doing the world's work per commit.
 #
-# `$BX` IS AN OPT-IN AND ITS ABSENCE IS THE OLD BEHAVIOUR. No host, path or
-# account is named in this tree — those belong to a machine, not to a
-# repository — so a checkout without it runs clippy here, exactly as before.
+# WHERE EACH ONE IS NOW, and every one of these was checked rather than assumed:
 #
-# ⚠⚠ AND THE WRAPPER'S OWN VERDICT IS FINAL — NO SECOND FALLBACK. It already
-# fails open by itself: when no build machine is a candidate and this one can
-# hold the work, it runs it here and says `where=local`. It refuses only when it
-# cannot proceed safely — an untracked file it does not carry, a working tree
-# the far side does not match — and every one of those is the author's to fix.
-# A refusal is a verdict, not an outage; re-running the gate locally to paper
-# over it is how a hook reports green about a tree nobody checked. A sibling
-# repository measured six consecutive commits taking exactly that path.
-if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
-    echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --locked --all-targets -- -D warnings" >&2
-    if [ -n "${BX:-}" ] && [ -x "${BX}" ]; then
-        "${BX}" --label pre-commit-clippy -- \
-            cargo clippy --workspace --locked --all-targets -- -D warnings
-    else
-        cargo clippy --workspace --locked --all-targets -- -D warnings
-    fi
-fi
+#   workspace clippy    `.githooks/pre-push` (routed through `$BX` since
+#                       `24b4fce`, so it lands on a build machine when one is
+#                       configured). NOT hosted — this is the one that has no
+#                       job of its own, and pre-push is therefore its only run.
+#   item-citations      the hosted `item citations name items` job, which carries
+#                       its own cache and its own budget for exactly this reason.
+#   side workspaces     `.githooks/pre-push` runs the script WHOLE, and so does
+#                       the hosted `separate in-repo workspaces` job. The
+#                       `--lint-only` call here was the weakest of the three.
+#
+# WHAT THIS COSTS, STATED RATHER THAN HIDDEN. A citation that names no item can
+# now be committed and pushed; it is caught by the hosted run, and `ci-state`
+# prints that run's verdict inside the NEXT push. So the window widened from
+# "before this commit" to "before the push after this one" — the same trade this
+# repository already made when it stopped blocking on hosted runs.
+#
+# WHAT STAYS HERE IS WHAT A COMMIT IS THE RIGHT MOMENT FOR: `cargo fmt --check`
+# parses and does not compile; the vN ban and the citation defense are about the
+# STAGED DIFF, which no later gate can see; and the syntax walks each build one
+# small tool and read the tree.
 
 # Gate 5a — item citations, the sibling `validate-code-refs` never had. That
 # gate rejects a `Round NNN` in code that names no ledger entry; nothing rejected
@@ -226,54 +228,13 @@ fi
 # correction for the separate-workspace gate below; a gate that silently
 # vanishes when its program is not under the caller's cwd is a gate that stops
 # existing without saying so.
-if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
-    echo "[mnemosyne pre-commit] .rs staged — item citations name items" >&2
-    # THE VARIABLE HOLDS THE CHECKOUT, NOT THE MANIFEST. R1115: the gate that
-    # asks whether every cargo command in this repository pins its lockfile has
-    # to know WHICH lockfile each one resolves, and `--manifest-path "$gate"`
-    # names nothing it can read — `"$gates/tools/item-citations/Cargo.toml"`
-    # names one manifest whatever the prefix expands to. The tree this hook is
-    # pointed at is still the working directory; only the program moves.
-    gates="$(cd "$(dirname "$0")/.." && pwd)"
-    if [[ ! -f "$gates/tools/item-citations/Cargo.toml" ]]; then
-        echo "[mnemosyne pre-commit] commit rejected — the item-citation gate is" \
-             "missing at $gates/tools/item-citations/Cargo.toml" >&2
-        exit 1
-    fi
-    # THE THREE CODES THE TWO GATES BELOW ALREADY READ, and this arm was the
-    # last one in this repository collapsing them. 0 is clean, 1 is "a citation
-    # names no item", 2 is "I could not read enough of this tree to have an
-    # opinion" — and a bare `if !` prints the FINDING for both of the last two.
-    #
-    # It is the recorded shape of Z15, one caller over: a concurrent prune of
-    # this repository's one shared build directory left `librocksdb-sys`
-    # uncompilable, the gate answered 2 and said so, and the separate-workspace
-    # lister printed `bench carries a citation that names no item`. There is no
-    # such citation in `bench`. R1185 repaired that lister; this line said the
-    # same wrong sentence to whoever was committing, and nothing had asked it.
-    #
-    # `|| citations_verdict=$?` rather than a bare call and `$?`, because this
-    # file runs under `set -e` and would be killed at the failing command before
-    # any exit-code branch could read one — the correction Gate 5c below records
-    # having had to make.
-    citations_verdict=0
-    cargo run -q --locked --manifest-path "$gates/tools/item-citations/Cargo.toml" \
-        --bin item-citations -- --workspace "$(pwd)/Cargo.toml" || citations_verdict=$?
-    if [[ $citations_verdict -eq 1 ]]; then
-        {
-            echo "[mnemosyne pre-commit] commit rejected — a citation names no item"
-            echo "  run: cargo run -q --manifest-path tools/item-citations/Cargo.toml \\"
-            echo "         --bin item-citations -- --workspace Cargo.toml"
-        } >&2
-        exit 1
-    elif [[ $citations_verdict -ne 0 ]]; then
-        {
-            echo "[mnemosyne pre-commit] commit rejected — the item-citation gate could" \
-                 "not read this tree (exit $citations_verdict); its own message is above"
-        } >&2
-        exit 1
-    fi
-fi
+# ⇒ MOVED TO THE HOSTED `item citations name items` JOB (R1284). The reasoning
+# above is why the gate exists and it has not changed; what changed is WHERE it
+# runs. Documenting 136 targets is the most expensive thing this repository asks
+# of any machine, the hosted job carries its own cache and budget for it, and on
+# a contended workstation this call is what made eleven consecutive commits
+# unable to finish. The three exit codes it distinguishes — clean, a citation
+# naming no item, and could-not-read — are read there by the same tool.
 
 # Gate 5c — in test code a wait ends on a condition and its budget is named.
 #
@@ -434,49 +395,13 @@ fi
 # `--all`/`--workspace`, never reach them). Structural: for each staged `.rs`,
 # walk up to its owning `[workspace]` root and gate any non-root one on its own
 # manifest. Runs only when such a file is staged, so the root gate stays fast.
-sub_ws=""
-while IFS= read -r f; do
-    [[ "$f" == *.rs ]] || continue
-    d=$(dirname "$f")
-    while [[ "$d" != "." && "$d" != "/" ]]; do
-        if [[ -f "$d/Cargo.toml" ]] && grep -qE '^\[workspace\]' "$d/Cargo.toml"; then
-            sub_ws+="$d"$'\n'
-            break
-        fi
-        d=$(dirname "$d")
-    done
-done <<< "$staged"
-if [[ -n "${sub_ws//[$'\n']/}" ]]; then
-    while IFS= read -r ws; do
-        [[ -n "$ws" ]] || continue
-        echo "[mnemosyne pre-commit] .rs staged in separate workspace '$ws' — fmt --check + clippy -D warnings" >&2
-        # ONE DEFINITION, in `scripts/check-side-workspaces.sh`: the same script
-        # CI runs whole, asked here for the lint half only — which is exactly
-        # what the root workspace gets before a commit (Gates 4 and 5 above run
-        # fmt and clippy, never the suite). This hook carried its own copy of
-        # those two commands until R1066, and the copy had a defect the CI one
-        # did not: without `--all` a VIRTUAL manifest has no targets, so
-        # `cargo fmt` printed its usage, exited non-zero, and this gate rejected
-        # every commit touching `bench` as "unformatted" having checked nothing.
-        # Resolved from THIS HOOK's location, not the working directory: the
-        # hook may be run over another tree (its own smoke test does exactly
-        # that), and a gate that silently vanishes when its script is not under
-        # the caller's cwd is a gate that stops existing without saying so.
-        gate="$(cd "$(dirname "$0")/.." && pwd)/scripts/check-side-workspaces.sh"
-        if [[ ! -x "$gate" ]]; then
-            echo "[mnemosyne pre-commit] commit rejected — the separate-workspace gate" \
-                 "is missing at $gate" >&2
-            exit 1
-        fi
-        if ! "$gate" --lint-only "$ws"; then
-            {
-                echo "[mnemosyne pre-commit] commit rejected — $ws does not pass its own gate"
-                echo "  run: scripts/check-side-workspaces.sh $ws"
-            } >&2
-            exit 1
-        fi
-    done < <(printf '%s' "$sub_ws" | sort -u)
-fi
+# ⇒ MOVED OFF THE COMMIT PATH (R1284), and this one was already the weakest of
+# the three: it asked for the LINT HALF of a script that `.githooks/pre-push`
+# and the hosted `separate in-repo workspaces` job each run WHOLE. Both of those
+# run fmt, clippy, the syntax walks AND the suites, over every separate
+# workspace rather than over the ones a commit happens to touch — so nothing
+# this call could find is outside what already follows it, and what it cost was
+# a clippy compile of a whole side workspace per commit.
 
 # Gate 5e — every key this repository declares to the build-machine program is
 # one that program reads (R1189).

@@ -575,7 +575,14 @@ pub enum Verdict {
 impl Verdict {
     #[must_use]
     pub fn is_failure(&self) -> bool {
-        matches!(self, Verdict::Defect(_) | Verdict::Indecisive(_))
+        // THE PASSING HALF IS NAMED TOO (R1283). A `matches!` here answers
+        // `false` for a fifth verdict, so a new way for a target to be judged
+        // would default to PASSING — the direction that reads as compliance, in
+        // the one predicate this gate's exit code is computed from.
+        match self {
+            Verdict::Defect(_) | Verdict::Indecisive(_) => true,
+            Verdict::Clean | Verdict::Excused(_) => false,
+        }
     }
 }
 

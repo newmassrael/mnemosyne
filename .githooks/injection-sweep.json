@@ -271,6 +271,18 @@
         }
       ],
       "expect_red": ["pre_commit_refuses_when_it_cannot_read_what_is_staged"]
+    },
+    {
+      "name": "one-clause-answers-both-no-hits-and-could-not-look",
+      "why": "R1283 — the same defect nine lines below the one R1281 repaired, found by counting the clause across this repository's shell rather than by looking again at the line already being edited. `grep` answers 1 when it finds NOTHING, which is the ordinary case for the vN ban, so a `|| true` has to be there; under `set -o pipefail` that one clause also swallowed a FAILED `git diff --cached`, leaving the search empty and the gate passing. Of the eight such clauses in this repository's nine tracked scripts, this was the only one that could not tell its two cases apart — the other seven substitute a value for a failure that IS the answer, and three say so in a comment beside them",
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "    if ! added=$(git diff --cached --unified=0 --diff-filter=ACM -- '*.rs'); then\n        {\n            echo \"[mnemosyne pre-commit] commit rejected — the staged diff could not be read\"\n            echo \"  the vN ban is a search over it, and an unreadable diff is not an empty one\"\n        } >&2\n        exit 1\n    fi\n    vn_hits=$(printf '%s\\n' \"$added\" \\\n",
+          "to": "    vn_hits=$(git diff --cached --unified=0 --diff-filter=ACM -- '*.rs' \\\n"
+        }
+      ],
+      "expect_red": ["pre_commit_refuses_when_it_cannot_read_what_is_staged"]
     }
   ]
 }

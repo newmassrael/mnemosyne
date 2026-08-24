@@ -458,17 +458,20 @@ fn is_coverage_misclassified(section: &mnemosyne_core::SectionView) -> bool {
     if lifecycle_exempt {
         return false;
     }
-    let exempt = matches!(
-        section.coverage_expectation,
+    // BOTH CLASSIFICATIONS NAME THEIR NEGATIVE HALF (R1283). Each was a
+    // `matches!`, whose catch-all cannot be written out — so a fourth
+    // `CoverageExpectation` would silently be non-exempt and a fourth
+    // `BindingKind` would silently not count as a claim, in a function whose
+    // whole subject is which sections owe code and which do not.
+    let exempt = match section.coverage_expectation {
         mnemosyne_core::CoverageExpectation::OutOfScopeHere
-            | mnemosyne_core::CoverageExpectation::Informational
-    );
+        | mnemosyne_core::CoverageExpectation::Informational => true,
+        mnemosyne_core::CoverageExpectation::Normative => false,
+    };
     exempt
-        && section.bindings.iter().any(|b| {
-            matches!(
-                b.kind,
-                mnemosyne_core::BindingKind::Implements | mnemosyne_core::BindingKind::Verifies
-            )
+        && section.bindings.iter().any(|b| match b.kind {
+            mnemosyne_core::BindingKind::Implements | mnemosyne_core::BindingKind::Verifies => true,
+            mnemosyne_core::BindingKind::References => false,
         })
 }
 

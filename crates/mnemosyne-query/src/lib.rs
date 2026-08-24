@@ -666,7 +666,25 @@ pub fn query_term(store: &AtomicStore, q: &TermQuery) -> Result<Vec<TermHit>, Qu
     let matcher = Matcher::build(&q.pattern, q.mode, q.case_insensitive)?;
     let mut hits = Vec::new();
 
-    if matches!(q.scope, TermScope::All | TermScope::Sections) {
+    // THE NEGATIVE CLASS IS NAMED TOO, AND R1283 IS WHY. These three were
+    // `matches!`, whose catch-all cannot be written out: a fifth `TermScope`
+    // would answer `false` at all three, so a query in that scope would scan
+    // nothing and report no hits — indistinguishable, to whoever ran it, from a
+    // scope that genuinely holds none. Written as a match, a fifth variant is a
+    // compile error at each of the three places that has to decide about it.
+    let scan_sections = match q.scope {
+        TermScope::All | TermScope::Sections => true,
+        TermScope::ChangelogEntries | TermScope::Inventory => false,
+    };
+    let scan_changelog = match q.scope {
+        TermScope::All | TermScope::ChangelogEntries => true,
+        TermScope::Sections | TermScope::Inventory => false,
+    };
+    let scan_inventory = match q.scope {
+        TermScope::All | TermScope::Inventory => true,
+        TermScope::Sections | TermScope::ChangelogEntries => false,
+    };
+    if scan_sections {
         for (id, section) in &store.sections {
             scan_section(
                 id.as_str(),
@@ -677,12 +695,12 @@ pub fn query_term(store: &AtomicStore, q: &TermQuery) -> Result<Vec<TermHit>, Qu
             );
         }
     }
-    if matches!(q.scope, TermScope::All | TermScope::ChangelogEntries) {
+    if scan_changelog {
         for (id, entry) in &store.changelog_entries {
             scan_changelog_entry(id, entry, &matcher, q.field_filter.as_ref(), &mut hits);
         }
     }
-    if matches!(q.scope, TermScope::All | TermScope::Inventory) {
+    if scan_inventory {
         for (id, inv) in &store.inventory_entries {
             scan_inventory_entry(id, inv, &matcher, q.field_filter.as_ref(), &mut hits);
         }

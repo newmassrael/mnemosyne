@@ -34,6 +34,29 @@
 //! costs, and the answer was that a list nobody is trying to empty is a list that
 //! grows. If a legitimate enumeration-with-a-catch-all ever appears, the round
 //! that writes it decides in the open.
+//!
+//! # Three spellings, and R1282 read one of them
+//!
+//! R1283 measured what that cost: of the 475 places in this repository that sort
+//! a value of one of its own enums by variant, R1282's law reached 351.
+//! `matches!` and `if let` chains are the other 124, and EVERY ONE OF THEM
+//! carries a catch-all — not by choice but by construction, since neither can be
+//! written exhaustively. The question this law asks is whether adding a variant
+//! reaches the reader, and it is a question about any construct that sorts by
+//! variant rather than about one keyword.
+//!
+//! WHAT THE TWO NEW SPELLINGS TURNED UP. Every `if let` chain in this tree names
+//! exactly ONE variant — they are filters, and extending the law over them cost
+//! nothing today while closing the shape. `matches!` was different: twelve of
+//! them named a THIRD or more of their enum, and reading them one by one is what
+//! settled that the rule was right rather than merely applicable. `TermScope`
+//! decides which halves of the store a query scans, and a fifth scope would have
+//! scanned nothing and reported no hits — indistinguishable from a scope that
+//! holds none. `Cost` decides whether a schema generation costs its author work,
+//! in the table whose purpose is telling a holder what their file will do.
+//! `Verdict::is_failure` is the predicate `item-citations` computes its exit code
+//! from, and a fifth verdict would have defaulted to PASSING. Each was repaired
+//! by naming the negative half, which is the only exhaustive form available.
 
 use std::path::{Path, PathBuf};
 
@@ -75,9 +98,33 @@ fn no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all() {
         census.found.len()
     );
     assert!(
-        census.files > 300 && census.enums > 100 && census.matches > 1000,
+        census.files > 300 && census.enums > 100 && census.matches > 2000,
         "this repository is far larger than that, so a walk that found so little \
          stopped reading rather than found a clean tree"
+    );
+    // AND ALL THREE SPELLINGS ARRIVED (R1283). The floor above is a total, and a
+    // total is exactly what cannot tell a reader that lost one construct: R1282's
+    // law was blind to 124 of 475 places and its denominators looked healthy
+    // throughout. So each shape is seen to be present on its own.
+    for shape in [
+        unasked_variant::Shape::Match,
+        unasked_variant::Shape::MatchesMacro,
+        unasked_variant::Shape::IfLetChain,
+    ] {
+        let seen = census.found.iter().filter(|e| e.shape == shape).count();
+        println!("[unasked-variant] {shape:?}: {seen} over one of this workspace's enums");
+        assert!(
+            seen > 20,
+            "this repository writes all three, so {seen} {shape:?} is a reader \
+             that stopped rather than a tree that does not use it"
+        );
+    }
+    println!(
+        "[unasked-variant] {} `matches!` call(s) this reader could not split into \
+         scrutinee and pattern, and {} enum name(s) mean more than one enum here \
+         — membership unions, size takes the smallest, so those report more \
+         rather than fewer",
+        census.unreadable, census.ambiguous
     );
 
     let found: Vec<String> = census
@@ -106,6 +153,39 @@ fn no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all() {
          the arms out, or narrow the match to the variants it is really about:\n  \
          {}",
         found.join("\n  ")
+    );
+
+    // WHAT A CATCH-ALL DOES WITH THE VALUE, AS FAR AS A PROGRAM CAN SETTLE IT
+    // (R1283, and this is where N220 ends rather than where it is enforced).
+    // Direction is the second half of every finding here — R1278's catch-all
+    // answered `return None`, which a caller reads as nothing to judge, and
+    // R1279's pushed to a list of failures — but WHICH direction a body points
+    // is semantic: `false` refuses in `Verdict::is_failure` and accepts in
+    // `Origin::fetched`, and `CLAUDE.md` puts that outside v1. An EMPTY body is
+    // the part that is not semantic, and it is measured here rather than
+    // legislated: on the enumerations this law refuses it is ZERO by
+    // construction, and on filters it is the ordinary "only this variant
+    // matters" of thirty-odd places that are not defects. A rule over those
+    // would be the gate people learn to ignore, which this crate has already
+    // been taught once.
+    let (discarding_enumerations, discarding_filters): (Vec<_>, Vec<_>) = census
+        .found
+        .iter()
+        .filter(|e| e.discards)
+        .partition(|e| enumerates(e.named.len(), e.variants));
+    println!(
+        "[unasked-variant] catch-alls whose body does nothing at all: {} on an \
+         enumeration, {} on a filter",
+        discarding_enumerations.len(),
+        discarding_filters.len()
+    );
+    assert!(
+        discarding_filters.len() > 10,
+        "this repository is full of `match x {{ A => …, _ => {{}} }}`, so {} of \
+         them is a reader that stopped classifying bodies rather than a tree \
+         that stopped writing them — and an unread datum reports zero for \
+         everything",
+        discarding_filters.len()
     );
 
     // NON-VACUITY, AND IT IS THE FILTER HALF. A law that found nothing because

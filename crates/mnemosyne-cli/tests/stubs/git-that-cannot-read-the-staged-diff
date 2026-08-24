@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# A `git` that answers WHICH files are staged and fails on WHAT CHANGED in them.
+#
+# NARROWER THAN ITS SIBLING ON PURPOSE. `git-that-cannot-list-what-is-staged`
+# fails `diff --cached --name-only`, which stops the hook at its first line;
+# this one lets that succeed and fails `diff --cached --unified=0`, which is the
+# read the vN ban searches. The two are different gates and the second is
+# reachable only if the first answered — a stand-in that failed both would prove
+# the earlier refusal twice and this one never.
+#
+# Reads nothing; writes nothing.
+cached=0
+unified=0
+for argument in "$@"; do
+    case "$argument" in
+        --cached) cached=1 ;;
+        --unified=*) unified=1 ;;
+    esac
+done
+if [[ $cached -eq 1 && $unified -eq 1 ]]; then
+    echo "git: fatal: could not read the staged diff" >&2
+    exit 128
+fi
+exec /usr/bin/git "$@"

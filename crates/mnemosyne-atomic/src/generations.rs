@@ -78,6 +78,25 @@ pub enum Cost {
     Gated,
 }
 
+/// Does a store written before this generation cost its AUTHOR something —
+/// a refusal to exhibit, or a write to unblock — rather than merely loading?
+///
+/// ONE READER FOR A CLASSIFICATION TWO PLACES ASK ABOUT, AND IT NAMES BOTH
+/// HALVES (R1283). Both were `matches!(cost, Cost::Breaking | Cost::Gated)`,
+/// whose catch-all cannot be written out: a FIFTH cost would answer `false` at
+/// both and join the costs-nothing half in silence — in a table whose whole
+/// purpose is telling a holder what their file will do. Written as a match over
+/// all four, a fifth is a compile error here, once, where the meaning is.
+/// `const` BECAUSE ONE OF ITS TWO READERS IS: the table's own invariant is
+/// checked in a `const fn`, so this has to be usable there.
+#[must_use]
+pub const fn costs_an_author_work(cost: Cost) -> bool {
+    match cost {
+        Cost::Breaking | Cost::Gated => true,
+        Cost::Additive | Cost::Migrated => false,
+    }
+}
+
 /// One generation of the on-disk schema.
 pub struct Generation {
     /// The version this generation introduces. `from` is `to - 1` — the ladder
@@ -995,7 +1014,7 @@ const fn ladder_holds(g: &[Generation]) -> bool {
         // that, or say why it does not; a row that claims neither must not
         // carry a probe, because a probe beside `Additive` is a refusal nothing
         // in the table is asserting.
-        let costs_work = matches!(g[i].cost, Cost::Breaking | Cost::Gated);
+        let costs_work = costs_an_author_work(g[i].cost);
         if costs_work == matches!(g[i].probe, Probe::NotBreaking) {
             return false;
         }
@@ -1057,10 +1076,7 @@ pub fn crossing_note(on_disk: u32) -> String {
     // WHICH of the two ways it bites. The additive and migrated ones are
     // counted: a holder has nothing to do about either, and naming twenty of
     // them would bury the four that matter.
-    for g in crossing
-        .iter()
-        .filter(|g| matches!(g.cost, Cost::Breaking | Cost::Gated))
-    {
+    for g in crossing.iter().filter(|g| costs_an_author_work(g.cost)) {
         note.push_str(&format!(
             " — v{} (Round {}) {}{}",
             g.to,

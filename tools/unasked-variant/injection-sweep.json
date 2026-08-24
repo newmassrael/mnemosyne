@@ -76,8 +76,44 @@
       "edits": [
         {
           "file": "tools/unasked-variant/src/lib.rs",
-          "from": "            self.0\n                .entry(item.ident.to_string())\n                .or_default()\n                .extend(variants);\n",
+          "from": "            let name = item.ident.to_string();\n            let smallest = self.1.entry(name.clone()).or_insert(variants.len());\n            *smallest = (*smallest).min(variants.len());\n            self.0.entry(name).or_default().extend(variants);\n",
           "to": "            let _ = variants;\n"
+        }
+      ],
+      "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
+    },
+    {
+      "name": "a-classification-goes-back-to-being-a-boolean-test",
+      "why": "R1283 — `matches!` is an enumeration whose catch-all cannot be written out: everything the pattern does not name answers `false`. `Verdict::is_failure` is the predicate `item-citations` computes its exit code from, so a fifth verdict written under a `matches!` would default to PASSING, silently. This is one of the twelve R1283 converted, put back",
+      "edits": [
+        {
+          "file": "tools/item-citations/src/lib.rs",
+          "from": "        match self {\n            Verdict::Defect(_) | Verdict::Indecisive(_) => true,\n            Verdict::Clean | Verdict::Excused(_) => false,\n        }\n",
+          "to": "        matches!(self, Verdict::Defect(_) | Verdict::Indecisive(_))\n"
+        }
+      ],
+      "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
+    },
+    {
+      "name": "the-reader-stops-seeing-a-boolean-test",
+      "why": "R1283 — R1282's law read `match` alone and was blind to 124 of the 475 places that sort by variant, with denominators that looked healthy throughout. That is why each SHAPE is asserted present rather than only the total: a reader that lost one construct is exactly what a total cannot report",
+      "edits": [
+        {
+          "file": "tools/unasked-variant/src/lib.rs",
+          "from": "        if node\n            .mac\n            .path\n            .segments\n            .last()\n            .is_some_and(|s| s.ident == \"matches\")\n        {\n",
+          "to": "        if false {\n"
+        }
+      ],
+      "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
+    },
+    {
+      "name": "the-reader-stops-seeing-an-if-let-chain",
+      "why": "R1283 — the other of the two spellings R1282 could not see. Every `if let` chain in this tree names one variant, so extending the law over them found nothing today; a shape that contributes no findings is exactly the one whose disappearance a finding count cannot notice, and the per-shape floor is what does",
+      "edits": [
+        {
+          "file": "tools/unasked-variant/src/lib.rs",
+          "from": "        if !self.inside_a_chain && matches!(*node.cond, syn::Expr::Let(_)) {\n",
+          "to": "        if false {\n"
         }
       ],
       "expect_red": ["no_match_that_enumerates_one_of_this_workspaces_enums_carries_a_catch_all"]
