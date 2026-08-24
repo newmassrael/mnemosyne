@@ -41,7 +41,24 @@
     "— which takes the eight injections below with it, since the harness refuses a",
     "sweep whose control reached nothing. Measured on the tree that found it: the",
     "control ran 0 targets. The trailing filter reproduces exactly the population",
-    "this command had before the fold."
+    "this command had before the fold.",
+    "",
+    "AND THE FILTER IS NARROWED TO WHAT THE INJECTIONS NAME (R1286). This",
+    "manifest does not declare its red sets exhaustive — `red_set` is absent — so",
+    "no injection below asserts anything about a case it did not name, and",
+    "running the whole `git_hooks_smoke::` suite bought observation nobody claims",
+    "on. MEASURED: 37 cases, of which the eighteen injections name 8; the other",
+    "29 ran twice per injection, and this is the slowest suite in the repository",
+    "because every case spawns cargo inside a throwaway repository. One `--only`",
+    "proof was still running after forty minutes.",
+    "",
+    "IT IS SELF-CORRECTING RATHER THAN A LIST TO MAINTAIN. An injection whose",
+    "expected red is outside this filter comes back MISSED — the harness calls a",
+    "sweep that returns 0 a misaimed injection until something says otherwise —",
+    "so a name that falls out of the filter is loud rather than silent.",
+    "",
+    "A manifest that DOES declare `red_set: exhaustive` must keep running its",
+    "whole suite; that is what exhaustive means."
   ],
   "repo": "..",
   "test_command": [
@@ -53,7 +70,15 @@
     "--test",
     "all",
     "--no-fail-fast",
-    "git_hooks_smoke::"
+    "--",
+    "git_hooks_smoke::pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defect",
+    "git_hooks_smoke::pre_commit_refuses_when_it_cannot_read_what_is_staged",
+    "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run",
+    "git_hooks_smoke::pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs",
+    "git_hooks_smoke::pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding",
+    "git_hooks_smoke::the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree",
+    "git_hooks_smoke::the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged",
+    "git_hooks_smoke::the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
   ],
   "logs": "../target/injection-logs",
   "min_free_mb": 8000,
@@ -283,6 +308,18 @@
         }
       ],
       "expect_red": ["pre_commit_refuses_when_it_cannot_read_what_is_staged"]
+    },
+    {
+      "name": "a-wrapper-that-could-not-place-the-gate-is-called-a-lint-finding",
+      "why": "R1285 — the collapse as it shipped, and it shipped for about two hours. `bx` exits 2 from every one of its own refusals and passes the wrapped status through otherwise, so the two answers were always distinguishable; `if ! \"${clippy_run[@]}\"` printed `clippy failed — fix violations` for both. MEASURED IN THE WILD rather than reasoned about: a sibling checkout held the build machine, the wrapper said `refusing to send mnemosyne to pc2 — a second run in one tree corrupts both`, and this hook told its author to fix lint violations in a tree whose clippy had never run",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $routed -eq 1 && $clippy_verdict -eq 2 ]]; then\n    {\n        echo \"pre-push: the build-machine wrapper could not place the clippy gate\" \\\n             \"(exit 2); its own message is above\"\n        echo \"  this is not a lint finding — clippy has not run. Clear what the\" \\\n             \"wrapper names, or run without \\$BX to gate here.\"\n    } >&2\n    exit 1\nelif [[ $clippy_verdict -ne 0 ]]; then\n",
+          "to": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $clippy_verdict -ne 0 ]]; then\n"
+        }
+      ],
+      "expect_red": ["pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"]
     }
   ]
 }

@@ -5,6 +5,21 @@
   ],
   "complete": false,
   "fired": {
+    "a-wrapper-that-could-not-place-the-gate-is-called-a-lint-finding": {
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $routed -eq 1 && $clippy_verdict -eq 2 ]]; then\n    {\n        echo \"pre-push: the build-machine wrapper could not place the clippy gate\" \\\n             \"(exit 2); its own message is above\"\n        echo \"  this is not a lint finding — clippy has not run. Clear what the\" \\\n             \"wrapper names, or run without \\$BX to gate here.\"\n    } >&2\n    exit 1\nelif [[ $clippy_verdict -ne 0 ]]; then\n",
+          "to": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $clippy_verdict -ne 0 ]]; then\n"
+        }
+      ],
+      "expect_red": [
+        "pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"
+      ]
+    },
     "an-unreadable-staged-list-reads-as-an-empty-one": {
       "edits": [
         {

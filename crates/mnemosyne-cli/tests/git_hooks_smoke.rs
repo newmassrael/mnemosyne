@@ -610,6 +610,60 @@ fn pre_push_rejects_lint_dirty_rust() {
     );
 }
 
+/// A WRAPPER THAT COULD NOT PLACE THE WORK IS NOT A LINT FINDING.
+///
+/// R1285, and it was measured the day the routing landed rather than imagined:
+/// a sibling checkout held the build machine, `bx` said "refusing to send
+/// mnemosyne to pc2 — a second run in one tree corrupts both", and this hook
+/// told its author to go and fix clippy violations in a tree whose clippy had
+/// never been run. `bx` exits 2 from every one of its own refusals and passes
+/// the wrapped status through otherwise, so the two answers were always
+/// distinguishable; the hook read `if ! wrapper …` and collapsed them.
+///
+/// THE FIXTURE IS CLEAN ON PURPOSE. If it were lint-dirty the push would stop
+/// for the right reason by accident, and the case would pass with the
+/// distinction gone — which is the failure mode this whole family of laws
+/// exists to prevent.
+#[test]
+fn pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding() {
+    let f = Fixture::new();
+    f.write("src/lib.rs", "pub fn two() -> u8 {\n    2\n}\n");
+    f.stage_all();
+    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): clean"]);
+    let sha = head_sha(&f);
+
+    let shim = f.path().join("shim-bx");
+    link_stub(BX_THAT_REFUSES, &shim.join("bx"));
+    let bx = shim.join("bx");
+    let out = f.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&sha),
+        &[("BX", bx.to_str().expect("shim path is utf-8"))],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "a gate that could not run has not passed, whichever way it failed:\n{err}"
+    );
+    assert!(
+        err.contains("could not place the clippy gate"),
+        "the refusal must say the wrapper could not place the work:\n{err}"
+    );
+    // THE MIRROR, and the whole point of the case: the sentence the OTHER exit
+    // prints sends somebody hunting for violations that were never looked for.
+    assert!(
+        !err.contains("fix violations before push"),
+        "a wrapper that could not place the gate is not a tree with lint \
+         findings in it:\n{err}"
+    );
+    // AND THE WRAPPER'S OWN WORDS REACH THE SAME STREAM the hook points at.
+    assert!(
+        err.contains("another run of it is already alive"),
+        "the hook promises its reader the wrapper's message is above:\n{err}"
+    );
+}
+
 #[test]
 fn pre_commit_rejects_a_test_that_waits_on_a_clock() {
     // Gate 5c. R1073 turned main red with an assertion whose subject was the
@@ -1845,6 +1899,7 @@ fn the_side_workspace_gate_names_every_unformatted_manifest_in_one_run() {
 const GREP_WITHOUT_PCRE: &str = "grep-without-pcre";
 const GIT_WITHOUT_A_STAGED_LIST: &str = "git-that-cannot-list-what-is-staged";
 const GIT_WITHOUT_A_STAGED_DIFF: &str = "git-that-cannot-read-the-staged-diff";
+const BX_THAT_REFUSES: &str = "bx-that-refuses-to-place";
 
 #[test]
 fn commit_msg_enforces_its_content_rules_in_a_locale_that_cannot_read_characters() {

@@ -115,23 +115,50 @@ if ! cargo fmt --all --check; then
 fi
 
 # ⚠ ROUTED THROUGH THE BUILD-MACHINE WRAPPER WHEN ONE IS CONFIGURED (`$BX`).
-# Same reasoning as the pre-commit hook's Gate 5, and the same three rules:
-# `$BX` is an opt-in whose absence is the old behaviour; nothing about a machine
-# is named in this tree; and the wrapper's verdict is final — it already fails
-# open on its own, so a refusal is a verdict rather than an outage and is never
-# papered over by re-running the gate here.
+# `$BX` is an opt-in whose absence is the old behaviour, and nothing about a
+# machine is named in this tree.
 #
 # ⚠ `cargo fmt --all --check` above is deliberately NOT routed: it parses rather
 # than compiles, so it costs a fraction of a transfer and would be slower away
 # from home. What is worth moving is what actually compiles the workspace.
+#
+# ⚠⚠ AND THE WRAPPER'S REFUSAL IS NOT A LINT FINDING (R1285). `bx` exits 2 from
+# every one of its own refusals — its `die` does nothing else — and passes the
+# wrapped command's status through otherwise. The first form of this block read
+# `if ! "${clippy_run[@]}"` and printed `clippy failed — fix violations` for
+# both, which is the distinction this repository has built five laws about,
+# arriving in the hook that gates every push. MEASURED THE DAY IT LANDED: a
+# sibling checkout held the build machine, `bx` said "refusing to send mnemosyne
+# to pc2 — a second run in one tree corrupts both", and this hook told its author
+# to go and fix clippy violations in a tree whose clippy had never been run.
+#
+# A REFUSAL IS STILL A REFUSAL — the push stops either way, because a gate that
+# could not run has not passed. What changes is the sentence, and the sentence is
+# the whole of what the person reading it does next.
+#
+# THE ONE COLLISION, said rather than hidden: a wrapped command that itself exits
+# 2 would be read as a placement refusal. `cargo` uses 101 for errors and 1 for
+# test failures, so nothing this hook routes does that today.
 echo "pre-push: cargo clippy --workspace --locked --all-targets -- -D warnings ..." >&2
+routed=0
 if [ -n "${BX:-}" ] && [ -x "${BX}" ]; then
+    routed=1
     clippy_run=("${BX}" --label pre-push-clippy --
                 cargo clippy --workspace --locked --all-targets -- -D warnings)
 else
     clippy_run=(cargo clippy --workspace --locked --all-targets -- -D warnings)
 fi
-if ! "${clippy_run[@]}"; then
+clippy_verdict=0
+"${clippy_run[@]}" || clippy_verdict=$?
+if [[ $routed -eq 1 && $clippy_verdict -eq 2 ]]; then
+    {
+        echo "pre-push: the build-machine wrapper could not place the clippy gate" \
+             "(exit 2); its own message is above"
+        echo "  this is not a lint finding — clippy has not run. Clear what the" \
+             "wrapper names, or run without \$BX to gate here."
+    } >&2
+    exit 1
+elif [[ $clippy_verdict -ne 0 ]]; then
     echo "pre-push: clippy failed — fix violations before push" >&2
     exit 1
 fi
