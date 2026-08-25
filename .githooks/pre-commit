@@ -108,6 +108,24 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# Gate 0 — the identity this commit would carry.
+#
+# FIRST, ahead of anything that costs: a commit that is going to be refused
+# for its author should be refused before `scripts/mn` resolves a tool. It is
+# also the one refusal here that a revert does not undo, because the remote is
+# public and a push does not un-publish. lib/ident-gate.sh carries the
+# incident, which is not hypothetical.
+# Resolved from THIS HOOK's directory and never from `repo_root`. The two are
+# the same in a working clone and different in the only place that grades this
+# gate: `git_hooks_smoke` runs the real hook with a FIXTURE tree as its working
+# directory, and a fixture has no `.githooks/lib`. `repo_root` was the first
+# spelling and all three cases failed on a missing file -- which is the tests
+# doing their job, and the reason the library belongs to the hook rather than
+# to whatever tree the hook is pointed at.
+# shellcheck source=.githooks/lib/ident-gate.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/ident-gate.sh"
+ident_gate_pending "pre-commit" || exit 1
+
 ATOMIC_SIDECAR="docs/.atomic/workspace.atomic.json"
 
 # Round 823 — ONE resolver, `scripts/mn`, shared with pre-push and with

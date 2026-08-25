@@ -91,15 +91,49 @@ cd "$repo_root"
 # validate. If every ref update is a deletion, exit clean. (An empty stdin —
 # no ref updates — is likewise nothing to publish.)
 delete_only=1
-while read -r _local_ref local_sha _remote_ref _remote_sha; do
+# The ranges this push would publish, one per non-delete ref. Collected in the
+# SAME loop that decides `delete_only` so the two cannot disagree about what is
+# being pushed -- the identity gate below is keyed on them.
+ident_ranges=()
+while read -r _local_ref local_sha _remote_ref remote_sha; do
     [[ -z "${local_sha:-}" ]] && continue
     if [[ ! "$local_sha" =~ ^0+$ ]]; then
         delete_only=0
+        if [[ "${remote_sha:-}" =~ ^0*$ ]]; then
+            # New ref on the remote: grade the WHOLE history. Deliberate, not
+            # incidental -- a brand-new remote is exactly when a stray identity
+            # would be republished wholesale.
+            ident_ranges+=("$local_sha")
+        else
+            ident_ranges+=("$remote_sha..$local_sha")
+        fi
     fi
 done
 if [[ "$delete_only" -eq 1 ]]; then
     echo "pre-push: delete-only push (no commits to validate) — skipping gates" >&2
     exit 0
+fi
+
+# Gate 0 — the identities this push would publish.
+#
+# FIRST, because it is the one refusal here that a revert does not undo: the
+# remote is public and a push does not un-publish. pre-commit carries the same
+# list, and it would not have caught the incident lib/ident-gate.sh describes:
+# those commits were made where the hooks were not installed, so the push is
+# the first moment this repository could see them and the last before they are
+# published.
+# From THIS HOOK's directory, not `repo_root` — see the note in `pre-commit`
+# for the fixture case that told the two apart.
+# shellcheck source=.githooks/lib/ident-gate.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/ident-gate.sh"
+ident_push_failed=0
+for ident_range in "${ident_ranges[@]}"; do
+    ident_gate_range "pre-push" "$ident_range" || ident_push_failed=1
+done
+if [[ "$ident_push_failed" -ne 0 ]]; then
+    echo "pre-push: rewrite the offending commits before pushing — the remote" >&2
+    echo "  is public and a push does not un-publish" >&2
+    exit 1
 fi
 
 # Round 823 — ONE resolver, `scripts/mn`, the same one pre-commit uses. See that

@@ -120,7 +120,19 @@ impl Fixture {
             dir: TempDir::new().expect("tempdir"),
         };
         f.git(&["init", "-q", "."]);
-        f.git(&["config", "user.email", "hooks@test"]);
+        // A REPOSITORY HAS AN IDENTITY THE HOOKS ACCEPT, and it is read out of
+        // the allow-list rather than written here. This said `hooks@test` until
+        // the identity gate landed, and then twenty of the thirty-eight cases
+        // in this file failed — every one of them for a reason about the
+        // fixture rather than about its subject, which is the correction R1112
+        // made for `.cargo/config.toml` and R1115 for the lockfile. The rule is
+        // the same: a fixture that does not look like a repository fails for a
+        // reason that is about the fixture.
+        //
+        // Reading the list also keeps this honest the day it changes: a literal
+        // here would be a second copy, and the gate's cases would be grading it
+        // instead of the list.
+        f.git(&["config", "user.email", &allowed_ident()]);
         f.git(&["config", "user.name", "hooks test"]);
         f.git(&["config", "commit.gpgsign", "false"]);
         f.git(&[
@@ -2595,5 +2607,186 @@ fn every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs() {
          them:\n  {}\nEither give each one a job in .github/workflows, or write \
          here why it cannot leave this machine.",
         orphans.join("\n  ")
+    );
+}
+
+// --------------------------------------------------------------- ident gate
+
+/// An address `.githooks/lib/ident-gate.sh` does not list. Written once so the
+/// cases below cannot drift into testing two different "wrong" identities, and
+/// `.invalid` because RFC 2606 reserves it — a real-looking address in a test
+/// is one somebody eventually mails.
+const FOREIGN_IDENT: &str = "someone@example.invalid";
+
+/// An address the gate DOES list, read out of the list itself.
+///
+/// Not written here as a literal: a second copy in this file is a second fact,
+/// and the day the list changes it would be this file that lied about which
+/// identity the repository accepts.
+fn allowed_ident() -> String {
+    fs::read_to_string(repo_root().join(".githooks/lib/ident-gate.sh"))
+        .expect("the gate library is readable")
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with('"') && l.ends_with('"') && l.contains('@'))
+        .map(|l| l.trim_matches('"').to_string())
+        .expect("the allow-list names at least one address")
+}
+
+#[test]
+fn pre_commit_rejects_a_commit_the_allow_list_does_not_name() {
+    // GATE 0. The identity a commit carries is decided by the environment as
+    // much as by the config, which is why this is fed through `env` rather than
+    // by writing a config into the fixture: `GIT_AUTHOR_EMAIL` is exactly the
+    // route the incident took, and a test that set `user.email` instead would
+    // grade the half that was already correct when it happened.
+    let f = Fixture::new();
+    f.stage_all();
+
+    let out = f.run_hook(
+        "pre-commit",
+        &[],
+        "",
+        &[
+            ("GIT_AUTHOR_EMAIL", FOREIGN_IDENT),
+            ("GIT_AUTHOR_NAME", "probe"),
+        ],
+    );
+    let err = both_of(&out);
+    assert!(
+        !out.status.success(),
+        "an unlisted author must not pass a commit:\n{err}"
+    );
+    assert!(
+        err.contains("not an identity this repository accepts"),
+        "the rejection must say what was wrong:\n{err}"
+    );
+    assert!(
+        err.contains(FOREIGN_IDENT),
+        "the rejection must quote the address it refused, or the author cannot \
+         tell which of the two identities was wrong:\n{err}"
+    );
+}
+
+#[test]
+fn pre_commit_rejects_a_committer_the_allow_list_does_not_name() {
+    // The SECOND role, and it is not redundant with the case above: a gate that
+    // reads only `%ae` passes this one, and half of what git stamps would be
+    // ungraded. Every rebase sets the committer without touching the author.
+    //
+    // THE AUTHOR IS PINNED EXPLICITLY even though the fixture now configures an
+    // allowed one: this case is about the COMMITTER, and leaving the author to
+    // a baseline the fixture happens to set would make it silently depend on
+    // that baseline staying allowed. Measured before the fixture was fixed —
+    // the author arm tripped first and this case passed on the wrong refusal,
+    // which is a test reporting green for a reason unrelated to its own name.
+    let allowed = allowed_ident();
+    let f = Fixture::new();
+    f.stage_all();
+
+    let out = f.run_hook(
+        "pre-commit",
+        &[],
+        "",
+        &[
+            ("GIT_AUTHOR_EMAIL", allowed.as_str()),
+            ("GIT_AUTHOR_NAME", "probe"),
+            ("GIT_COMMITTER_EMAIL", FOREIGN_IDENT),
+            ("GIT_COMMITTER_NAME", "probe"),
+        ],
+    );
+    let err = both_of(&out);
+    assert!(
+        !out.status.success(),
+        "an unlisted committer must not pass a commit:\n{err}"
+    );
+    assert!(
+        err.contains("would be committed as"),
+        "the rejection must name the ROLE, so the fix goes to the right \
+         variable:\n{err}"
+    );
+}
+
+#[test]
+fn pre_commit_accepts_the_identity_the_allow_list_names() {
+    // THE CONTROL, and without it the two cases above prove only that the gate
+    // can say "no".
+    let allowed = allowed_ident();
+    let f = Fixture::new();
+    f.stage_all();
+
+    let out = f.run_hook(
+        "pre-commit",
+        &[],
+        "",
+        &[
+            ("GIT_AUTHOR_EMAIL", allowed.as_str()),
+            ("GIT_AUTHOR_NAME", "probe"),
+            ("GIT_COMMITTER_EMAIL", allowed.as_str()),
+            ("GIT_COMMITTER_NAME", "probe"),
+        ],
+    );
+    let err = both_of(&out);
+    assert!(
+        !err.contains("not an identity this repository accepts"),
+        "the listed identity must pass the identity gate:\n{err}"
+    );
+    // AND THE HOOK MUST HAVE RUN. The assertion above alone is vacuous — it
+    // passed while the gate was sourcing a path that did not exist, because a
+    // gate that never loaded also never printed a refusal. Measured: the three
+    // cases around it failed on the missing file and this one stayed green.
+    assert!(
+        out.status.success(),
+        "the fixture must pass the whole commit hook, or this control is only \
+         proving that a broken gate says nothing:\n{err}"
+    );
+}
+
+#[test]
+fn pre_push_rejects_a_range_carrying_an_identity_the_allow_list_does_not_name() {
+    // The push arm, and it is the one that matters most: `pre-commit` runs only
+    // for `git commit`, so a cherry-pick, a rebase, a merge, `--no-verify`, or
+    // a commit made where the hooks are not installed reaches the remote
+    // without ever meeting it. That last one is the shape the incident had.
+    //
+    // `--no-verify` on both commits on purpose: the subject is a commit that
+    // got PAST the commit hook, which is the only way this range can hold one.
+    let f = Fixture::new();
+    f.stage_all();
+    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    f.write("late.txt", "late\n");
+    f.stage_all();
+    let made = f.git_allow_failure(&[
+        "-c",
+        &format!("user.email={FOREIGN_IDENT}"),
+        "-c",
+        "user.name=probe",
+        "commit",
+        "--no-verify",
+        "-q",
+        "-m",
+        "test(fixture): a commit the hooks never saw",
+    ]);
+    assert!(
+        made.status.success(),
+        "the fixture's second commit must land: {}",
+        String::from_utf8_lossy(&made.stderr)
+    );
+
+    let stdin = push_line(&head_sha(&f));
+    let out = f.run_hook("pre-push", &["origin", "git@example:x"], &stdin, &[]);
+    let err = both_of(&out);
+    assert!(
+        !out.status.success(),
+        "a range carrying an unlisted identity must not be published:\n{err}"
+    );
+    assert!(
+        err.contains("not an identity this repository accepts"),
+        "the refusal must say what was wrong:\n{err}"
+    );
+    assert!(
+        err.contains("offending commits in"),
+        "the refusal must NAME the commits, because the fix is a rebase whose \
+         scope the author needs before starting it:\n{err}"
     );
 }
