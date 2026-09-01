@@ -51,8 +51,8 @@
       "edits": [
         {
           "file": ".githooks/pre-push",
-          "from": "    clippy_run=(\"${BX}\" --label pre-push-clippy --\n                cargo clippy --workspace --locked --all-targets -- -D warnings)\nelse\n    clippy_run=(cargo clippy --workspace --locked --all-targets -- -D warnings)\nfi\n",
-          "to": "    clippy_run=(\"${BX}\" --label pre-push-clippy --\n                cargo clippy --workspace --all-targets -- -D warnings)\nelse\n    clippy_run=(cargo clippy --workspace --all-targets -- -D warnings)\nfi\n"
+          "from": "cargo run -q --locked --manifest-path \"$hook_checkout/tools/one-machine/Cargo.toml\" \\\n    --bin one-machine -- --repo \"$repo_root\" --read >&2 || elsewhere_verdict=$?\n",
+          "to": "cargo run -q --manifest-path \"$hook_checkout/tools/one-machine/Cargo.toml\" \\\n    --bin one-machine -- --repo \"$repo_root\" --read >&2 || elsewhere_verdict=$?\n"
         }
       ],
       "expect_red": [

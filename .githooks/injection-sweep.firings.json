@@ -20,21 +20,6 @@
         "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
       ]
     },
-    "a-wrapper-that-could-not-place-the-gate-is-called-a-lint-finding": {
-      "edits": [
-        {
-          "file": ".githooks/pre-push",
-          "from": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $routed -eq 1 && $clippy_verdict -eq 2 ]]; then\n    {\n        echo \"pre-push: the build-machine wrapper could not place the clippy gate\" \\\n             \"(exit 2); its own message is above\"\n        echo \"  this is not a lint finding — clippy has not run. Clear what the\" \\\n             \"wrapper names, or run without \\$BX to gate here.\"\n    } >&2\n    exit 1\nelif [[ $clippy_verdict -ne 0 ]]; then\n",
-          "to": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $clippy_verdict -ne 0 ]]; then\n"
-        }
-      ],
-      "expect_red": [
-        "pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"
-      ],
-      "tests": [
-        "git_hooks_smoke::pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"
-      ]
-    },
     "an-unreadable-staged-list-reads-as-an-empty-one": {
       "edits": [
         {
@@ -82,6 +67,24 @@
     }
   },
   "forgotten": {
+    "a-wrapper-that-could-not-place-the-gate-is-called-a-lint-finding": {
+      "because": "R1287 removed the block this injection edited rather than moving it: the workspace clippy gate left pre-push for the validate job, and it was the only $BX in any hook, so a wrapper that could not PLACE a gate has no subject left in that file. Its law went with it — pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding was deleted rather than re-anchored, because a case asserting a branch that cannot run is scenery. The distinction is not retired: N232 is the uncounted census of every OTHER reader in this repository of a wrapper's exit as the wrapped command's verdict, and that is where it goes next.",
+      "was": {
+        "edits": [
+          {
+            "file": ".githooks/pre-push",
+            "from": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $routed -eq 1 && $clippy_verdict -eq 2 ]]; then\n    {\n        echo \"pre-push: the build-machine wrapper could not place the clippy gate\" \\\n             \"(exit 2); its own message is above\"\n        echo \"  this is not a lint finding — clippy has not run. Clear what the\" \\\n             \"wrapper names, or run without \\$BX to gate here.\"\n    } >&2\n    exit 1\nelif [[ $clippy_verdict -ne 0 ]]; then\n",
+            "to": "clippy_verdict=0\n\"${clippy_run[@]}\" || clippy_verdict=$?\nif [[ $clippy_verdict -ne 0 ]]; then\n"
+          }
+        ],
+        "expect_red": [
+          "pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"
+        ],
+        "tests": [
+          "git_hooks_smoke::pre_push_tells_a_wrapper_that_could_not_place_the_gate_from_a_lint_finding"
+        ]
+      }
+    },
     "the-push-gate-does-not-ask-whether-a-test-is-run-at-all": {
       "because": "R1288 — the gate it aimed at left this hook for the hosted unrun-tests job; a push no longer runs it, so the expectation names a branch that cannot be reached",
       "was": {
