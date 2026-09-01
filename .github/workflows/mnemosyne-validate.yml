@@ -428,10 +428,21 @@ jobs:
           cargo run -q --locked --manifest-path tools/written-executable/Cargo.toml
           --bin written-executable -- --workspace Cargo.toml
 
-      - name: unread-declaration (every declaration has a reader)
-        run: >
-          cargo run -q --locked --manifest-path tools/unread-declaration/Cargo.toml
-          --bin unread-declaration -- --repo .
+      # WHY `unread-declaration` IS NOT A STEP HERE, and why removing it was not
+      # a deletion. It holds `.claude/remote-build.toml` against the program that
+      # READS it, and that program is `$HOME/.claude/remote-build/bin/bx` — a
+      # machine-wide binary this repository does not track and no job installs.
+      # A runner has no such file, so this gate's only honest answer here is
+      # exit 2, NO VERDICT, which is exactly what it printed on every push from
+      # the day it was given this step. Its subject is the FLEET a push leaves
+      # from, not the tree a runner checks out.
+      #
+      # It is excused in `git_hooks_smoke::CANNOT_LEAVE_THIS_MACHINE` beside the
+      # two gates that were already there, and
+      # `no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home` is what
+      # keeps this comment from being the only thing that says so: it derives
+      # the population from the tools' own source and goes red if a step for one
+      # of them comes back.
 
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace

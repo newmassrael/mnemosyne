@@ -2387,7 +2387,7 @@ fn pre_push_reports_what_a_second_machine_found_and_never_blocks() {
 /// The compiling gates a hook runs that a hosted runner CANNOT, and why.
 ///
 /// R1287. Every other entry in the census below is either hosted or a debt; these
-/// two are neither, and the difference is not about cost. Both ask about the
+/// are neither, and the difference is not about cost. Each asks about the
 /// FLEET THIS PUSH IS LEAVING FROM rather than about the tree, so a runner asking
 /// them would be asking a question with no subject — and a job that always
 /// answers "nothing to report" is the shape this repository keeps finding under
@@ -2397,7 +2397,16 @@ fn pre_push_reports_what_a_second_machine_found_and_never_blocks() {
 /// is one: a sentence stays true by luck. This is read by the test, each row is
 /// checked to still name a gate a hook issues, and adding a row is an edit
 /// somebody makes on purpose.
-const CANNOT_LEAVE_THIS_MACHINE: [(&str, &str, &str); 2] = [
+///
+/// R1290 ADDED THE THIRD ROW BY PAYING FOR ITS ABSENCE. `unread-declaration` was
+/// given a hosted step instead, and a hosted step was the wrong half of this
+/// law's two-way question: it satisfied "either give it a job or write why it
+/// cannot leave", and it exited 2 — NO VERDICT — on every push from that day,
+/// because the program it holds the declaration against lives under `$HOME` and
+/// no runner has one. Which of these rows a reader must not have to take on
+/// trust is the point of
+/// [`no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home`].
+const CANNOT_LEAVE_THIS_MACHINE: [(&str, &str, &str); 3] = [
     (
         "run",
         "tools/one-machine/Cargo.toml",
@@ -2411,6 +2420,15 @@ const CANNOT_LEAVE_THIS_MACHINE: [(&str, &str, &str); 2] = [
         "it reports what the HOSTED RUN of the commit being built on concluded, \
          which is the one thing a push cannot learn from the run it is about to \
          start; inside that run it would be reading itself",
+    ),
+    (
+        "run",
+        "tools/unread-declaration/Cargo.toml",
+        "it holds this repository's build-machine declaration against the \
+         program that READS it, and that program is under the pushing user's \
+         `$HOME` — untracked here, installed by no job. A runner has no such \
+         file, so the gate's only honest answer there is exit 2, NO VERDICT, \
+         which is what a hosted step for it printed on every push it ran",
     ),
 ];
 
@@ -2605,8 +2623,240 @@ fn every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs() {
         "these compiling gates are paid by every push on this workstation and by \
          no hosted job, so they cannot be MOVED to CI — moving them would lose \
          them:\n  {}\nEither give each one a job in .github/workflows, or write \
-         here why it cannot leave this machine.",
+         here why it cannot leave this machine. R1290: a job it CANNOT answer in \
+         is not the first answer — a step that can only ever exit 2 satisfies \
+         this line and reports NO VERDICT forever.",
         orphans.join("\n  ")
+    );
+}
+
+/// Crates whose own `src/` reads `HOME`, and whose answer is STILL about the tree.
+///
+/// R1290 — READING `HOME` IS NOT BY ITSELF A REASON A RUNNER CANNOT ASK. What
+/// decides that is what the crate DOES with it, and that is a judgement rather
+/// than a measurement, so it is written down once, here, with its reason. The
+/// population it is held against is derived, so a crate that starts reading
+/// `HOME` tomorrow is in neither list and FAILS — an unclassified member is a
+/// red and not a pass, which is the one property every exemption list in this
+/// repository has been caught without.
+const READS_HOME_AND_STILL_ASKS_ABOUT_THE_TREE: [(&str, &str); 2] = [
+    (
+        "tools/outside-reach/Cargo.toml",
+        "it CLASSIFIES the paths a traced run touched, and the pushing user's \
+         home is one of the grounds it sorts them into. The answer is about what \
+         THIS TREE reached, so a runner asking it gets a runner's answer to the \
+         same question — its own declaration table says so out loud, refusing to \
+         write a machine's name into any row",
+    ),
+    (
+        "crates/mnemosyne-config/Cargo.toml",
+        "it resolves the user's own configuration directory. That is production \
+         behaviour for whoever runs the binary, not a gate rendering a verdict, \
+         and there is no venue question to answer about it",
+    ),
+];
+
+/// NO HOSTED JOB RUNS A GATE THAT REACHES FOR A PROGRAM UNDER `$HOME` (R1290).
+///
+/// THE HOLE THIS CLOSES IS THE OTHER HALF OF THE LAW ABOVE. That one asks a
+/// hook's compiling gate to have EITHER a hosted job OR a row in
+/// [`CANNOT_LEAVE_THIS_MACHINE`], and nothing asked whether a job it was given
+/// could render a verdict where it was put. So "give it a job" and "give it a
+/// job that can only ever answer NO VERDICT" were the same answer, and
+/// `unread-declaration` was given the second one: it holds
+/// `.claude/remote-build.toml` against `$HOME/.claude/remote-build/bin/bx`, a
+/// machine-wide binary this repository does not track and no job installs, so
+/// on a runner it exits 2 and said so on every push from that day.
+///
+/// THE POPULATION IS DERIVED AND NOT NAMED, because a list of machine-bound
+/// gates is exactly the thing that goes stale in the reassuring direction. It is
+/// every tracked crate whose OWN `src/` asks the process environment for `HOME`
+/// — asked of the syntax, so the name written in this doc comment is not a use
+/// of it — and a crate's tests are outside it, a test process reading `HOME`
+/// being a question about itself.
+///
+/// AND `HOME` ALONE DOES NOT DECIDE, which is why the population is split rather
+/// than asserted. `outside-reach` reads it and is hosted and green, correctly:
+/// it sorts a traced run's paths into grounds, so a runner gets a runner's
+/// answer to the same question about the same tree. What separates that from
+/// `one-machine` and `unread-declaration` is whether the crate's subject is the
+/// FLEET or the TREE, and that judgement lives in the two lists — where a reader
+/// meets it and an author has to edit it.
+#[test]
+fn no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home() {
+    let root = repo_root();
+    let tracked = ci_plan::tracked_files(&root, &["ls-files"]);
+    let manifests = ci_plan::tracked_manifests(&root);
+
+    // WHICH CRATE OWNS A SOURCE is the INNERMOST tracked manifest above it, so a
+    // crate nested inside another crate's directory answers for its own files.
+    let owner = |source: &str| -> Option<&String> {
+        manifests
+            .iter()
+            .filter(|manifest| {
+                let dir = manifest
+                    .strip_suffix("Cargo.toml")
+                    .unwrap_or(manifest.as_str());
+                source.starts_with(dir)
+            })
+            .max_by_key(|manifest| manifest.len())
+    };
+
+    /// Every `env::var("HOME")` / `env::var_os("HOME")` a file spells, read off
+    /// the SYNTAX. A path suffix rather than a full path, so `std::env::var` and
+    /// a `use`-shortened `env::var` are the same call; a string in a comment or
+    /// in a table like the one above is not one at all.
+    struct HomeReads(Vec<String>);
+    impl<'ast> syn::visit::Visit<'ast> for HomeReads {
+        fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
+            if let syn::Expr::Path(path) = &*node.func {
+                if let Some(last) = path.path.segments.last() {
+                    let name = last.ident.to_string();
+                    if (name == "var" || name == "var_os") && node.args.len() == 1 {
+                        if let syn::Expr::Lit(syn::ExprLit {
+                            lit: syn::Lit::Str(text),
+                            ..
+                        }) = &node.args[0]
+                        {
+                            if text.value() == "HOME" {
+                                self.0.push(format!("{name}(\"HOME\")"));
+                            }
+                        }
+                    }
+                }
+            }
+            syn::visit::visit_expr_call(self, node);
+        }
+    }
+
+    let mut reads_home: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut unparsed: Vec<String> = Vec::new();
+    for source in tracked.iter().filter(|path| path.ends_with(".rs")) {
+        let Some(manifest) = owner(source) else {
+            continue;
+        };
+        let dir = manifest
+            .strip_suffix("Cargo.toml")
+            .unwrap_or(manifest.as_str());
+        if !source.starts_with(&format!("{dir}src/")) {
+            continue;
+        }
+        let text = fs::read_to_string(root.join(source))
+            .unwrap_or_else(|why| panic!("{source} is tracked and unreadable: {why}"));
+        // A SOURCE THIS WALK CANNOT PARSE IS NOT ONE IT HAS CLEARED. Collected
+        // and asserted rather than skipped: a file silently passed over is a
+        // crate silently outside the population.
+        let Ok(file) = syn::parse_file(&text) else {
+            unparsed.push(source.clone());
+            continue;
+        };
+        let mut found = HomeReads(Vec::new());
+        syn::visit::Visit::visit_file(&mut found, &file);
+        if !found.0.is_empty() {
+            reads_home
+                .entry(manifest.clone())
+                .or_default()
+                .push(format!("{source}: {}", found.0.join(", ")));
+        }
+    }
+    assert!(
+        unparsed.is_empty(),
+        "these tracked sources could not be parsed, so this walk does not know \
+         whether they reach for a machine: {unparsed:?}"
+    );
+    assert!(
+        !reads_home.is_empty(),
+        "no tracked crate's own `src/` reads HOME, so this law holds over \
+         nothing — the empty answer that reads like a clean one"
+    );
+    println!(
+        "[venue] {} crate(s) read HOME in their own src:\n  {}",
+        reads_home.len(),
+        reads_home
+            .iter()
+            .map(|(manifest, sites)| format!("{manifest} — {sites:?}"))
+            .collect::<Vec<_>>()
+            .join("\n  ")
+    );
+
+    let excused: BTreeSet<&str> = CANNOT_LEAVE_THIS_MACHINE
+        .iter()
+        .map(|(_, over, _)| *over)
+        .collect();
+    let tree_bound: BTreeSet<&str> = READS_HOME_AND_STILL_ASKS_ABOUT_THE_TREE
+        .iter()
+        .map(|(manifest, _)| *manifest)
+        .collect();
+
+    // A CRATE IN BOTH LISTS IS TWO ANSWERS TO ONE QUESTION, and the reader would
+    // meet whichever the code happens to check first.
+    let both: Vec<&&str> = tree_bound.intersection(&excused).collect();
+    assert!(
+        both.is_empty(),
+        "these crates are excused from a hosted job AND written down as still \
+         asking about the tree, which cannot both be true: {both:?}"
+    );
+
+    let unclassified: Vec<&String> = reads_home
+        .keys()
+        .filter(|manifest| {
+            !excused.contains(manifest.as_str()) && !tree_bound.contains(manifest.as_str())
+        })
+        .collect();
+    assert!(
+        unclassified.is_empty(),
+        "these crates read HOME in their own source and are in neither list, so \
+         nobody has said whether a hosted runner can ask what they ask:\n  \
+         {unclassified:?}\nPut each in CANNOT_LEAVE_THIS_MACHINE with the gate a \
+         hook issues for it, or in READS_HOME_AND_STILL_ASKS_ABOUT_THE_TREE with \
+         why a runner's answer is the same answer."
+    );
+
+    // AN EXCUSE FOR A READ THAT IS NOT THERE IS AN EXCUSE NOBODY WILL DELETE —
+    // the same guard the list above carries, asked of this one.
+    for (manifest, why) in READS_HOME_AND_STILL_ASKS_ABOUT_THE_TREE {
+        assert!(
+            reads_home.contains_key(manifest),
+            "{manifest} is written down as reading HOME and still asking about \
+             the tree, because \"{why}\" — and its source does not read HOME any \
+             more, so the excuse outlived the read"
+        );
+    }
+
+    // THE TEETH. A crate that reads HOME and is excused from a hosted job is one
+    // whose subject is this machine; a hosted step for it can only ever answer
+    // NO VERDICT, and zero findings is what a clean tree looks like.
+    let machine_bound: BTreeSet<&str> = reads_home
+        .keys()
+        .map(String::as_str)
+        .filter(|manifest| excused.contains(manifest))
+        .collect();
+    assert!(
+        !machine_bound.is_empty(),
+        "no crate is both a HOME reader and excused from a hosted job, so the \
+         assertion below has nothing to be about"
+    );
+    println!("[venue] machine-bound gates: {machine_bound:?}");
+
+    let issued = ci_plan::commands_this_repository_issues(&root);
+    let placed: Vec<String> = issued
+        .commands
+        .iter()
+        .filter(|command| command.source.starts_with(".github/workflows/"))
+        .filter(|command| match command.manifest(&tracked) {
+            ci_plan::ManifestTarget::Named(path) => machine_bound.contains(path.as_str()),
+            ci_plan::ManifestTarget::Root | ci_plan::ManifestTarget::Unreadable(_) => false,
+        })
+        .map(|command| format!("{} — {}", command.origin(), command.rendered()))
+        .collect();
+    assert!(
+        placed.is_empty(),
+        "a hosted job runs a gate whose subject is the machine a push leaves \
+         from, and the program it reaches for lives under that machine's HOME. \
+         On a runner there is no such file, so this step's only honest answer is \
+         NO VERDICT — which is a red that never clears, or, if anyone marks it \
+         non-blocking, a green that means nobody looked:\n  {}",
+        placed.join("\n  ")
     );
 }
 

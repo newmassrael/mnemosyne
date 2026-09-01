@@ -47,8 +47,9 @@
     "manifest does not declare its red sets exhaustive — `red_set` is absent — so",
     "no injection below asserts anything about a case it did not name, and",
     "running the whole `git_hooks_smoke::` suite bought observation nobody claims",
-    "on. MEASURED: 37 cases, of which the eighteen injections name 8; the other",
-    "29 ran twice per injection, and this is the slowest suite in the repository",
+    "on. MEASURED and RE-MEASURED at R1290: 39 cases, of which the seventeen",
+    "injections name 8 and the filter carries 9; the other 30 would run twice per",
+    "injection, and this is the slowest suite in the repository",
     "because every case spawns cargo inside a throwaway repository. One `--only`",
     "proof was still running after forty minutes.",
     "",
@@ -76,6 +77,7 @@
     "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run",
     "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs",
     "git_hooks_smoke::every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs",
+    "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home",
     "git_hooks_smoke::the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree",
     "git_hooks_smoke::the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged",
     "git_hooks_smoke::the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
@@ -296,6 +298,18 @@
         }
       ],
       "expect_red": ["every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"]
+    },
+    {
+      "name": "a-gate-that-can-only-say-no-verdict-here-is-given-a-job-here",
+      "why": "R1290 — THE HALF THE LAW ABOVE CANNOT REACH. `every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs` accepts a hosted job as the answer for any hook gate, and never asks whether the job it was given can render a verdict where it was put. This edit puts back the exact step R1290 removed: `unread-declaration` in the `validate` job, which exits 2 — NO VERDICT — on every runner, because the program it holds the declaration against lives under the pushing user's `$HOME`. It was red on `origin/main` for two pushes and the law above stayed green throughout, which is what this injection is the proof of",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "      - name: mnemosyne-cli validate-workspace\n        run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace\n",
+          "to": "      - name: unread-declaration (every declaration has a reader)\n        run: >\n          cargo run -q --locked --manifest-path tools/unread-declaration/Cargo.toml\n          --bin unread-declaration -- --repo .\n\n      - name: mnemosyne-cli validate-workspace\n        run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace\n"
+        }
+      ],
+      "expect_red": ["no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home"]
     }
   ]
 }
