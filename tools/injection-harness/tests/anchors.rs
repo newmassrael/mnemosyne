@@ -139,6 +139,15 @@ fn anchors(root: &Path) -> (i32, String) {
     let out = Command::new(binary())
         .args(["anchors", "--repo"])
         .arg(root)
+        // WHICH CARGO, SAID RATHER THAN INHERITED (R1182's law, R1262's reason).
+        // This binary links `ci-plan`, whose one door to a cargo command reads
+        // `CARGO`, so a test that spawns it runs a different program on a machine
+        // where that is set than on one where it is not. `harness.rs` answers
+        // with the cargo running the test, because its cases RUN a suite through
+        // it. These cases run none: the `anchors` verb issues `git` and nothing
+        // else, so ABSENCE is the honest answer — and asserting it proves the
+        // verb does not quietly depend on a cargo it never uses.
+        .env_remove("CARGO")
         .current_dir(root)
         .output()
         .expect("run the anchors verb");

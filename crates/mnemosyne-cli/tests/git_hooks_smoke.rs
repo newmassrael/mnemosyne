@@ -651,6 +651,56 @@ fn pre_commit_rejects_a_test_that_waits_on_a_clock() {
     );
 }
 
+/// AND THE SAME DEFECT IN A SEPARATE WORKSPACE IS THE SAME DEFECT (R1292).
+///
+/// THE TRIGGER AND THE TARGET DID NOT AGREE, and the case above could not tell.
+/// Gates 5c/5d/5f/5g fire when ANY `.rs` is staged and used to walk the ROOT,
+/// while this repository has twenty-six workspace roots — so a file staged under
+/// `tools/<crate>/` was gated by a tree it is not in, and four whole-workspace
+/// walks reported findings about files the commit never touched.
+///
+/// MEASURED BY IT HAPPENING, one round before this case existed. R1291 added a
+/// test under `tools/injection-harness/` that spawns a binary reading `CARGO`
+/// without naming it; `named-environment` is the gate for exactly that, it RAN
+/// on that commit, and it ran over the root. The commit passed, the push passed,
+/// and the hosted `separate in-repo workspaces` job found it a round later.
+///
+/// THE ROOT IS LEFT CLEAN ON PURPOSE, which is what makes this case about the
+/// pointing rather than about the gate: the sleeping test is in the side
+/// workspace and nowhere else, so a hook that reads only the root sees a tree
+/// with nothing wrong in it.
+#[test]
+fn pre_commit_reads_the_separate_workspace_a_staged_file_lives_in() {
+    let f = Fixture::new();
+    f.write(
+        "tools/sub/src/lib.rs",
+        "pub fn two() -> u8 {\n    2\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn \
+         the_other_thread_got_there() {\n        \
+         std::thread::sleep(std::time::Duration::from_millis(300));\n        \
+         assert_eq!(super::two(), 2);\n    }\n}\n",
+    );
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "a wait no condition ends is one wherever it is staged:\n{err}"
+    );
+    assert!(
+        err.contains("commit rejected — a test waits on a clock"),
+        "and the rejection names the gate that found it:\n{err}"
+    );
+    // THE CENSUS IS ANNOUNCED, so a hook that stopped reading side workspaces
+    // says so rather than going quiet. A gate that reports nothing and a gate
+    // pointed at the wrong tree print the same silence.
+    assert!(
+        err.contains("staged .rs live in") && err.contains("tools/sub/Cargo.toml"),
+        "the hook must name the workspaces it resolved, or nothing distinguishes \
+         'checked and clean' from 'never looked here':\n{err}"
+    );
+}
+
 #[test]
 fn pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defect() {
     // GATE 5c's OTHER NON-ZERO EXIT, and the one nothing here ran. `1` is

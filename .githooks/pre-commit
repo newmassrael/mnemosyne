@@ -37,6 +37,16 @@
 #      item rustdoc can resolve, over every target `cargo metadata` lists
 #      rather than the 25 of 136 `cargo doc --workspace` reaches.
 #
+#   ⇒ THE FOUR `.rs` GATES BELOW (5c, 5d, 5f, 5g) RUN OVER THE WORKSPACES THIS
+#      COMMIT'S OWN FILES LIVE IN (R1292), one run each, resolved by walking up
+#      from every staged `.rs` to the first `[workspace]` above it. They used to
+#      fire on ANY staged `.rs` and walk the ROOT, which this repository has
+#      twenty-six workspace roots' worth of reasons not to do: staging a file
+#      under `tools/<crate>/` ran four whole-workspace walks over a tree that did
+#      not contain it. Measured by it happening — R1291's new test spawned a
+#      binary reading `CARGO` without naming it, `named-environment` RAN on that
+#      commit over the root, and the hosted job found it a round later.
+#
 #   5c. Blind-wait gate (R1081) — `tools/blind-waits` when any `.rs` is
 #      staged: in test code a wait ends on a CONDITION and the budget that
 #      bounds it is NAMED. R1073's red main was `conflicts > 0` after 500ms
@@ -282,6 +292,84 @@ fi
 # Resolved from THIS HOOK's location, pointed at the WORKING DIRECTORY, for the
 # reason spelled out under Gate 5a.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
+    # WHICH WORKSPACE OWNS EACH STAGED `.rs` (R1292), and why the four gates
+    # below are pointed at THOSE rather than at the root.
+    #
+    # THE TRIGGER AND THE TARGET DID NOT AGREE. Each of these gates fires when
+    # ANY `.rs` is staged and then walked `$(pwd)/Cargo.toml` — the root — while
+    # this repository has TWENTY-SIX workspace roots. Staging a file under
+    # `tools/<crate>/` therefore ran four whole-workspace walks over a tree that
+    # does not contain it, and every one of them reported findings about files
+    # the commit never touched and none about the file it did. Zero findings is
+    # what a clean tree looks like.
+    #
+    # MEASURED, BY IT HAPPENING. R1291 added `tools/injection-harness/tests/
+    # anchors.rs`, whose cases spawn a binary that reads `CARGO` without naming
+    # it. `named-environment` is exactly the gate for that, it RAN on that
+    # commit, and it ran over the root — so the commit passed, the push passed,
+    # and the hosted `separate in-repo workspaces` job found it one round later.
+    # Nothing was broken; the gate was pointed at the wrong tree.
+    #
+    # WHY IT IS NOT A VENUE QUESTION. The owner's instruction is that gates
+    # which compile or document the WHOLE tree belong to CI, and R1284 moved the
+    # separate-workspace LINT gate off this path for that reason. These four
+    # compile nothing: they parse `.rs` with `syn`, and one of them over one side
+    # workspace is 2.6s. What changes here is not how much is checked but WHICH
+    # TREE — the set is the workspaces this commit's own files live in, so a
+    # root-only commit pays exactly what it paid before.
+    #
+    # THE FIRST `[workspace]` ABOVE A FILE OWNS IT, walked from the file rather
+    # than matched against a list, so a workspace added to this repository joins
+    # this gate the day its manifest does. A file with no `[workspace]` above it
+    # is REFUSED rather than gated by the root: a file no workspace owns is a
+    # file no walk below reads, and that is the state this block exists to end.
+    tree_root="$(pwd)"
+    rs_workspaces=()
+    while IFS= read -r rs_file; do
+        [[ "$rs_file" == *.rs ]] || continue
+        if ! rs_dir="$(cd "$(dirname "$rs_file")" 2>/dev/null && pwd)"; then
+            {
+                echo "[mnemosyne pre-commit] commit rejected — the directory of $rs_file"
+                echo "  cannot be entered, so which workspace gates it is unanswerable"
+            } >&2
+            exit 1
+        fi
+        while :; do
+            rs_manifest="$rs_dir/Cargo.toml"
+            if [[ -f "$rs_manifest" ]]; then
+                # A MANIFEST THAT EXISTS AND CANNOT BE READ IS NOT ONE WITHOUT A
+                # `[workspace]`. Walking past it would hand this file to whatever
+                # workspace lies further up, which is the mispointing above with
+                # an extra step in front of it.
+                if [[ ! -r "$rs_manifest" ]]; then
+                    {
+                        echo "[mnemosyne pre-commit] commit rejected — $rs_manifest exists and"
+                        echo "  cannot be read, so which workspace gates $rs_file is unanswerable"
+                    } >&2
+                    exit 1
+                fi
+                if grep -q '^\[workspace\]' "$rs_manifest"; then
+                    case " ${rs_workspaces[*]-} " in
+                    *" $rs_manifest "*) ;;
+                    *) rs_workspaces+=("$rs_manifest") ;;
+                    esac
+                    break
+                fi
+            fi
+            if [[ "$rs_dir" == "$tree_root" || "$rs_dir" == "/" ]]; then
+                {
+                    echo "[mnemosyne pre-commit] commit rejected — no [workspace] above"
+                    echo "  $rs_file up to $tree_root, so the four gates below would read"
+                    echo "  a tree this file is not in and report nothing about it"
+                } >&2
+                exit 1
+            fi
+            rs_dir="$(dirname "$rs_dir")"
+        done
+    done <<< "$staged"
+    echo "[mnemosyne pre-commit] staged .rs live in ${#rs_workspaces[@]} workspace(s):" \
+         "${rs_workspaces[*]}" >&2
+
     echo "[mnemosyne pre-commit] .rs staged — waits end on conditions" >&2
     # The checkout, not the manifest — see Gate 5b.
     gates="$(cd "$(dirname "$0")/.." && pwd)"
@@ -301,9 +389,15 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     # branch can read one. The first version of this block did exactly that, and
     # the hook's own smoke test caught it — the gate's message reached stderr
     # and the hook's did not.
+    # ONE RUN PER WORKSPACE THIS COMMIT'S OWN `.rs` LIVE IN (R1292), and the loop
+    # stops at the first verdict that is not 0 so the message below is about the
+    # tree that produced it.
     waits_verdict=0
-    cargo run -q --locked --manifest-path "$gates/tools/blind-waits/Cargo.toml" \
-        --bin blind-waits -- --workspace "$(pwd)/Cargo.toml" || waits_verdict=$?
+    for rs_manifest in "${rs_workspaces[@]}"; do
+        cargo run -q --locked --manifest-path "$gates/tools/blind-waits/Cargo.toml" \
+            --bin blind-waits -- --workspace "$rs_manifest" || waits_verdict=$?
+        [[ $waits_verdict -eq 0 ]] || break
+    done
     if [[ $waits_verdict -eq 1 ]]; then
         {
             echo "[mnemosyne pre-commit] commit rejected — a test waits on a clock"
@@ -330,8 +424,11 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         exit 1
     fi
     environment_verdict=0
-    cargo run -q --locked --manifest-path "$gates/tools/named-environment/Cargo.toml" \
-        --bin named-environment -- --workspace "$(pwd)/Cargo.toml" || environment_verdict=$?
+    for rs_manifest in "${rs_workspaces[@]}"; do
+        cargo run -q --locked --manifest-path "$gates/tools/named-environment/Cargo.toml" \
+            --bin named-environment -- --workspace "$rs_manifest" || environment_verdict=$?
+        [[ $environment_verdict -eq 0 ]] || break
+    done
     if [[ $environment_verdict -eq 1 ]]; then
         {
             echo "[mnemosyne pre-commit] commit rejected — a test leaves a variable" \
@@ -363,8 +460,11 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         exit 1
     fi
     scratch_verdict=0
-    cargo run -q --locked --manifest-path "$gates/tools/unowned-scratch/Cargo.toml" \
-        --bin unowned-scratch -- --workspace "$(pwd)/Cargo.toml" || scratch_verdict=$?
+    for rs_manifest in "${rs_workspaces[@]}"; do
+        cargo run -q --locked --manifest-path "$gates/tools/unowned-scratch/Cargo.toml" \
+            --bin unowned-scratch -- --workspace "$rs_manifest" || scratch_verdict=$?
+        [[ $scratch_verdict -eq 0 ]] || break
+    done
     if [[ $scratch_verdict -eq 1 ]]; then
         {
             echo "[mnemosyne pre-commit] commit rejected — a path under the shared temp" \
@@ -399,8 +499,11 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         exit 1
     fi
     executable_verdict=0
-    cargo run -q --locked --manifest-path "$gates/tools/written-executable/Cargo.toml" \
-        --bin written-executable -- --workspace "$(pwd)/Cargo.toml" || executable_verdict=$?
+    for rs_manifest in "${rs_workspaces[@]}"; do
+        cargo run -q --locked --manifest-path "$gates/tools/written-executable/Cargo.toml" \
+            --bin written-executable -- --workspace "$rs_manifest" || executable_verdict=$?
+        [[ $executable_verdict -eq 0 ]] || break
+    done
     if [[ $executable_verdict -eq 1 ]]; then
         {
             echo "[mnemosyne pre-commit] commit rejected — a file this repository" \

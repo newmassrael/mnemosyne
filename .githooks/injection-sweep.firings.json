@@ -65,6 +65,21 @@
         "git_hooks_smoke::pre_commit_refuses_when_it_cannot_read_what_is_staged"
       ]
     },
+    "the-four-rs-gates-point-at-the-root-again": {
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "                if grep -q '^\\[workspace\\]' \"$rs_manifest\"; then\n                    case \" ${rs_workspaces[*]-} \" in\n                    *\" $rs_manifest \"*) ;;\n                    *) rs_workspaces+=(\"$rs_manifest\") ;;\n                    esac\n                    break\n                fi\n",
+          "to": "                if grep -q '^\\[workspace\\]' \"$rs_manifest\"; then\n                    rs_workspaces=(\"$tree_root/Cargo.toml\")\n                    break\n                fi\n"
+        }
+      ],
+      "expect_red": [
+        "pre_commit_reads_the_separate_workspace_a_staged_file_lives_in"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_commit_reads_the_separate_workspace_a_staged_file_lives_in"
+      ]
+    },
     "the-key-stops-telling-two-scopes-apart": {
       "edits": [
         {
