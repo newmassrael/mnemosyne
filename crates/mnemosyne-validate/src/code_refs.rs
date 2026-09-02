@@ -574,28 +574,71 @@ pub fn classify_coverage(snapshot: &mnemosyne_core::AtomicSnapshot) -> CoverageR
     report
 }
 
-/// One axis of the citation audit — the unit at which a run either JUDGES or
-/// does not.
+/// The axes and their enumeration, declared as ONE list (R1302).
 ///
-/// # Why the audit needs the axis as a value
+/// WHY A MACRO AND NOT A CHAIN. `all()` used to walk `successors` from a `FIRST`
+/// through an exhaustive `next()`, and that shape names its own hole in the
+/// comment it carried: a new variant whose `next()` arm returns `None`, or
+/// points somewhere nothing reaches, is never enumerated. The compiler forces
+/// the ARM and cannot force the LINK.
 ///
-/// Every axis reports a clean result as an absence: nothing printed, count
-/// zero. So does an axis the run never reached. Three modes were already
-/// printing a measured-looking `0` for an axis they structurally skip:
-/// `--filter-id` suppresses every axis but `decay`, `decay` itself is only
-/// judged WHEN an id is named, and the four opt-in axes emit nothing while
-/// their severity is unset. A consumer reading `impl_missing=0` cannot tell
-/// those apart from a judged-and-clean tree, and the reading they will take is
-/// the reassuring one.
+/// AND THE GUARD THAT LOOKED LIKE ONE WAS A SECOND COPY OF THE SAME OMISSION.
+/// `every_violation_shape_and_every_axis_are_one_name_space` holds `all()`
+/// against `every_violation_shape()`, which is a hand-written `vec![…]` — so a
+/// variant added to neither passed both, which is the half-enforced invariant
+/// this project's own `CLAUDE.md` names: two write paths for one fact, and the
+/// looser one deciding.
 ///
-/// So a run publishes a verdict per axis ([`SetEqualityValidator::axis_verdicts`]),
-/// every skip inside [`SetEqualityValidator::scan`] is taken by ASKING that map
-/// rather than by re-deriving the condition beside the code it guards, and the
-/// report prints a count only where a count was measured. The kind tag lives
-/// here, so the name a violation carries and the name a verdict carries are one
-/// string ([`CodeRefViolation::kind_tag`] delegates to [`AuditAxis::kind_tag`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AuditAxis {
+/// DECLARING THEM TOGETHER MAKES THE OMISSION UNREPRESENTABLE. There is no
+/// place to add a variant that is not also the place the enumeration is built
+/// from — and that turns the name-space law above into a real forcing function
+/// for the hand list, because the new axis now arrives on the `all()` side and
+/// the assertion asks the author for its violation shape.
+macro_rules! audit_axes {
+    ($(#[$enum_meta:meta])* $name:ident { $($variant:ident),+ $(,)? }) => {
+        $(#[$enum_meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum $name {
+            $($variant),+
+        }
+
+        impl $name {
+            /// Every axis, in declaration order.
+            ///
+            /// ORDER IS THE ENUM'S OWN, which is also its `Ord`, so the list and
+            /// the sort agree without either being told to.
+            #[must_use]
+            pub fn all() -> Vec<Self> {
+                vec![$(Self::$variant),+]
+            }
+        }
+    };
+}
+
+audit_axes!(
+    /// One axis of the citation audit — the unit at which a run either JUDGES
+    /// or does not.
+    ///
+    /// # Why the audit needs the axis as a value
+    ///
+    /// Every axis reports a clean result as an absence: nothing printed, count
+    /// zero. So does an axis the run never reached. Three modes were already
+    /// printing a measured-looking `0` for an axis they structurally skip:
+    /// `--filter-id` suppresses every axis but `decay`, `decay` itself is only
+    /// judged WHEN an id is named, and the four opt-in axes emit nothing while
+    /// their severity is unset. A consumer reading `impl_missing=0` cannot tell
+    /// those apart from a judged-and-clean tree, and the reading they will take
+    /// is the reassuring one.
+    ///
+    /// So a run publishes a verdict per axis
+    /// ([`SetEqualityValidator::axis_verdicts`]), every skip inside
+    /// [`SetEqualityValidator::scan`] is taken by ASKING that map rather than by
+    /// re-deriving the condition beside the code it guards, and the report
+    /// prints a count only where a count was measured. The kind tag lives here,
+    /// so the name a violation carries and the name a verdict carries are one
+    /// string ([`CodeRefViolation::kind_tag`] delegates to
+    /// [`AuditAxis::kind_tag`]).
+    AuditAxis {
     Missing,
     Decay,
     SectionMissing,
@@ -609,7 +652,8 @@ pub enum AuditAxis {
     VerificationMissing,
     MisclassifiedCoverage,
     BlanketVerifies,
-}
+    }
+);
 
 /// Which half of the bidirectional audit an axis lives on — the split the SCE
 /// lift request turns on, stated once here instead of in each caller's head.
@@ -624,9 +668,6 @@ pub enum AuditSide {
 }
 
 impl AuditAxis {
-    /// Where [`Self::all`] starts walking.
-    const FIRST: Self = Self::Missing;
-
     /// Stable tag: the string this axis's violations carry in `--json`, and the
     /// stem of its `<tag>_count` report field.
     #[must_use]
@@ -707,37 +748,15 @@ impl AuditAxis {
         }
     }
 
-    /// The next axis in enumeration order, or `None` at the end.
-    ///
-    /// Exhaustive, so a new variant does not compile until it is given a place
-    /// in the order — which is what makes [`Self::all`] a derivation instead of
-    /// a hand list of the kind Round 777 removed. The residue this leaves,
-    /// stated rather than hidden: a new arm returning `None` that nothing else
-    /// points at would be unreachable from `FIRST`, and only the surrounding
-    /// tests would notice.
-    const fn next(self) -> Option<Self> {
-        match self {
-            Self::Missing => Some(Self::Decay),
-            Self::Decay => Some(Self::SectionMissing),
-            Self::SectionMissing => Some(Self::CitationUnbound),
-            Self::CitationUnbound => Some(Self::SymbolMismatch),
-            Self::SymbolMismatch => Some(Self::InventoryMissing),
-            Self::InventoryMissing => Some(Self::InventoryDeprecated),
-            Self::InventoryDeprecated => Some(Self::ProseFactAssertion),
-            Self::ProseFactAssertion => Some(Self::BindingUnbacked),
-            Self::BindingUnbacked => Some(Self::ImplementationMissing),
-            Self::ImplementationMissing => Some(Self::VerificationMissing),
-            Self::VerificationMissing => Some(Self::MisclassifiedCoverage),
-            Self::MisclassifiedCoverage => Some(Self::BlanketVerifies),
-            Self::BlanketVerifies => None,
-        }
-    }
-
-    /// Every axis, in enumeration order.
-    #[must_use]
-    pub fn all() -> Vec<Self> {
-        std::iter::successors(Some(Self::FIRST), |a| a.next()).collect()
-    }
+    // `next` AND `FIRST` STOOD HERE AND R1302 REMOVED THEM. `all()` walked a
+    // `successors` chain from `FIRST`, and the doc on that chain named its own
+    // hole: the compiler forces every variant to HAVE an arm and cannot force
+    // the arm to be REACHED, so a new axis whose arm returns `None` was never
+    // enumerated and, in its words, "only the surrounding tests would notice".
+    // Measured before removing it, the surrounding test does not: it holds
+    // `all()` against `every_violation_shape()`, a hand-written `vec![…]`, so a
+    // variant added to neither passed both. `all()` is now generated beside the
+    // variant list itself, where there is no place to add one and leave it out.
 }
 
 impl serde::Serialize for AuditAxis {
@@ -10550,6 +10569,56 @@ mod tests {
         ]
     }
 
+    /// A successor chain can lose a variant; a declaration has nowhere to.
+    ///
+    /// THE DIFFERENCE R1302 BOUGHT, asserted rather than described — and the
+    /// first half is the mutation. `Chained` reproduces the shape `AuditAxis`
+    /// had exactly: a `next` the compiler forces every variant to have an arm
+    /// in, and whose LINKS it cannot force. `Orphan` compiles, is required to
+    /// have an arm, has one, and is never enumerated.
+    ///
+    /// AND THE GUARD THAT LOOKED LIKE ONE WAS A HAND LIST. The law below holds
+    /// the enumeration against `every_violation_shape()`, a hand-written
+    /// `vec![…]` — so an axis added to neither passed both, which is why this
+    /// case asserts the shape and not just the current axis list.
+    #[test]
+    fn a_successor_chain_can_drop_a_variant_and_a_declaration_cannot() {
+        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+        enum Chained {
+            A,
+            B,
+            Orphan,
+        }
+        impl Chained {
+            const fn next(self) -> Option<Self> {
+                match self {
+                    Self::A => Some(Self::B),
+                    Self::B => None,
+                    // The arm the compiler demanded, pointing nowhere.
+                    Self::Orphan => None,
+                }
+            }
+        }
+        let walked: Vec<Chained> = std::iter::successors(Some(Chained::A), |c| c.next()).collect();
+        assert_eq!(
+            walked,
+            vec![Chained::A, Chained::B],
+            "the chain reaches two of the three variants"
+        );
+        assert!(
+            !walked.contains(&Chained::Orphan),
+            "and the third compiled, was given the arm the compiler demanded, \
+             and did not appear — this is the hole R1302 removed"
+        );
+
+        audit_axes!(Declared { A, B, Orphan });
+        assert_eq!(
+            Declared::all().len(),
+            3,
+            "and a declaration has no place to add a variant and leave it out"
+        );
+    }
+
     /// The axis table is the ONE name space: every violation shape names an
     /// axis, the enumeration reaches it, and the tag a violation carries is the
     /// tag its axis carries.
@@ -10557,6 +10626,15 @@ mod tests {
     /// Both directions. A tag the enumeration cannot produce would be a
     /// violation no `not_judged` list could ever name; an axis no violation
     /// produces would be a name in the report with nothing behind it.
+    ///
+    /// AND SINCE R1302 IT IS A FORCING FUNCTION RATHER THAN A COINCIDENCE. One
+    /// side of this comparison — `every_violation_shape()` — is a hand-written
+    /// list, and the other used to be a `successors` walk that could silently
+    /// omit an axis; two hand-maintained lists agreeing about an axis NEITHER
+    /// of them had is what this asserted before. The enumeration is now
+    /// generated from the variant list itself, so a new axis arrives on that
+    /// side whether or not anybody remembers, and this assertion is what then
+    /// asks for its violation shape.
     #[test]
     fn every_violation_shape_and_every_axis_are_one_name_space() {
         let shapes = every_violation_shape();
