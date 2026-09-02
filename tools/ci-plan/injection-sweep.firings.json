@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": true,
+  "complete": false,
   "fired": {
     "a-bare-name-is-resolved-through-a-function-of-that-name": {
       "edits": [
@@ -638,6 +638,23 @@
         "a_choice_inside_a_returned_list_is_independent_of_the_callers_own",
         "a_push_inside_the_branch_the_binding_lives_in_is_not_conditional",
         "a_word_pushed_after_the_binding_is_in_the_command"
+      ]
+    },
+    "a-workflow-behind-a-path-filter-is-called-unconditional": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            !body.contains_key(&Yaml::String(\"paths\".to_string()))",
+          "to": "            true"
+        }
+      ],
+      "expect_red": [
+        "a_workflow_behind_a_path_filter_is_not_one_that_runs_on_every_push",
+        "this_repositorys_own_workflows_are_one_of_each"
+      ],
+      "tests": [
+        "a_workflow_behind_a_path_filter_is_not_one_that_runs_on_every_push",
+        "this_repositorys_own_workflows_are_one_of_each"
       ]
     },
     "a-workflow-that-uploads-nothing-still-collects": {

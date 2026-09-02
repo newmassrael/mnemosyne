@@ -487,6 +487,21 @@
         "which_step_of_the_job_the_rise_belongs_to_is_named"
       ]
     },
+    "a-silence-is-measured-over-the-whole-record-instead-of-a-window": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        .take(window)",
+          "to": "        .take(usize::MAX)"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_concluded_nowhere_in_the_window_is_named"
+      ],
+      "tests": [
+        "a_job_that_concluded_nowhere_in_the_window_is_named"
+      ]
+    },
     "a-single-point-is-drawn-as-a-trend": {
       "edits": [
         {

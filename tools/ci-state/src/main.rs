@@ -251,6 +251,55 @@ fn state_of(root: &Path, sha: &str) -> Report {
         &Github { root },
     ));
 
+    // AND WHICH JOBS HAVE SAID NOTHING AT ALL LATELY (R1304). Every other block
+    // here reads a VERDICT; this one reads the absence of one, and the two are
+    // not the same question. A job that is cancelled on every push produces no
+    // conclusion, so it is not red, so nothing above mentions it — and it is then
+    // indistinguishable from a job that keeps passing. R1303 found a law that had
+    // FAILED on live code sitting unread on `main` for two rounds behind exactly
+    // that.
+    //
+    // NO `gh` CALL: the record this tree already keeps holds, per commit, the
+    // jobs whose cost could be held against a budget — which is to say the jobs
+    // that concluded. The population it is subtracted from is what the workflows
+    // declare UNCONDITIONALLY, because a job behind a `paths:` filter is supposed
+    // to be quiet and reporting it would be a finding nobody can clear.
+    let (kept, _) = ci_state::history::kept_in(root);
+    let (expected, unread) = ci_plan::jobs_on_every_push(root);
+    if expected.is_empty() {
+        // A POPULATION THAT CAME BACK EMPTY IS NOT AN ANSWER OF "NONE".
+        lines.push(format!(
+            "NOT MEASURED which jobs have gone quiet — no workflow of this repository \
+             declares a job on every push, as read from here{}",
+            match unread.is_empty() {
+                true => String::new(),
+                false => format!(" ({})", unread.join("; ")),
+            }
+        ));
+    } else {
+        let quiet = ci_state::history::quiet_jobs(&kept, &expected, ci_state::history::QUIET_FOR);
+        if quiet.is_empty() {
+            lines.push(format!(
+                "every one of the {} job(s) this repository runs on every push has \
+                 concluded within the last {} recorded commit(s)",
+                expected.len(),
+                ci_state::history::QUIET_FOR
+            ));
+        } else {
+            lines.push(format!(
+                "^^ {} of {} job(s) run on every push have concluded on NONE of the \
+                 last {} recorded commit(s) — no verdict from them is not the same \
+                 as a good one:",
+                quiet.len(),
+                expected.len(),
+                ci_state::history::QUIET_FOR
+            ));
+            for job in &quiet {
+                lines.push(format!("  silent: {job}"));
+            }
+        }
+    }
+
     // AND LAST, WHETHER THIS PUSH MAY GO OVER WHAT WAS JUST PRINTED (R1297).
     // Read from the SAME `checks` and the SAME `retired` set the census above was
     // phrased from — asking GitHub a second time would let the report and the

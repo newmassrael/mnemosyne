@@ -193,6 +193,50 @@ pub fn keep(tree: &Path, kept: &Kept) -> Result<PathBuf, String> {
     Ok(at)
 }
 
+/// How many recent commits a job may stay quiet over before that is a finding.
+///
+/// READ OFF THE RECORD, NOT CHOSEN (R1304). At the moment this was written, the
+/// 67 records in this tree answered: over the last FIFTEEN commits every job a
+/// workflow runs unconditionally had concluded at least once, and over the last
+/// TEN, three had not — `every cache declared is one CI keeps`, `every
+/// compilation is one job's` and `what this run reads outside this tree`. Ten is
+/// therefore the window where the answer stops being empty and starts being
+/// three jobs nobody had a verdict from, and fifteen is where it goes quiet
+/// again. A number picked before that distribution was known would be a number
+/// somebody liked.
+pub const QUIET_FOR: usize = 10;
+
+/// The jobs a run should have judged that no recent commit has a verdict from.
+///
+/// A JOB THAT IS ALWAYS CANCELLED READS EXACTLY LIKE A JOB THAT ALWAYS PASSES,
+/// and that is the hole this closes. `cancelled` is not red, so the census says
+/// nothing about it and the walk carries nothing from it; a workspace whose only
+/// judge is such a job is ungated in practice, which is how a law that FAILED on
+/// live code sat on `main` for two rounds.
+///
+/// `expected` IS WHAT THE WORKFLOWS DECLARE UNCONDITIONALLY, asked of `ci-plan`
+/// rather than derived from the record itself. Deriving it from the record would
+/// make a job that has never once concluded invisible — it would not be in the
+/// population — which is the exact reading this is for.
+///
+/// THE RECORD HOLDS ONLY WHAT CONCLUDED. `Kept::of` records a job whose cost
+/// could be held against a budget, and a cancelled or still-running job has no
+/// such cost, so absence from the window IS the absence of a verdict.
+#[must_use]
+pub fn quiet_jobs(kept: &[Kept], expected: &[String], window: usize) -> Vec<String> {
+    let heard: BTreeSet<&str> = kept
+        .iter()
+        .rev()
+        .take(window)
+        .flat_map(|one| one.jobs.iter().map(|job| job.check.as_str()))
+        .collect();
+    expected
+        .iter()
+        .filter(|job| !heard.contains(job.as_str()))
+        .cloned()
+        .collect()
+}
+
 /// Every record this tree holds, oldest run first, and everything that would not
 /// read as one.
 ///

@@ -11,9 +11,66 @@ use std::collections::BTreeSet;
 
 use ci_plan::{
     cache_steps, job_needs, lister_declared_commands, lister_suite_commands, lock_verdict,
-    parse_lister, parse_script, parse_workflow, run_steps, CacheDeclaration, CargoCommand,
-    IssuedCommands, LockVerdict, Ownership,
+    parse_lister, parse_script, parse_workflow, run_steps, runs_on_every_push, CacheDeclaration,
+    CargoCommand, IssuedCommands, LockVerdict, Ownership,
 };
+
+/// A workflow asked about every commit, and one asked about some.
+///
+/// THE DISTINCTION A SILENCE IS READ IN (R1304). A job with no verdict for ten
+/// commits is either unjudged or simply not asked, and this is what tells the
+/// two apart. Every branch below is a shape this repository holds or could:
+/// `on: push: branches:` unconditional, a `paths:` filter, `paths-ignore`, a
+/// bare `push:` with no body, and a workflow with no push trigger at all.
+///
+/// AND THE FIRST ASSERTION IS ALSO THE PROOF THAT `on` IS FOUND AT ALL. YAML 1.1
+/// spells `true` as `on`, so the trigger block's key parses as a BOOLEAN and a
+/// reader asking only for the string would find no trigger in any workflow, call
+/// every one of them conditional, and report nothing — a silence inside the
+/// function written to make silence impossible. If that fallback were dropped,
+/// `unconditional` below would come back false.
+#[test]
+fn a_workflow_behind_a_path_filter_is_not_one_that_runs_on_every_push() {
+    let unconditional = "on:\n  push:\n    branches: [main]\njobs: {}\n";
+    let filtered = "on:\n  push:\n    branches: [main]\n    paths:\n      - 'a/**'\njobs: {}\n";
+    let ignoring = "on:\n  push:\n    paths-ignore:\n      - 'docs/**'\njobs: {}\n";
+    let bare = "on:\n  push:\njobs: {}\n";
+    let never = "on:\n  workflow_dispatch:\njobs: {}\n";
+    assert!(runs_on_every_push(&parse_workflow(unconditional, "a.yml")));
+    assert!(runs_on_every_push(&parse_workflow(bare, "d.yml")));
+    assert!(
+        !runs_on_every_push(&parse_workflow(filtered, "b.yml")),
+        "a `paths:` filter is what leaves a job quiet on a commit its workflow \
+         was otherwise asked about"
+    );
+    assert!(!runs_on_every_push(&parse_workflow(ignoring, "c.yml")));
+    assert!(!runs_on_every_push(&parse_workflow(never, "e.yml")));
+}
+
+/// This repository has one of each, and the law asks the files rather than me.
+#[test]
+fn this_repositorys_own_workflows_are_one_of_each() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let (jobs, unread) = ci_plan::jobs_on_every_push(&root);
+    assert!(
+        unread.is_empty(),
+        "a workflow that would not read leaves this population short: {unread:?}"
+    );
+    assert!(
+        !jobs.is_empty(),
+        "this law is vacuous unless some job was read"
+    );
+    assert!(
+        !jobs.iter().any(|job| job.contains("replay every kit")),
+        "`evidence-replay.yml` sits behind a `paths:` filter, so its job is \
+         SUPPOSED to be quiet and must not be in the population a silence is \
+         judged against: {jobs:?}"
+    );
+    assert!(
+        jobs.iter().any(|job| job == "validate"),
+        "and `mnemosyne-validate.yml` has no filter, so its jobs are: {jobs:?}"
+    );
+}
 
 /// A workflow with two cached jobs, one of them registry-only.
 const TWO_CACHES: &str = r#"

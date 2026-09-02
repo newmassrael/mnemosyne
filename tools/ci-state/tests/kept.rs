@@ -12,8 +12,8 @@ use std::fs;
 use std::path::Path;
 
 use ci_state::history::{
-    keep, kept_in, kept_report, movements, never_completed, trend_report, Kept, Movement, StepsOf,
-    RECORDS,
+    keep, kept_in, kept_report, movements, never_completed, quiet_jobs, trend_report, Kept,
+    Movement, StepsOf, RECORDS,
 };
 use ci_state::{Check, Output, Spent};
 
@@ -1798,4 +1798,74 @@ fn the_job_and_the_step_are_printed_as_two_numbers() {
         "and the step moved by MORE than the job did, which is the shape a \
          cancelled run makes and not an arithmetic error: {said}"
     );
+}
+
+/// A job with no verdict in the window is named; one with a verdict is not.
+///
+/// THE ABSENCE OF A VERDICT IS NOT A VERDICT (R1304). Every other reader in this
+/// crate asks what a job SAID; this one asks which said nothing, because a job
+/// cancelled on every push produces no conclusion, is therefore not red, and is
+/// therefore indistinguishable from a job that keeps passing. R1303 found a law
+/// that had FAILED on live code sitting unread on `main` for two rounds behind
+/// exactly that shape.
+#[test]
+fn a_job_that_concluded_nowhere_in_the_window_is_named() {
+    let expected = vec![
+        "validate".to_string(),
+        "separate in-repo workspaces".to_string(),
+        "every compilation is one job's".to_string(),
+    ];
+    let kept = vec![
+        record(
+            "1111111111111111111111111111111111111111",
+            "2026-09-01T00:00:00Z",
+            &[concluded(
+                "every compilation is one job's",
+                60,
+                30,
+                "success",
+            )],
+        ),
+        record(
+            "2222222222222222222222222222222222222222",
+            "2026-09-02T00:00:00Z",
+            &[concluded("validate", 60, 90, "success")],
+        ),
+        record(
+            "3333333333333333333333333333333333333333",
+            "2026-09-02T01:00:00Z",
+            &[concluded("separate in-repo workspaces", 60, 60, "failure")],
+        ),
+    ];
+
+    // THE WHOLE RECORD: every expected job concluded somewhere, so nothing is
+    // quiet — and the FAILING one counts, because a red is a verdict.
+    assert!(
+        quiet_jobs(&kept, &expected, 3).is_empty(),
+        "a job that concluded — even badly — has been heard from"
+    );
+
+    // A NARROWER WINDOW IS THE MUTATION: the oldest commit drops out and the job
+    // only IT heard from becomes the finding.
+    assert_eq!(
+        quiet_jobs(&kept, &expected, 2),
+        vec!["every compilation is one job's".to_string()],
+        "the window is what makes a silence recent rather than eternal"
+    );
+
+    // AND A JOB THE RECORD HAS NEVER CARRIED IS THE POINT OF TAKING THE
+    // POPULATION FROM THE WORKFLOWS. Derived from the record instead, a job that
+    // has never once concluded would not be in the population at all — which is
+    // exactly the reading this exists to produce.
+    let never = vec!["a job nothing ever recorded".to_string()];
+    assert_eq!(
+        quiet_jobs(&kept, &never, 3),
+        never,
+        "absence from every record is the loudest form of this finding"
+    );
+
+    // AN EMPTY EXPECTATION ANSWERS EMPTY, and the binary prints NOT MEASURED for
+    // it rather than "none are quiet" — a population that came back empty is not
+    // an answer of none.
+    assert!(quiet_jobs(&kept, &[], 3).is_empty());
 }

@@ -29,6 +29,21 @@
   "min_free_mb": 8000,
   "injections": [
     {
+      "name": "a-workflow-behind-a-path-filter-is-called-unconditional",
+      "why": "R1304. This predicate is the population a SILENCE is judged in: a job with no verdict for ten commits is either unjudged or simply not asked, and only the trigger tells them apart. Drop the `paths` test and `evidence-replay.yml`'s job joins the population it is supposed to be absent from — so the reporter names it on every push, for ever, with no action that could clear it. A finding nobody can clear is the one people learn to scroll past, and it takes the three real findings with it",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            !body.contains_key(&Yaml::String(\"paths\".to_string()))",
+          "to": "            true"
+        }
+      ],
+      "expect_red": [
+        "a_workflow_behind_a_path_filter_is_not_one_that_runs_on_every_push",
+        "this_repositorys_own_workflows_are_one_of_each"
+      ]
+    },
+    {
       "name": "an-unknown-runner-is-guessed-at",
       "why": "the key prefix is the identity every later comparison joins on, so a wrong `runner.os` reports every cache in the repository as missing — the loudest possible wrong answer, wearing the shape of a finding",
       "edits": [

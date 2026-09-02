@@ -332,6 +332,20 @@
       ]
     },
     {
+      "name": "a-silence-is-measured-over-the-whole-record-instead-of-a-window",
+      "why": "R1304. What makes a silence a finding is that it is RECENT: a job that concluded ten commits ago and has said nothing since is the shape this reports, and a job that concluded once in August satisfies a windowless reader for ever. Widen the window to the whole record and the answer becomes 'every job has been heard from at some point', which is true of a repository whose CI stopped running entirely",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/history.rs",
+          "from": "        .take(window)",
+          "to": "        .take(usize::MAX)"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_concluded_nowhere_in_the_window_is_named"
+      ]
+    },
+    {
       "name": "the-acknowledgement-forgets-which-commit-a-red-is-on",
       "why": "R1301. R1300's walk gathers reds across SEVERAL commits and handed them on as a set of job NAMES, so one job red on two commits — for two different reasons — was one name, and saying it once discharged both. Drop the commit from the spelling again and a push can say it has read a red it has not: the acknowledgement stops being evidence of reading, which is the one property it exists for",
       "edits": [

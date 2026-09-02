@@ -119,6 +119,84 @@ pub fn load_workflow(root: &Path, path: &str) -> Yaml {
 /// will not parse is one GitHub silently does not run, and a LAW should stop
 /// dead at it. A reporter run inside a push has to name it and carry on, because
 /// exiting on it would take out the reading of everything else.
+/// Whether this workflow runs on EVERY push to a branch, or only on some.
+///
+/// THE POPULATION A SILENCE MEANS SOMETHING IN (R1304). A job that has produced
+/// no verdict for ten commits is either a job nothing is judging or a job whose
+/// workflow was not asked — and the two read identically from the outside. This
+/// tree has one of each: `mnemosyne-validate.yml` declares `push: branches:
+/// [main]` and nothing else, so every job of it runs on every commit; the jobs
+/// of `evidence-replay.yml` sit behind a `paths:` filter and are SUPPOSED to be
+/// quiet. A gate that could not tell them apart would report the second for ever,
+/// and a finding nobody can clear is one people learn to scroll past.
+///
+/// `on` IS PARSED AS A BOOLEAN AND THAT IS NOT A CURIOSITY. YAML 1.1 spells
+/// `true` as `on`, so the key of the trigger block arrives here as
+/// `Yaml::Boolean(true)` rather than as a string — which is why the lookup asks
+/// for both. A reader that asked only for the string would find no trigger in
+/// ANY workflow, call every one of them conditional, and report nothing at all,
+/// which is the silence this whole function exists to make impossible.
+#[must_use]
+pub fn runs_on_every_push(doc: &Yaml) -> bool {
+    let Some(top) = doc.as_hash() else {
+        return false;
+    };
+    let triggers = match top
+        .get(&Yaml::String("on".to_string()))
+        .or_else(|| top.get(&Yaml::Boolean(true)))
+        .and_then(Yaml::as_hash)
+    {
+        Some(hash) => hash,
+        None => return false,
+    };
+    let Some(push) = triggers.get(&Yaml::String("push".to_string())) else {
+        return false;
+    };
+    // A `push:` WITH NO BODY IS UNCONDITIONAL, and so is one that only names
+    // branches. What makes it conditional is a filter on the FILES a commit
+    // touches, which is the only thing that can leave a job quiet on a commit
+    // its workflow was otherwise asked about.
+    match push.as_hash() {
+        None => true,
+        Some(body) => {
+            !body.contains_key(&Yaml::String("paths".to_string()))
+                && !body.contains_key(&Yaml::String("paths-ignore".to_string()))
+        }
+    }
+}
+
+/// Every job GitHub shows for a workflow that runs on every push.
+///
+/// THE NAME AS GITHUB SHOWS IT, because that is the name a check row carries and
+/// therefore the name a record of what ran is keyed by. A job with no `name:` is
+/// shown by its id, which is the same rule the acknowledgement in `ci-state`
+/// spells reds with.
+#[must_use]
+pub fn jobs_on_every_push(root: &Path) -> (Vec<String>, Vec<String>) {
+    let mut shown = Vec::new();
+    let mut unread = Vec::new();
+    let files = match tracked_workflow_files(root) {
+        Ok(files) => files,
+        Err(why) => return (shown, vec![why]),
+    };
+    for path in files {
+        match read_workflow(root, &path) {
+            Ok(doc) => {
+                if !runs_on_every_push(&doc) {
+                    continue;
+                }
+                for job in job_budgets(&doc) {
+                    shown.push(job.shown_as.unwrap_or(job.id));
+                }
+            }
+            Err(why) => unread.push(why),
+        }
+    }
+    shown.sort();
+    shown.dedup();
+    (shown, unread)
+}
+
 pub fn read_workflow(root: &Path, path: &str) -> Result<Yaml, String> {
     let raw = std::fs::read_to_string(root.join(path))
         .map_err(|why| format!("{path} could not be read — {why}"))?;
