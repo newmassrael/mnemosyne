@@ -6,7 +6,26 @@
 //! retire one — and the third made the number wrong, which is the number the
 //! whole debt arc terminates on.
 
-use open_debts::{open_autonomous, registrations, retired, Shape};
+use std::collections::BTreeSet;
+
+use open_debts::{registrations, Registration, Shape};
+
+/// The census over a ledger whose retirements name no commit.
+///
+/// EVERY FIXTURE THAT PREDATES THE COMMIT CHECK (R1298) reaches the library
+/// through here, and the argument for it is a property of those fixtures rather
+/// than a convenience: none of them names a commit, so there is nothing that
+/// could have failed to resolve. The cases that DO name one build their own set
+/// and call the library directly, which is what keeps this helper from becoming
+/// a way of never exercising the parameter.
+fn open_autonomous(ledger: &str) -> Vec<Registration> {
+    open_debts::open_autonomous(ledger, &BTreeSet::new())
+}
+
+/// The retirement set over the same kind of ledger, for the same reason.
+fn retired(ledger: &str) -> BTreeSet<String> {
+    open_debts::retired(ledger, &BTreeSet::new())
+}
 
 /// A bullet registration, the shape most rows use.
 const BULLET: &str = "\
@@ -189,4 +208,176 @@ fn a_ledger_with_no_registrations_yields_nothing_to_mistake_for_finished() {
     let ledger = "A file with prose about debts and no registration notation at all.\n";
     assert!(registrations(ledger).is_empty());
     assert!(open_autonomous(ledger).is_empty());
+}
+
+// ── A RETIREMENT IS A CLAIM, AND A CLAIM CAN BE FALSE (R1298) ────────────────
+
+/// A row ABOUT retirement is not a retired row.
+///
+/// THIS IS THE DEFECT AS IT HAPPENED, not a shape imagined for a test. N270 was
+/// registered to say that this ledger's retirements cite commits nobody checks;
+/// its headline named the word; the census retired it and reported one fewer
+/// open row with nothing at all to show that it had.
+#[test]
+fn a_row_that_names_the_retirement_word_is_not_retired_by_saying_it() {
+    let ledger = "\
+- **N900**(①) — the ledger's `CLOSED` marker cites a commit and nobody checks it.
+ The rule is `row.body.contains(\"CLOSED\")`, which retires a row for saying it.
+";
+    let open = open_autonomous(ledger);
+    assert_eq!(
+        open.len(),
+        1,
+        "a row whose SUBJECT is the word stays open: {open:?}"
+    );
+    assert_eq!(open[0].id, "N900");
+}
+
+/// A retirement QUOTED in corner brackets is a quotation, not a retirement.
+///
+/// THE ROW RETIRED ITSELF TWICE. The code-span rule was written first and was
+/// not enough: N270's body quoted a whole live retirement — the `Z19` example
+/// that widened the attribution rule — in the corner brackets this ledger uses
+/// for quoting prose, and the census dropped the row again. A reader that
+/// honours only one of two quotation notations makes safety depend on which
+/// mark the author reached for.
+#[test]
+fn a_retirement_quoted_in_corner_brackets_retires_nothing() {
+    let ledger = "\
+- **N909**(①) — the reader missed this shape.
+ 그중 `Z19` 는 「(CLOSED 2026-08-14)」로 날짜가 귀속이었다.
+";
+    let open = open_autonomous(ledger);
+    assert_eq!(
+        open.len(),
+        1,
+        "quoting a retirement is not performing one: {open:?}"
+    );
+    assert_eq!(open[0].id, "N909");
+}
+
+/// And prose that uses the word while naming nobody retires nothing either.
+///
+/// THE TWO REFUSALS ARE DIFFERENT and both were needed: the case above hides
+/// the word in a code span, this one writes it plainly with nothing attributing
+/// it. A ledger where either retires a row is a ledger where a count can drop
+/// because somebody wrote a sentence.
+#[test]
+fn a_retirement_that_names_nothing_retires_nothing() {
+    let ledger = "- **N901**(①) — this row is not CLOSED and nothing here says who closed it.\n";
+    let open = open_autonomous(ledger);
+    assert_eq!(open.len(), 1, "unattributed prose is prose: {open:?}");
+}
+
+/// Named by a round, it is a retirement — the control for the two above.
+#[test]
+fn a_retirement_that_names_a_round_still_retires() {
+    let ledger = "- **N902**(①) — done.\n 🟢CLOSED (R1244).\n";
+    assert!(
+        open_autonomous(ledger).is_empty(),
+        "naming the round that did it is what a retirement has always looked like"
+    );
+}
+
+/// A day is a name too, and this rule learned that from the ledger.
+///
+/// THE FIRST FORM OF THE ATTRIBUTION RULE KNEW THREE NAMES and refused two live
+/// retirements on the real file. One of them — `Z19 상세 (CLOSED 2026-08-14)` —
+/// is attributed by a date and nothing else, so the notation was evidence and
+/// the reader was what was wrong. The other names nothing at all and is still
+/// refused, which is how the two are told apart.
+#[test]
+fn a_retirement_attributed_by_a_day_is_a_retirement() {
+    let dated = "- **N907**(①) — done.\n **Z19 상세 (CLOSED 2026-08-14) — the detail**\n";
+    assert!(
+        retired(dated).contains("Z19"),
+        "the ledger writes this shape and this reader must not refuse it"
+    );
+    let nameless = "- **N908**(①) — done.\n 🟢**N908 CLOSED — 단 다른 답으로.**\n";
+    assert!(
+        !retired(nameless).contains("N908"),
+        "and a retirement that names nothing is still refused"
+    );
+}
+
+/// A retirement naming a commit this repository has retires its row.
+#[test]
+fn a_retirement_naming_a_commit_that_exists_retires_its_row() {
+    let ledger = "- **N903**(①) — done. CLOSED (R1297, 커밋 `adacf08`)\n";
+    let named = open_debts::commits_named_by_retirements(ledger);
+    assert_eq!(
+        named.keys().collect::<Vec<_>>(),
+        vec!["adacf08"],
+        "the sha is read off the word that introduces it: {named:?}"
+    );
+    assert!(
+        open_debts::open_autonomous(ledger, &BTreeSet::new()).is_empty(),
+        "with nothing unresolved, this is an ordinary retirement"
+    );
+}
+
+/// AND NAMING A COMMIT THAT IS NOT THERE RETIRES NOTHING — the mutation that
+/// says this gate is not vacuous.
+///
+/// Every commit the real ledger cites resolves today, so the only way to see
+/// this hold is to break it on purpose. It is the exact shape that shipped:
+/// R1297's row claimed `커밋 4a4d0e0` before that commit was made.
+#[test]
+fn a_retirement_naming_a_commit_that_is_not_there_retires_nothing() {
+    let ledger = "- **N904**(①) — done. CLOSED (R1297, 커밋 `4a4d0e0`)\n";
+    let unresolved: BTreeSet<String> = ["4a4d0e0".to_string()].into_iter().collect();
+    assert!(
+        open_debts::open_autonomous(ledger, &BTreeSet::new()).is_empty(),
+        "the control: with the commit present the row is retired"
+    );
+    let open = open_debts::open_autonomous(ledger, &unresolved);
+    assert_eq!(
+        open.len(),
+        1,
+        "a closure against a commit that does not exist is a false claim, \
+         and a false name is worse than no name: {open:?}"
+    );
+    assert!(
+        open_debts::retired(ledger, &unresolved).is_empty(),
+        "and the line reader must refuse it too — one resolver, or the pair drifts"
+    );
+}
+
+/// A backticked hexadecimal that no word introduces is not a commit.
+///
+/// `31387185994` IS A RUN ID and it reads as hexadecimal. A rule that took any
+/// backticked hex would report GitHub run ids as dangling commits — a gate that
+/// reddens on things that are not its subject is one people turn off.
+#[test]
+fn a_run_id_beside_a_retirement_is_not_read_as_a_commit() {
+    let ledger = "- **N905**(①) — done. CLOSED (R1134, run `31387185994` was the red)\n";
+    assert!(
+        open_debts::commits_named_by_retirements(ledger).is_empty(),
+        "only `커밋`/`commit` introduces a sha"
+    );
+}
+
+/// The two write paths answer the same question the same way.
+///
+/// THE DEFECT WAS THAT THEY DID NOT. `retired` demanded a run of ids reaching
+/// the word and `open_autonomous` accepted it anywhere in the row, so the same
+/// six letters meant two things one function apart — and it was the looser one
+/// that decided the count.
+#[test]
+fn the_row_reader_and_the_line_reader_agree_about_what_a_retirement_is() {
+    for line in [
+        "- **N906**(①) — the `CLOSED` marker is this row's subject.",
+        "- **N906**(①) — not CLOSED by anything named here.",
+    ] {
+        let ledger = format!("{line}\n");
+        assert!(
+            !retired(&ledger).contains("N906"),
+            "the line reader must not retire it: {line}"
+        );
+        assert_eq!(
+            open_autonomous(&ledger).len(),
+            1,
+            "and neither must the row reader: {line}"
+        );
+    }
 }
