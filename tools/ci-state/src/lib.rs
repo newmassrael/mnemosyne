@@ -1218,6 +1218,26 @@ pub const ACKNOWLEDGEMENT: &str = "MNEMOSYNE_PUSH_OVER_RED";
 /// How that variable spells more than one check.
 pub const ACKNOWLEDGEMENT_SEPARATOR: char = ',';
 
+/// How it joins a job to the commit that job is red on.
+///
+/// THE COMMIT IS PART OF THE NAME SINCE R1301, and R1300 is why. The walk made
+/// the reds a push must name span SEVERAL commits, and the acknowledgement was
+/// a set of job NAMES — so one job red on two commits, for two different
+/// reasons, was one name, and saying it once discharged both. That is right for
+/// the fix-forward case and it is a narrowing everywhere else: there was no way
+/// to say "I have read the one on this commit and not the one on that".
+pub const ACKNOWLEDGEMENT_AT: char = '@';
+
+/// How a push spells one outstanding red: the job, then where it is red.
+///
+/// THE SHORT SHA, because it is what every line of this reporter prints and an
+/// acknowledgement a reader cannot copy off the refusal is one they will guess
+/// at.
+#[must_use]
+pub fn spell(sha: &str, job: &str) -> String {
+    format!("{job}{ACKNOWLEDGEMENT_AT}{}", short(sha))
+}
+
 /// One commit a push walked past, with what CI said about it.
 ///
 /// THE WALK EXISTS BECAUSE ONE COMMIT WAS NOT ENOUGH (R1300). Gate 6 asked about
@@ -1287,23 +1307,15 @@ pub fn outstanding_reds(walk: &[Walked]) -> Vec<(String, String)> {
     outstanding
 }
 
-/// The checks that make this commit red and that no later push retired.
-///
-/// THE SAME SUBTRACTION THE CENSUS PRINTS. A run a later push cancelled is not
-/// this commit's failure (R1242), and a gate that asked for those names would
-/// demand an acknowledgement of something that never happened — which teaches a
-/// reader that the acknowledgement is noise, the one outcome that undoes it.
-pub fn reds_to_name(checks: &[Check], superseded: &BTreeSet<String>) -> Vec<String> {
-    let mut named: Vec<String> = checks
-        .iter()
-        .filter(|check| is_failing(check))
-        .filter(|check| !superseded.contains(&check.name))
-        .map(|check| check.name.clone())
-        .collect();
-    named.sort();
-    named.dedup();
-    named
-}
+// `reds_to_name` STOOD HERE AND R1301 REMOVED IT. R1300 replaced it with
+// `outstanding_reds`, which answers the same question over a WALK rather than
+// one commit — for a single commit the two agree, because a green sighting
+// needs something newer to be sighted at — and left the old one alive with a
+// test as its only reader. A superseded path kept because something still calls
+// it is the legacy carry this project's own `CLAUDE.md` forbids, and the test
+// went with the function: audit history lives in the changelog, code lives in
+// code. The subtraction it did (R1242: a run a later push cancelled is not this
+// commit's failure) is inside `outstanding_reds`, where its caller reads it.
 
 /// What an acknowledgement is worth against the reds it claims to name.
 ///
@@ -1340,29 +1352,34 @@ pub enum Acknowledgement {
 /// EXACT SET EQUALITY, in both directions. A missing name is somebody who read
 /// half the report; an invented one is somebody who read a different commit's,
 /// and both are a reader who does not know what is broken.
-pub fn acknowledgement(reds: &[String], given: Option<&str>) -> Acknowledgement {
+/// `reds` is what the walk found: the commit each red is on, and the job.
+pub fn acknowledgement(reds: &[(String, String)], given: Option<&str>) -> Acknowledgement {
     if reds.is_empty() {
         return Acknowledgement::NothingToName;
     }
-    if reds
+    // BOTH SEPARATORS, because both are how this variable is read (R1301). A job
+    // whose name holds either cannot be spelled unambiguously, and a parser that
+    // can be made not to know is the exemption-shaped hole this gate closes.
+    let unspellable: Vec<String> = reds
         .iter()
-        .any(|red| red.contains(ACKNOWLEDGEMENT_SEPARATOR))
-    {
-        return Acknowledgement::Unspellable {
-            reds: reds.to_vec(),
-        };
+        .filter(|(_, job)| {
+            job.contains(ACKNOWLEDGEMENT_SEPARATOR) || job.contains(ACKNOWLEDGEMENT_AT)
+        })
+        .map(|(_, job)| job.clone())
+        .collect();
+    if !unspellable.is_empty() {
+        return Acknowledgement::Unspellable { reds: unspellable };
     }
+    let spelled: Vec<String> = reds.iter().map(|(sha, job)| spell(sha, job)).collect();
     let Some(given) = given.map(str::trim).filter(|given| !given.is_empty()) else {
-        return Acknowledgement::Absent {
-            reds: reds.to_vec(),
-        };
+        return Acknowledgement::Absent { reds: spelled };
     };
     let named: BTreeSet<&str> = given
         .split(ACKNOWLEDGEMENT_SEPARATOR)
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .collect();
-    let wanted: BTreeSet<&str> = reds.iter().map(String::as_str).collect();
+    let wanted: BTreeSet<&str> = spelled.iter().map(String::as_str).collect();
     if named == wanted {
         return Acknowledgement::Named;
     }

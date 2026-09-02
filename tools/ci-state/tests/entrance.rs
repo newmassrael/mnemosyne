@@ -31,7 +31,15 @@ const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 /// SPELLED ONCE because it is now two things at once: the row every report case
 /// looks for, and the acknowledgement that lets a push go over it. A second
 /// spelling of it is a case that keeps passing while the two drift apart.
-const RECORDED_RED: &str = "every cache declared is one CI keeps";
+/// The job the recorded body has red, JOINED TO THE COMMIT IT IS RED ON.
+///
+/// THE SPELLING CHANGED AT R1301 and this constant is where every case felt it.
+/// R1300's walk gathers reds across several commits, so a set of job names could
+/// not say WHICH commit a push had read; the acknowledgement carries the commit
+/// now, and a fixture still saying the bare job name is a push that named a red
+/// on no commit at all — which is exactly what these seven cases printed when
+/// the constant had not been moved yet.
+const RECORDED_RED: &str = "every cache declared is one CI keeps@2d630331";
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

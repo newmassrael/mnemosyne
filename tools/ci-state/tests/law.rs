@@ -930,37 +930,26 @@ fn a_finished_commit_is_not_told_its_verdict_is_missing() {
     }
 }
 
-/// The reds a push must name are the failures no later push retired.
-#[test]
-fn the_reds_to_name_are_the_failures_a_later_push_did_not_retire() {
-    let checks = [
-        check(1, "validate", Some("failure"), 1),
-        check(2, "MSRV", Some("cancelled"), 1),
-        check(3, "item citations name items", Some("success"), 0),
-    ];
-    let retired: std::collections::BTreeSet<String> = ["MSRV".to_string()].into_iter().collect();
-    assert_eq!(
-        ci_state::reds_to_name(&checks, &retired),
-        vec!["validate".to_string()],
-        "a run a later push cancelled is not this commit's failure (R1242), and \
-         demanding it be acknowledged teaches a reader that the acknowledgement \
-         is noise"
-    );
+/// One red, as this push must spell it: the job, then where it is red.
+fn red(sha: &str, job: &str) -> (String, String) {
+    (sha.to_string(), job.to_string())
 }
 
 /// A red nobody named is refused, and the refusal carries the spelling.
 #[test]
 fn a_red_with_no_acknowledgement_is_refused_and_told_how_to_pass() {
-    let reds = vec!["separate in-repo workspaces".to_string()];
+    let reds = vec![red(SHA, "separate in-repo workspaces")];
     let standing = ci_state::acknowledgement(&reds, None);
     assert_eq!(
         standing,
-        ci_state::Acknowledgement::Absent { reds: reds.clone() }
+        ci_state::Acknowledgement::Absent {
+            reds: vec!["separate in-repo workspaces@2d630331".to_string()]
+        }
     );
     let said = ci_state::refusal(SHA, &standing).join("\n");
     assert!(said.contains("REFUSING this push"), "{said}");
     assert!(
-        said.contains("MNEMOSYNE_PUSH_OVER_RED='separate in-repo workspaces'"),
+        said.contains("MNEMOSYNE_PUSH_OVER_RED='separate in-repo workspaces@2d630331'"),
         "a gate whose discharge is a guess is a gate people route around: {said}"
     );
 }
@@ -972,7 +961,7 @@ fn a_red_with_no_acknowledgement_is_refused_and_told_how_to_pass() {
 /// behind, and a gate satisfied by either is satisfied by a typo.
 #[test]
 fn a_blank_acknowledgement_names_nothing() {
-    let reds = vec!["validate".to_string()];
+    let reds = vec![red(SHA, "validate")];
     for blank in ["", "   ", " , , "] {
         assert!(
             matches!(
@@ -988,9 +977,9 @@ fn a_blank_acknowledgement_names_nothing() {
 /// Naming exactly the reds discharges it, in any order and with any spacing.
 #[test]
 fn naming_every_red_and_no_other_lets_the_push_through() {
-    let reds = vec!["MSRV".to_string(), "validate".to_string()];
+    let reds = vec![red(SHA, "MSRV"), red(SHA, "validate")];
     assert_eq!(
-        ci_state::acknowledgement(&reds, Some(" validate ,MSRV ")),
+        ci_state::acknowledgement(&reds, Some(" validate@2d630331 ,MSRV@2d630331 ")),
         ci_state::Acknowledgement::Named,
         "the set is what was read, not the order it was typed in"
     );
@@ -1003,20 +992,65 @@ fn naming_every_red_and_no_other_lets_the_push_through() {
 /// Half a red is not a red read: naming one of two still refuses, and says which.
 #[test]
 fn an_acknowledgement_that_misses_a_red_is_refused_and_names_the_half() {
-    let reds = vec!["MSRV".to_string(), "validate".to_string()];
-    let standing = ci_state::acknowledgement(&reds, Some("validate, item citations name items"));
+    let reds = vec![red(SHA, "MSRV"), red(SHA, "validate")];
+    let standing = ci_state::acknowledgement(
+        &reds,
+        Some("validate@2d630331, item citations name items@2d630331"),
+    );
     assert_eq!(
         standing,
         ci_state::Acknowledgement::Mismatched {
-            missing: vec!["MSRV".to_string()],
-            invented: vec!["item citations name items".to_string()],
+            missing: vec!["MSRV@2d630331".to_string()],
+            invented: vec!["item citations name items@2d630331".to_string()],
         }
     );
     let said = ci_state::refusal(SHA, &standing).join("\n");
-    assert!(said.contains("not named, and red: MSRV"), "{said}");
+    assert!(said.contains("not named, and red: MSRV@2d630331"), "{said}");
     assert!(
-        said.contains("named, and not red on this commit: item citations name items"),
+        said.contains("named, and not red on this commit: item citations name items@2d630331"),
         "{said}"
+    );
+}
+
+/// The SAME JOB red on two commits is two names, and naming one is not both.
+///
+/// THIS IS THE WHOLE OF R1301, and R1300 is what made it reachable: the walk
+/// gathers reds across several commits, and until now they arrived as a set of
+/// job NAMES. A job red on two commits for two different reasons was one name,
+/// so saying it once discharged both — a push had no way to say it had read the
+/// one and not the other. Right for the fix-forward case, and a real narrowing
+/// everywhere else.
+#[test]
+fn the_same_job_red_on_two_commits_must_be_named_twice() {
+    let older = "0d1c3336aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let reds = vec![
+        red(SHA, "separate in-repo workspaces"),
+        red(older, "separate in-repo workspaces"),
+    ];
+    // NAMING THE JOB ONCE IS THE OLD SPELLING, and it must no longer discharge.
+    let standing = ci_state::acknowledgement(&reds, Some("separate in-repo workspaces"));
+    assert!(
+        matches!(standing, ci_state::Acknowledgement::Mismatched { .. }),
+        "the job alone names neither commit: {standing:?}"
+    );
+    // AND NAMING ONE OF THE TWO IS HALF A READING, said as such.
+    let half = ci_state::acknowledgement(&reds, Some("separate in-repo workspaces@2d630331"));
+    assert_eq!(
+        half,
+        ci_state::Acknowledgement::Mismatched {
+            missing: vec!["separate in-repo workspaces@0d1c3336".to_string()],
+            invented: Vec::new(),
+        },
+        "and the half that is missing is the one on the other commit"
+    );
+    // THE CONTROL: both, and the push goes.
+    assert_eq!(
+        ci_state::acknowledgement(
+            &reds,
+            Some("separate in-repo workspaces@2d630331, separate in-repo workspaces@0d1c3336")
+        ),
+        ci_state::Acknowledgement::Named,
+        "naming both is what reading both looks like"
     );
 }
 
@@ -1038,17 +1072,32 @@ fn a_commit_with_no_red_has_nothing_to_name() {
 /// arriving through its own parser.
 #[test]
 fn a_red_whose_name_holds_the_separator_can_be_spelled_by_nothing() {
-    let reds = vec!["a job, named badly".to_string()];
+    let reds = vec![red(SHA, "a job, named badly")];
     let standing = ci_state::acknowledgement(&reds, Some("a job, named badly"));
     assert_eq!(
         standing,
-        ci_state::Acknowledgement::Unspellable { reds: reds.clone() },
+        ci_state::Acknowledgement::Unspellable {
+            reds: vec!["a job, named badly".to_string()]
+        },
         "and it is unspellable even when the value looks right — splitting it \
          yields two names that are neither of them the check"
     );
     let said = ci_state::refusal(SHA, &standing).join("\n");
     assert!(said.contains("REFUSING this push"), "{said}");
     assert!(said.contains("a job, named badly"), "{said}");
+
+    // AND THE SECOND SEPARATOR IS A DEAD END TOO (R1301). The commit is joined
+    // to the job with `@`, so a job carrying one is exactly as unspellable as a
+    // job carrying a comma — a parser with one guarded end and one open end is
+    // not guarded.
+    let at = vec![red(SHA, "a job@named badly")];
+    assert_eq!(
+        ci_state::acknowledgement(&at, Some("a job@named badly@2d630331")),
+        ci_state::Acknowledgement::Unspellable {
+            reds: vec!["a job@named badly".to_string()]
+        },
+        "a value that looks right is still ambiguous to the parser that reads it"
+    );
 }
 
 /// That dead end does not exist in THIS repository, and the workflows say so.
@@ -1057,8 +1106,14 @@ fn a_red_whose_name_holds_the_separator_can_be_spelled_by_nothing() {
 /// general and would take this repository hostage if one of its own jobs were
 /// named with a comma — so the claim "it cannot happen here" is asked of the
 /// tracked workflow files instead of being written in prose beside them.
+///
+/// BOTH SEPARATORS SINCE R1301. The commit is joined to the job with `@`, so
+/// that character became a second way to be unspellable; a law that checked one
+/// of two would have gone on printing a green about a question it no longer
+/// covered — which is this repository's own definition of a gate that stopped
+/// judging.
 #[test]
-fn no_job_this_repository_declares_is_named_with_the_separator() {
+fn no_job_this_repository_declares_is_named_with_either_separator() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
@@ -1071,17 +1126,21 @@ fn no_job_this_repository_declares_is_named_with_the_separator() {
     // WHAT GITHUB SHOWS, which is what a check row is named by and therefore what
     // an acknowledgement has to spell: the `name:` when a job declares one, and
     // its id when it does not.
-    let offending: Vec<&str> = budgets
-        .iter()
-        .map(|(_, job)| job.shown_as.as_deref().unwrap_or(job.id.as_str()))
-        .filter(|name| name.contains(ci_state::ACKNOWLEDGEMENT_SEPARATOR))
-        .collect();
-    assert!(
-        offending.is_empty(),
-        "a job named with `{}` could never be acknowledged, so a red in it would \
-         be unpushable: {offending:?}",
-        ci_state::ACKNOWLEDGEMENT_SEPARATOR
-    );
+    for separator in [
+        ci_state::ACKNOWLEDGEMENT_SEPARATOR,
+        ci_state::ACKNOWLEDGEMENT_AT,
+    ] {
+        let offending: Vec<&str> = budgets
+            .iter()
+            .map(|(_, job)| job.shown_as.as_deref().unwrap_or(job.id.as_str()))
+            .filter(|name| name.contains(separator))
+            .collect();
+        assert!(
+            offending.is_empty(),
+            "a job named with `{separator}` could never be acknowledged, so a red \
+             in it would be unpushable: {offending:?}"
+        );
+    }
 }
 
 // ── THE WALK BEHIND THE BASE (R1300) ────────────────────────────────────────

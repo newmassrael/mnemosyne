@@ -326,7 +326,12 @@ fn state_of(root: &Path, sha: &str) -> Report {
     //
     // THE VARIABLE IS READ HERE AND NOWHERE ELSE, so the one place that decides
     // is the one place that has the reds in hand.
-    let mut reds: Vec<String> = outstanding.into_iter().map(|(_, job)| job).collect();
+    //
+    // THE COMMIT TRAVELS WITH THE JOB (R1301). R1300 dropped the sha here and
+    // handed on job names alone, so one job red on two commits was ONE name and
+    // saying it once discharged both — a push had no way to say it had read the
+    // one and not the other.
+    let mut reds = outstanding.clone();
     reds.sort();
     reds.dedup();
     let given = std::env::var(ci_state::ACKNOWLEDGEMENT).ok();

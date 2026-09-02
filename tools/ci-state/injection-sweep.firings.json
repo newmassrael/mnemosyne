@@ -794,6 +794,21 @@
         "a_steady_climb_is_not_reported_as_a_step_even_though_every_cut_is_clean"
       ]
     },
+    "only-one-of-the-two-separators-makes-a-name-unspellable": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            job.contains(ACKNOWLEDGEMENT_SEPARATOR) || job.contains(ACKNOWLEDGEMENT_AT)",
+          "to": "            job.contains(ACKNOWLEDGEMENT_SEPARATOR)"
+        }
+      ],
+      "expect_red": [
+        "a_red_whose_name_holds_the_separator_can_be_spelled_by_nothing"
+      ],
+      "tests": [
+        "a_red_whose_name_holds_the_separator_can_be_spelled_by_nothing"
+      ]
+    },
     "only-the-word-failure-gets-its-step-named": {
       "edits": [
         {
@@ -843,6 +858,45 @@
       ],
       "tests": [
         "a_run_a_later_push_retired_is_no_verdict_rather_than_red"
+      ]
+    },
+    "the-acknowledgement-forgets-which-commit-a-red-is-on": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    format!(\"{job}{ACKNOWLEDGEMENT_AT}{}\", short(sha))",
+          "to": "    let _ = sha;\n    job.to_string()"
+        }
+      ],
+      "expect_red": [
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
+        "a_push_that_names_the_red_it_is_fixing_goes_through",
+        "a_red_commit_nobody_named_refuses_the_push_through_this_binary",
+        "a_red_with_no_acknowledgement_is_refused_and_told_how_to_pass",
+        "an_acknowledgement_of_some_other_job_still_refuses",
+        "an_acknowledgement_that_misses_a_red_is_refused_and_names_the_half",
+        "naming_every_red_and_no_other_lets_the_push_through",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "the_paginated_recording_reports_the_same_commit",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "the_same_job_red_on_two_commits_must_be_named_twice",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+      ],
+      "tests": [
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
+        "a_push_that_names_the_red_it_is_fixing_goes_through",
+        "a_red_commit_nobody_named_refuses_the_push_through_this_binary",
+        "a_red_with_no_acknowledgement_is_refused_and_told_how_to_pass",
+        "an_acknowledgement_of_some_other_job_still_refuses",
+        "an_acknowledgement_that_misses_a_red_is_refused_and_names_the_half",
+        "naming_every_red_and_no_other_lets_the_push_through",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "the_paginated_recording_reports_the_same_commit",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "the_same_job_red_on_two_commits_must_be_named_twice",
+        "what_a_job_cost_is_held_against_its_budget_through_this_binary",
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
       ]
     },
     "the-binary-never-asks-what-a-job-was-allowed": {
