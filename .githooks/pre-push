@@ -202,12 +202,11 @@ if ! rs_workspaces_of "pre-push: refused" "$(pwd)" "$pushed_rs"; then
     exit 1
 fi
 # A PUSH WITH NO RUST IN IT GRADES NO WORKSPACE, said out loud rather than left
-# as an empty loop that reads exactly like a clean run.
-if [[ ${#RS_WORKSPACES[@]} -eq 0 ]]; then
-    echo "pre-push: no .rs in the pushed range — no workspace to format-check" >&2
-else
-    echo "pre-push: the pushed .rs live in ${#RS_WORKSPACES[@]} workspace(s):" \
-         "${RS_WORKSPACES[*]}" >&2
+# as an empty loop that reads exactly like a clean run. BOTH sentences are
+# `rs_workspaces_said`'s since R1311 — this hook and `pre-commit` were printing
+# one fact in two wordings with an assertion apiece.
+rs_workspaces_said "pre-push:" pushed
+if [[ ${#RS_WORKSPACES[@]} -gt 0 ]]; then
     for fmt_manifest in "${RS_WORKSPACES[@]}"; do
         if ! cargo fmt --all --check --manifest-path "$fmt_manifest"; then
             echo "pre-push: unformatted code in $fmt_manifest — run scripts/fmt.sh" >&2

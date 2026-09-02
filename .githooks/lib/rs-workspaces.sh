@@ -81,3 +81,31 @@ rs_workspaces_of() {
     done <<< "$paths"
     return 0
 }
+
+# Say what the walk above resolved — the ONE sentence, for every caller.
+#
+# R1311: THE ANSWER WAS SHARED AND THE REPORT OF IT WAS NOT. `rs_workspaces_of`
+# has been one definition since R1293 for the reason written at the top of this
+# file, and each hook then printed the result in its own words — "staged .rs live
+# in" and "the pushed .rs live in" — with a smoke case asserting a DIFFERENT
+# string apiece. Two sentences about one fact is the pair that can disagree
+# silently all over again, one layer out: a hook that stopped announcing its
+# census would leave the other hook's assertion green, and the announcement is
+# the only thing that tells "checked and clean" from "never looked here".
+#
+# THE SUBJECT IS THE CALLER'S AND THE SENTENCE IS NOT. `pre-commit` asks about
+# what is STAGED and `pre-push` about what is PUSHED; that word is the whole of
+# the difference, so it is a parameter and everything around it lives here.
+#
+# THE EMPTY SET GETS A SENTENCE TOO, for the reason it got one in `pre-push`:
+# a run that graded no workspace and a gate that stopped resolving them print
+# the same silence otherwise.
+rs_workspaces_said() {
+    local prefix="$1" subject="$2"
+    if [[ ${#RS_WORKSPACES[@]} -eq 0 ]]; then
+        echo "$prefix no $subject .rs — no workspace(s) to grade" >&2
+        return 0
+    fi
+    echo "$prefix the $subject .rs live in ${#RS_WORKSPACES[@]} workspace(s):" \
+         "${RS_WORKSPACES[*]}" >&2
+}

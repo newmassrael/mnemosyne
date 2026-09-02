@@ -357,8 +357,11 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         exit 1
     fi
     rs_workspaces=("${RS_WORKSPACES[@]}")
-    echo "[mnemosyne pre-commit] staged .rs live in ${#rs_workspaces[@]} workspace(s):" \
-         "${rs_workspaces[*]}" >&2
+    # THE SENTENCE IS THE LIBRARY'S TOO, not just the answer (R1311) — see
+    # `rs_workspaces_said`. This hook and `pre-push` printed one fact in two
+    # wordings, each with its own assertion, which is the pair that disagrees in
+    # silence one layer out from the one R1293 removed.
+    rs_workspaces_said "[mnemosyne pre-commit]" staged
 
     echo "[mnemosyne pre-commit] .rs staged — waits end on conditions" >&2
     # The checkout, not the manifest — see Gate 5b.

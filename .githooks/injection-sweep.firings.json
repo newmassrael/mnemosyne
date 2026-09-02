@@ -50,6 +50,23 @@
         "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
       ]
     },
+    "a-hook-grows-its-own-sentence-for-the-census-again": {
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "    rs_workspaces_said \"[mnemosyne pre-commit]\" staged\n",
+          "to": "    echo \"[mnemosyne pre-commit] staged .rs live in ${#rs_workspaces[@]} workspace(s):\" \\\n         \"${rs_workspaces[*]}\" >&2\n"
+        }
+      ],
+      "expect_red": [
+        "the_workspace_census_is_reported_from_one_place",
+        "pre_commit_reads_the_separate_workspace_a_staged_file_lives_in"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_commit_reads_the_separate_workspace_a_staged_file_lives_in",
+        "git_hooks_smoke::the_workspace_census_is_reported_from_one_place"
+      ]
+    },
     "a-program-the-environment-names-is-a-program-nobody-classified": {
       "edits": [
         {

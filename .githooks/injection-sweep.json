@@ -83,6 +83,7 @@
     "git_hooks_smoke::every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs",
     "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names",
     "git_hooks_smoke::a_hosted_job_sets_the_variable_that_names_its_gates_program",
+    "git_hooks_smoke::the_workspace_census_is_reported_from_one_place",
     "git_hooks_smoke::pre_commit_reads_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_commit_formats_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_push_formats_the_separate_workspace_the_pushed_range_touches",
@@ -398,6 +399,21 @@
         }
       ],
       "expect_red": ["no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"]
+    },
+    {
+      "name": "a-hook-grows-its-own-sentence-for-the-census-again",
+      "why": "R1311 — THE ANSWER WAS SHARED AND THE REPORT OF IT WAS NOT. `rs_workspaces_of` has been one definition since R1293, and each hook then announced its result in its own words, with a smoke case asserting a DIFFERENT string apiece — so either hook could stop announcing and the other's assertion would stay green. This edit puts `pre-commit`'s own wording back. Both halves of the repair are what goes red: the FILE law sees a second home for the sentence, and the case that reads the hook's output sees the wording it no longer shares",
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "    rs_workspaces_said \"[mnemosyne pre-commit]\" staged\n",
+          "to": "    echo \"[mnemosyne pre-commit] staged .rs live in ${#rs_workspaces[@]} workspace(s):\" \\\n         \"${rs_workspaces[*]}\" >&2\n"
+        }
+      ],
+      "expect_red": [
+        "the_workspace_census_is_reported_from_one_place",
+        "pre_commit_reads_the_separate_workspace_a_staged_file_lives_in"
+      ]
     },
     {
       "name": "the-four-rs-gates-point-at-the-root-again",

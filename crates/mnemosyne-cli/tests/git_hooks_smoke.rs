@@ -823,6 +823,70 @@ fn pre_commit_rejects_a_test_that_waits_on_a_clock() {
 /// pointing rather than about the gate: the sleeping test is in the side
 /// workspace and nowhere else, so a hook that reads only the root sees a tree
 /// with nothing wrong in it.
+/// The ONE sentence `.githooks/lib/rs-workspaces.sh` prints for a resolved
+/// census, with the caller's subject in it.
+///
+/// R1311, AND IT IS HERE BECAUSE THE TWO CASES BELOW USED TO SPELL IT TWICE.
+/// `rs_workspaces_of` has been one definition since R1293, and the two hooks
+/// then announced its answer in their own words — with an assertion apiece, so a
+/// hook that stopped announcing left the other's assertion green. Both the
+/// sentence and the tests that read it now have one home;
+/// [`the_workspace_census_is_reported_from_one_place`] is what keeps a hook from
+/// growing its own again.
+fn workspace_census(subject: &str) -> String {
+    format!("the {subject} .rs live in ")
+}
+
+/// THE WORKSPACE CENSUS HAS ONE SENTENCE AND ONE HOME (R1311).
+///
+/// A LAW RATHER THAN THE TWO CASES BELOW, because those read a hook's OUTPUT and
+/// output is what a second copy also produces. What they cannot see is a second
+/// copy existing: `pre-commit` and `pre-push` both printed this fact, in
+/// different words, and each case asserted its own string — so either hook could
+/// have been rewritten to say something else and the other's assertion would
+/// have gone on passing. This asks the FILES instead, and the marker is the one
+/// piece of the sentence a rewording keeps.
+///
+/// THE LIBRARY IS NAMED AND NOT DERIVED, deliberately: "wherever the sentence
+/// happens to be" is satisfied by any single copy, including a copy that has
+/// moved into one hook and left the other silent. The home is the file both
+/// hooks source.
+#[test]
+fn the_workspace_census_is_reported_from_one_place() {
+    let root = repo_root();
+    const HOME: &str = ".githooks/lib/rs-workspaces.sh";
+    const MARKER: &str = "workspace(s)";
+
+    let hooks: Vec<String> = ci_plan::tracked_files(&root, &["ls-files", ".githooks"])
+        .into_iter()
+        .filter(|path| !path.ends_with(".json"))
+        .collect();
+    assert!(
+        hooks.iter().any(|path| path == HOME),
+        "the file this law names is not tracked under `.githooks/`, so it is \
+         asking about nothing: {hooks:?}"
+    );
+
+    let mut spelling: Vec<String> = Vec::new();
+    for path in &hooks {
+        let text = fs::read_to_string(root.join(path))
+            .unwrap_or_else(|why| panic!("{path} is tracked and unreadable: {why}"));
+        if text.contains(MARKER) {
+            spelling.push(path.clone());
+        }
+    }
+    assert_eq!(
+        spelling,
+        vec![HOME.to_string()],
+        "the workspace census is announced from more than one place, or from \
+         somewhere other than the library both hooks source. Two sentences about \
+         one fact is the pair R1293 removed one layer in: a hook that stops \
+         announcing its census leaves the other hook's assertion green, and the \
+         announcement is the only thing that tells 'checked and clean' from \
+         'never looked here'"
+    );
+}
+
 #[test]
 fn pre_commit_reads_the_separate_workspace_a_staged_file_lives_in() {
     let f = Fixture::new();
@@ -849,7 +913,7 @@ fn pre_commit_reads_the_separate_workspace_a_staged_file_lives_in() {
     // says so rather than going quiet. A gate that reports nothing and a gate
     // pointed at the wrong tree print the same silence.
     assert!(
-        err.contains("staged .rs live in") && err.contains("tools/sub/Cargo.toml"),
+        err.contains(&workspace_census("staged")) && err.contains("tools/sub/Cargo.toml"),
         "the hook must name the workspaces it resolved, or nothing distinguishes \
          'checked and clean' from 'never looked here':\n{err}"
     );
@@ -924,7 +988,7 @@ fn pre_push_formats_the_separate_workspace_the_pushed_range_touches() {
     // no workspace, and that state has to be distinguishable from a gate that
     // stopped resolving them — both otherwise print the same silence.
     assert!(
-        err.contains("the pushed .rs live in"),
+        err.contains(&workspace_census("pushed")),
         "the hook must say which workspaces the range resolved to:\n{err}"
     );
 }
