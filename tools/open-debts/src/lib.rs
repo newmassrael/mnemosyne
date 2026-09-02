@@ -68,18 +68,19 @@ impl Registration {
         if self.shape != Shape::Inline {
             return false;
         }
+        // THE PUNCTUATION GOES IN THE SAME PASS AS THE MARKERS, because it is the
+        // same kind of thing: `①/③` and `②→①?` are one classification written with
+        // separators, and dropping the separators one call at a time was five
+        // chained `replace`s that clippy is right to call one.
         let left: String = self
             .body
             .chars()
-            .filter(|c| !a_branch_marker(*c) && !c.is_whitespace())
+            .filter(|c| !a_branch_marker(*c) && !c.is_whitespace() && !"/?,→".contains(*c))
             .collect();
-        let left = left
-            .replace('/', "")
-            .replace('?', "")
-            .replace(',', "")
-            .replace("자율", "")
-            .replace("→", "");
-        left.is_empty()
+        // AND THE ONE WORD THE LEDGER WRITES BESIDE A MARKER. `자율` is what the
+        // branch is called in prose, so `(①자율)` is a classification and nothing
+        // else — which is the whole of what makes it a mention rather than a row.
+        left.replace("자율", "").is_empty()
     }
 
     /// Whether this registration carries the autonomous marker.
