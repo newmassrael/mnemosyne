@@ -2412,9 +2412,41 @@ fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
          (R893):\n{err}"
     );
 
+    // A RED THE PUSH HAS NOT NAMED STOPS THE PUSH (R1297), and this is the one
+    // thing at this seam that does. The reporter's verdict used to leave it only
+    // in prose behind an exit 0 — measured on 2026-09-02, two consecutive rounds
+    // published over a red whose failing job, stopping step and annotation were
+    // all in their own push logs — so what a hook can be blind to here is a code,
+    // not a sentence.
+    let out = f.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &stdin,
+        &[
+            ("PATH", &hermetic),
+            ("REPORTER_SHA", &sha),
+            ("REPORTER_MODE", "refuses"),
+        ],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "a red nobody named must stop the push:\n{err}"
+    );
+    assert!(
+        err.contains("REFUSING") && err.contains("RED and unread"),
+        "and the hook must say that is why it stopped:\n{err}"
+    );
+    assert!(
+        !err.contains("the CI reporter could not run"),
+        "and must not report a verdict it produced perfectly as a reporter that \
+         could not run — the collapse that makes three codes into two:\n{err}"
+    );
+
     // A REPORTER THAT COULD NOT REPORT IS SAID OUT LOUD. Exit 2 is the one
-    // non-zero code it has, and a hook that passed over it would leave the push
-    // looking exactly like one where CI was checked and found fine.
+    // code that means it could not look at all, and a hook that passed over it
+    // would leave the push looking exactly like one where CI was checked and
+    // found fine.
     let out = f.run_hook(
         "pre-push",
         &["origin", "git@example:x"],

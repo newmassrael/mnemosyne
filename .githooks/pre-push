@@ -299,16 +299,30 @@ hook_checkout="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 # checked out a shallow clone, so the evidence gates had never executed on CI at
 # all (R888, R889). Two rounds went to failures a glance would have caught.
 #
-# REPORTS, never blocks — and that is the semantics the history argues for, not
-# a softening. The R888 and R889 pushes were both made deliberately while CI was
-# red, to fix it; a gate would have been wrong both times. What was missing was
-# knowledge, not restraint.
+# REPORTS, and BLOCKS ON EXACTLY ONE THING: a red it can see that this push has
+# not named (R1297). Until that round it blocked on nothing, and the argument for
+# that was read off the history — the R888 and R889 pushes were both made
+# deliberately while CI was red, to fix it, and a gate would have been wrong both
+# times. What was missing was knowledge, not restraint.
+#
+# THAT ARGUMENT WAS RIGHT ABOUT RESTRAINT AND WRONG ABOUT KNOWLEDGE, and the
+# difference is that R888 and R889 KNEW. The gate could not tell a push that had
+# read the report from one that had not, so it treated every push as the first
+# kind — and on 2026-09-02 two consecutive rounds were the second kind. Both of
+# their push logs carry this reporter's `^^ the commit you are building on is
+# RED`, the failing job, the step that ended it and its annotation; both pushes
+# went out, because a push is judged by its exit status and all of that rode out
+# behind a zero. Naming the red is one keystroke for a push that is about it, and
+# impossible for a push that has not looked.
 #
 # It reads the state of `origin/main` as this clone last saw it: the commit that
 # is already published, which is what a new push builds on top of. Its limit is
 # stated rather than papered over — a run that goes red after the LAST push of a
 # session is seen at the NEXT session's first push, so the round checklist in
-# `RULEBOOK.md` still owns reading the result of the push you just made.
+# `RULEBOOK.md` still owns reading the result of the push you just made. And ONE
+# COMMIT BACK IS ALL IT LOOKS: a commit whose run was still pending when the next
+# push went over it is never asked about again, which is a hole this round names
+# rather than closes.
 #
 # Every branch prints. A check that stays quiet when it cannot answer is
 # indistinguishable from one that answered "fine".
@@ -354,11 +368,29 @@ else
     # the same directory a second time, and with `dirname` — an external program
     # where the other spelling is a builtin, which is the difference the side
     # gate's comment above records having been bitten by.
-    if ! cargo run -q --manifest-path "$hook_checkout/tools/ci-state/Cargo.toml" --locked --bin ci-state -- "$base" >&2; then
-        # It exits 2 only when it could not produce a report AT ALL; every state
-        # it can describe — gh absent, gh unreachable, an answer it cannot read,
-        # a RED commit — it prints and exits 0 for. A check that stays quiet when
-        # it cannot answer is indistinguishable from one that answered "fine".
+    # THREE CODES, READ AS THREE (R1297). `0` is a report with nothing to refuse;
+    # `1` is "that commit is RED and this push has not said which red"; `2` is a
+    # reporter that could not report AT ALL. Collapsing 1 into 2 would print
+    # "could not run" over a verdict it produced perfectly, and collapsing either
+    # into 0 is the R890 blindness — four red runs unseen for eleven hours —
+    # rebuilt one layer up.
+    ci_verdict=0
+    cargo run -q --manifest-path "$hook_checkout/tools/ci-state/Cargo.toml" --locked --bin ci-state -- "$base" >&2 || ci_verdict=$?
+    if [[ $ci_verdict -eq 1 ]]; then
+        # THE ONE THING IN GATE 6 THAT BLOCKS, and the argument above is why it is
+        # only this one. "Reports, never blocks" was read off R888 and R889, two
+        # pushes made deliberately while CI was red to fix it — and both of those
+        # pushes KNEW. What the gate could not do was tell knowing from not
+        # knowing, so it chose to tell nobody anything twice: measured 2026-09-02,
+        # this reporter printed `is RED` with the failing job, the step that ended
+        # it and its annotation into the push logs of two consecutive rounds, and
+        # both rounds published over it, because a push is judged by its exit
+        # status and every one of those words rode out behind a zero.
+        echo "pre-push: REFUSING — the commit this push builds on is RED and unread." \
+             "The reporter printed above what is broken and the exact spelling that" \
+             "lets this push through. A push that is ABOUT the red still goes: name it." >&2
+        exit 1
+    elif [[ $ci_verdict -ne 0 ]]; then
         echo "pre-push: NOTE the CI reporter could not run — CI state for ${base:0:8} unknown" >&2
     fi
 fi

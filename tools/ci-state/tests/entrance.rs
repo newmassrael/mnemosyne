@@ -26,6 +26,13 @@ use tempfile::TempDir;
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 
+/// The one check that failed on the recorded commit.
+///
+/// SPELLED ONCE because it is now two things at once: the row every report case
+/// looks for, and the acknowledgement that lets a push go over it. A second
+/// spelling of it is a case that keeps passing while the two drift apart.
+const RECORDED_RED: &str = "every cache declared is one CI keeps";
+
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -57,6 +64,14 @@ struct Stub {
     /// files a repository tracks means running `git`, a program that case cannot
     /// stub without stubbing the answer it is checking.
     beside_the_machines_programs: bool,
+    /// What this push says it has read about the commit (R1297).
+    ///
+    /// `Some(RECORDED_RED)` FOR EVERY CASE THAT IS NOT ABOUT THE REFUSAL. The
+    /// recorded body is a red commit, so an unacknowledged run of this binary now
+    /// exits 1 — and a case about which sentence gets printed would then be
+    /// asserting the refusal by accident, which is how a suite comes to have no
+    /// case that means what its name says.
+    acknowledgement: Option<String>,
 }
 
 impl Stub {
@@ -65,6 +80,7 @@ impl Stub {
         let stub = Stub {
             dir: TempDir::new().expect("tempdir"),
             beside_the_machines_programs: false,
+            acknowledgement: Some(RECORDED_RED.to_string()),
         };
         link_gh(&stub.dir.path().join("gh"), env!("CARGO_BIN_EXE_gh-stub"));
         stub
@@ -79,11 +95,19 @@ impl Stub {
         stub
     }
 
+    /// The same, saying something else — or nothing — about the red it is
+    /// pushing over.
+    fn saying(mut self, acknowledgement: Option<&str>) -> Self {
+        self.acknowledgement = acknowledgement.map(str::to_string);
+        self
+    }
+
     /// A `gh` that is installed and fails.
     fn unreachable() -> Self {
         let stub = Stub {
             dir: TempDir::new().expect("tempdir"),
             beside_the_machines_programs: false,
+            acknowledgement: Some(RECORDED_RED.to_string()),
         };
         link_gh(
             &stub.dir.path().join("gh"),
@@ -97,6 +121,7 @@ impl Stub {
         Stub {
             dir: TempDir::new().expect("tempdir"),
             beside_the_machines_programs: false,
+            acknowledgement: Some(RECORDED_RED.to_string()),
         }
     }
 
@@ -175,6 +200,21 @@ impl Stub {
             // to ask this test to say which. Removed rather than set: nothing
             // under this test runs cargo.
             .env_remove("CARGO")
+            // WHAT THIS PUSH SAYS IT HAS READ (R1297). The recorded body is a RED
+            // commit, so from that round on this binary REFUSES over it unless the
+            // red is named — and every case reached through this helper is about a
+            // SENTENCE rather than about the refusal. Acknowledging here keeps each
+            // of them owning what it owned; the refusal has cases of its own, below,
+            // and they decide this variable themselves.
+            // REMOVED FIRST, so a machine that happens to have this variable set
+            // cannot decide a case — and then put back only when the fixture says
+            // so. `envs` over an `Option`'s iterator is that "only when".
+            .env_remove(ci_state::ACKNOWLEDGEMENT)
+            .envs(
+                self.acknowledgement
+                    .iter()
+                    .map(|said| (ci_state::ACKNOWLEDGEMENT, said)),
+            )
             .output()
             .expect("the reporter runs");
         let asked_wrongly = fs::read_to_string(self.log()).unwrap_or_default();
@@ -229,6 +269,83 @@ fn the_recorded_red_commit_is_reported_as_red_with_its_annotation() {
         "and the CHECK that said the annotation is named (R1238) — the loop that \
          fetches them knows which one it asked, and used to throw the name away \
          one line later: {said}"
+    );
+}
+
+/// A push that has not said which red it is going over does not go (R1297).
+///
+/// THE CODE, NOT THE SENTENCE, IS WHAT THIS CASE OWNS. Every line of the refusal
+/// is composed in the library and asserted there; what only a process can answer
+/// is whether the verdict reaches the exit status — and the whole of this round
+/// is that it did not. This binary printed `is RED`, with the failing job, the
+/// step that ended it and its annotation, into the push logs of two consecutive
+/// rounds on 2026-09-02, and exited `0` under a discipline that judges a push by
+/// its exit status. Six library laws about those sentences were green through
+/// both.
+#[test]
+fn a_red_commit_nobody_named_refuses_the_push_through_this_binary() {
+    let stub = Stub::recording().saying(None);
+    let out = stub.run(&[SHA], &fixture("check-runs.one-page.json"));
+    let said = said(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "the verdict must leave this program in the exit status: {said}"
+    );
+    assert!(
+        said.contains("REFUSING this push") && said.contains(RECORDED_RED),
+        "and the refusal must name what is red: {said}"
+    );
+    assert!(
+        said.contains(ci_state::ACKNOWLEDGEMENT),
+        "and the spelling that discharges it, or the gate is one people route \
+         around with the `--no-verify` no exemption here covers: {said}"
+    );
+}
+
+/// Naming that red lets the push through — which is what R888 and R889 were.
+///
+/// THE CONTROL, AND IT IS THE WHOLE ARGUMENT FOR BLOCKING AT ALL. A gate that
+/// refused every push over a red would have been wrong on both of the pushes this
+/// repository's history cites, since each of them WAS the fix. What separates
+/// those from the two rounds of 2026-09-02 is knowledge, and knowledge is exactly
+/// what naming the check is evidence of.
+#[test]
+fn a_push_that_names_the_red_it_is_fixing_goes_through() {
+    let stub = Stub::recording().saying(Some(RECORDED_RED));
+    let out = stub.run(&[SHA], &fixture("check-runs.one-page.json"));
+    let said = said(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a push that is about the red is not a push to stop: {said}"
+    );
+    assert!(
+        said.contains("is RED"),
+        "and it is still told what it is going over: {said}"
+    );
+    assert!(!said.contains("REFUSING"), "and not refused: {said}");
+}
+
+/// An acknowledgement that names the wrong job is not an acknowledgement.
+///
+/// THE HATCH THIS GATE WOULD OTHERWISE BE. A variable that is satisfied by any
+/// value is a confirmation, and every confirmation gate this repository could
+/// have built is discharged by doing the same thing twice — which is precisely
+/// what somebody who has not read the report does.
+#[test]
+fn an_acknowledgement_of_some_other_job_still_refuses() {
+    let stub = Stub::recording().saying(Some("validate"));
+    let out = stub.run(&[SHA], &fixture("check-runs.one-page.json"));
+    let said = said(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "naming a job that is not red is not having read: {said}"
+    );
+    assert!(
+        said.contains("not named, and red") && said.contains(RECORDED_RED),
+        "and it says which half was wrong: {said}"
     );
 }
 

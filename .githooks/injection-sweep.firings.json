@@ -129,6 +129,66 @@
         "git_hooks_smoke::pre_push_formats_the_separate_workspace_the_pushed_range_touches"
       ]
     },
+    "the-hook-passes-over-a-reporter-that-could-not-report": {
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "--bin ci-state -- \"$base\" >&2 || ci_verdict=$?",
+          "to": "--bin ci-state -- \"$base\" >&2 || true"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    "the-hook-reads-an-unread-red-as-a-reporter-that-could-not-run": {
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "if [[ $ci_verdict -eq 1 ]]; then",
+          "to": "if [[ $ci_verdict -eq 91 ]]; then"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    "the-hook-reports-on-whatever-commit-is-checked-out": {
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "--bin ci-state -- \"$base\" >&2 || ci_verdict=$?",
+          "to": "--bin ci-state -- \"$(git rev-parse HEAD)\" >&2 || ci_verdict=$?"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    "the-hook-swallows-what-the-reporter-said": {
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "--bin ci-state -- \"$base\" >&2 || ci_verdict=$?",
+          "to": "--bin ci-state -- \"$base\" >/dev/null 2>&1 || ci_verdict=$?"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ],
+      "tests": [
+        "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
     "the-key-stops-telling-two-scopes-apart": {
       "edits": [
         {

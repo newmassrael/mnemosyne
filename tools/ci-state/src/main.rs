@@ -6,17 +6,31 @@
 //! measured three gates whose `main.rs` carried a decision nothing was running,
 //! and R1126 moved a neighbouring reporter's words out for the same reason.
 //!
-//! TWO EXIT CODES, AND THE SECOND ONE HAS A READER. `0` means a report was
-//! printed, INCLUDING the reports "gh is not installed", "gh could not reach
-//! GitHub", "GitHub's answer is not a shape I can read" and "the commit is RED".
-//! This program reports and never blocks, which is the semantics R890 argued for
-//! from the history rather than a softening of it: the two pushes that fixed a
-//! red CI were made deliberately while it was red, and a gate would have been
-//! wrong both times. `2` means no report could be produced at all — bad usage —
-//! and `.githooks/pre-push` prints a different sentence for it, because a check
-//! that stays quiet when it cannot answer is indistinguishable from one that
-//! answered "fine". There is no `1`: a violation is not one of this program's
-//! answers, and inventing the code would invent a caller that acts on it.
+//! THREE EXIT CODES, AND EACH ONE HAS A READER. `0` means a report was printed
+//! and there is nothing to refuse, INCLUDING the reports "gh is not installed",
+//! "gh could not reach GitHub" and "GitHub's answer is not a shape I can read":
+//! not being able to look is not a violation, and a machine that cannot reach
+//! GitHub must still be able to push. `2` means no report could be produced at
+//! all — bad usage — and `.githooks/pre-push` prints a different sentence for
+//! it, because a check that stays quiet when it cannot answer is
+//! indistinguishable from one that answered "fine".
+//!
+//! `1` MEANS THE COMMIT IS RED AND THE PUSH HAS NOT SAID SO (R1297), and it is
+//! new. This program reported and never blocked for six hundred rounds, and the
+//! argument for that was read off the history: the two pushes that fixed a red
+//! CI (R888, R889) were made deliberately while it was red, and a gate would
+//! have been wrong both times. What that argument could not distinguish is
+//! KNOWING from NOT KNOWING — and on 2026-09-02 the distinction cost two rounds
+//! in a row. `pushG.log` and `pushH.log` of that session both carry this
+//! program's `^^ the commit you are building on is RED`, with the failing job,
+//! the step that ended it and its annotation; both pushes went out anyway,
+//! because a push is judged by its exit status and the verdict was riding on
+//! stderr behind a `0`. Naming the red is what R888 and R889 could have done in
+//! one keystroke, and what R1295 could not have done at all.
+//!
+//! SO THE SEMANTICS IS UNCHANGED WHERE IT WAS ARGUED FOR AND SHARPENED WHERE IT
+//! WAS NOT: a push that is about a red still goes through, and a push that has
+//! not looked at one no longer does.
 
 use std::path::Path;
 use std::process::Command;
@@ -43,9 +57,27 @@ fn main() {
             std::process::exit(2);
         }
     };
-    for line in state_of(&root, sha) {
+    let said = state_of(&root, sha);
+    for line in &said.lines {
         println!("ci-state: {line}");
     }
+    // THE VERDICT LEAVES THIS PROGRAM IN THE EXIT STATUS AND NOT ONLY IN THE
+    // PROSE (R1297). Which line a reader happens to catch is not a property this
+    // program can hold; which code it exited with is.
+    if said.refused {
+        std::process::exit(1);
+    }
+}
+
+/// Everything this reporter has to say about one commit, and whether it refuses.
+///
+/// THE TWO TRAVEL TOGETHER because they are read off the same answer. A caller
+/// that had to ask twice would ask `gh` twice, and the second answer can differ
+/// from the first — which is how a report and a verdict about "the same" commit
+/// come to disagree.
+struct Report {
+    lines: Vec<String>,
+    refused: bool,
 }
 
 /// Run `gh` and hand back its output, or say why it could not be asked.
@@ -80,14 +112,24 @@ fn gh(root: &Path, arguments: &[String]) -> Result<String, String> {
 /// A REFUSAL IS A LINE AND NOT A SILENCE. Each of the three ways this can fail to
 /// find out — `gh` missing, `gh` failing, an answer it cannot read — returns a
 /// sentence naming which one it was, and the caller prints it like any other.
-fn state_of(root: &Path, sha: &str) -> Vec<String> {
+///
+/// AND NONE OF THE THREE REFUSES THE PUSH (R1297). Not being able to look is not
+/// a red, and a machine with no `gh` that could never push would be a gate that
+/// took the repository hostage. The red it did not see is not lost either: it is
+/// still the state of that commit at the next push made from a machine that can
+/// ask.
+fn state_of(root: &Path, sha: &str) -> Report {
+    let unread = |why: String| Report {
+        lines: vec![why],
+        refused: false,
+    };
     let answer = match gh(root, &checks_query(sha)) {
         Ok(answer) => answer,
-        Err(why) => return vec![format!("NOTE CI state for {sha} is unknown — {why}")],
+        Err(why) => return unread(format!("NOTE CI state for {sha} is unknown — {why}")),
     };
     let checks = match checks_in(sha, &answer) {
         Ok(checks) => checks,
-        Err(why) => return vec![format!("NOTE {why}")],
+        Err(why) => return unread(format!("NOTE {why}")),
     };
     // THE ANNOTATIONS ARE FETCHED BEFORE THE CENSUS IS PHRASED (R1242), which is a
     // requirement rather than a tidier order. Whether a cancelled run was retired
@@ -221,7 +263,21 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
         &spent,
         &Github { root },
     ));
-    lines
+
+    // AND LAST, WHETHER THIS PUSH MAY GO OVER WHAT WAS JUST PRINTED (R1297).
+    // Read from the SAME `checks` and the SAME `retired` set the census above was
+    // phrased from — asking GitHub a second time would let the report and the
+    // verdict be about two different answers.
+    //
+    // THE VARIABLE IS READ HERE AND NOWHERE ELSE, so the one place that decides
+    // is the one place that has the reds in hand.
+    let reds = ci_state::reds_to_name(&checks, &retired);
+    let given = std::env::var(ci_state::ACKNOWLEDGEMENT).ok();
+    let standing = ci_state::acknowledgement(&reds, given.as_deref());
+    let refusal = ci_state::refusal(sha, &standing);
+    let refused = !refusal.is_empty();
+    lines.extend(refusal);
+    Report { lines, refused }
 }
 
 /// GitHub, asked what one job of one commit did step by step.

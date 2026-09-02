@@ -116,15 +116,27 @@ fn the_census_names_every_row_and_the_lines_name_every_row_that_is_not_success()
     );
 }
 
-/// A red commit is SAID to be red, in the words the hook used to print.
+/// A red commit is SAID to be red, and told that a push ABOUT the red still goes.
+///
+/// THIS LAW USED TO ASSERT `Not blocking` (R890), and R1297 changed what it
+/// asserts because it changed what is true. The old semantics was read off the
+/// history — R888 and R889 were both pushes made deliberately while CI was red,
+/// to fix it — and it was right about restraint and wrong about knowledge: those
+/// two pushes KNEW, and the gate could not tell them from a push that had not
+/// looked. So the sentence still promises that fixing a red is not blocked, and
+/// now says what makes the difference.
 #[test]
-fn a_red_commit_is_told_it_is_red_and_told_that_nothing_is_blocking() {
+fn a_red_commit_is_told_it_is_red_and_that_naming_it_is_what_lets_a_fix_through() {
     let checks = [check(1, "validate", Some("failure"), 0)];
     let said = census(SHA, &checks).join("\n");
     assert!(said.contains("is RED"), "{said}");
     assert!(
-        said.contains("Not blocking"),
-        "the semantics R890 argued for from the history, not a softening of it: {said}"
+        said.contains("Fixing it is itself a push"),
+        "a push that is ABOUT the red is still not one to stop: {said}"
+    );
+    assert!(
+        said.contains("says which red"),
+        "and what separates it from a push that never looked: {said}"
     );
 }
 
@@ -859,5 +871,215 @@ fn a_long_message_is_cut_by_characters_and_survives_a_non_ascii_one() {
         line.chars().count(),
         "warning ".chars().count() + 160,
         "one hundred and sixty characters of message: {line}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// R1297 — the verdict that has to leave this program in something other than
+// prose. Every law below is about a value a caller acts on; the sentences they
+// compose are asserted beside them, because a refusal nobody can act on is the
+// shape this round exists to end.
+// ---------------------------------------------------------------------------
+
+/// "Not finished" is printed as a REFUSAL and not as a row in the tally.
+///
+/// THE CENSUS THIS REPOSITORY ACTUALLY READ. `3 still running, 4 success, 1
+/// failure` puts the one state that is NOT an answer in the same sentence as the
+/// answers, and R1295 read exactly such a line, took it for "nothing to act on",
+/// and never asked again — the failure it names had been sitting on that commit
+/// for eleven minutes by the time it pushed.
+#[test]
+fn a_commit_that_has_not_finished_is_refused_a_verdict_out_loud() {
+    let checks = [
+        check(1, "validate", Some("success"), 0),
+        check(2, "MSRV", None, 0),
+        check(3, "item citations name items", None, 0),
+    ];
+    assert_eq!(verdict(&checks), Verdict::Pending);
+    let said = census(SHA, &checks).join("\n");
+    assert!(
+        said.contains("NO VERDICT YET on 2d630331"),
+        "the absence of a verdict is itself said, and about this commit: {said}"
+    );
+    assert!(
+        said.contains("2 of 3 check(s) have not concluded"),
+        "with how much of it is still out: {said}"
+    );
+    assert!(
+        said.contains("Read it again"),
+        "and what the reader must do, since nothing else will: {said}"
+    );
+}
+
+/// A commit that IS judged is not told it has no verdict.
+///
+/// THE CONTROL. A reporter that printed the refusal on every push would be as
+/// useless as one that never did, and only this direction says which of the two
+/// this is.
+#[test]
+fn a_finished_commit_is_not_told_its_verdict_is_missing() {
+    for checks in [
+        vec![check(1, "validate", Some("success"), 0)],
+        vec![check(1, "validate", Some("failure"), 0)],
+    ] {
+        let said = census(SHA, &checks).join("\n");
+        assert!(
+            !said.contains("NO VERDICT YET"),
+            "every check concluded: {said}"
+        );
+    }
+}
+
+/// The reds a push must name are the failures no later push retired.
+#[test]
+fn the_reds_to_name_are_the_failures_a_later_push_did_not_retire() {
+    let checks = [
+        check(1, "validate", Some("failure"), 1),
+        check(2, "MSRV", Some("cancelled"), 1),
+        check(3, "item citations name items", Some("success"), 0),
+    ];
+    let retired: std::collections::BTreeSet<String> = ["MSRV".to_string()].into_iter().collect();
+    assert_eq!(
+        ci_state::reds_to_name(&checks, &retired),
+        vec!["validate".to_string()],
+        "a run a later push cancelled is not this commit's failure (R1242), and \
+         demanding it be acknowledged teaches a reader that the acknowledgement \
+         is noise"
+    );
+}
+
+/// A red nobody named is refused, and the refusal carries the spelling.
+#[test]
+fn a_red_with_no_acknowledgement_is_refused_and_told_how_to_pass() {
+    let reds = vec!["separate in-repo workspaces".to_string()];
+    let standing = ci_state::acknowledgement(&reds, None);
+    assert_eq!(
+        standing,
+        ci_state::Acknowledgement::Absent { reds: reds.clone() }
+    );
+    let said = ci_state::refusal(SHA, &standing).join("\n");
+    assert!(said.contains("REFUSING this push"), "{said}");
+    assert!(
+        said.contains("MNEMOSYNE_PUSH_OVER_RED='separate in-repo workspaces'"),
+        "a gate whose discharge is a guess is a gate people route around: {said}"
+    );
+}
+
+/// An empty or blank acknowledgement is an absent one.
+///
+/// THE SHAPE A SHELL PRODUCES BY ACCIDENT. `MNEMOSYNE_PUSH_OVER_RED=` and
+/// `MNEMOSYNE_PUSH_OVER_RED="$UNSET"` are what a half-typed command leaves
+/// behind, and a gate satisfied by either is satisfied by a typo.
+#[test]
+fn a_blank_acknowledgement_names_nothing() {
+    let reds = vec!["validate".to_string()];
+    for blank in ["", "   ", " , , "] {
+        assert!(
+            matches!(
+                ci_state::acknowledgement(&reds, Some(blank)),
+                ci_state::Acknowledgement::Absent { .. }
+                    | ci_state::Acknowledgement::Mismatched { .. }
+            ),
+            "`{blank}` must not discharge a red"
+        );
+    }
+}
+
+/// Naming exactly the reds discharges it, in any order and with any spacing.
+#[test]
+fn naming_every_red_and_no_other_lets_the_push_through() {
+    let reds = vec!["MSRV".to_string(), "validate".to_string()];
+    assert_eq!(
+        ci_state::acknowledgement(&reds, Some(" validate ,MSRV ")),
+        ci_state::Acknowledgement::Named,
+        "the set is what was read, not the order it was typed in"
+    );
+    assert!(
+        ci_state::refusal(SHA, &ci_state::Acknowledgement::Named).is_empty(),
+        "and a discharged gate says nothing"
+    );
+}
+
+/// Half a red is not a red read: naming one of two still refuses, and says which.
+#[test]
+fn an_acknowledgement_that_misses_a_red_is_refused_and_names_the_half() {
+    let reds = vec!["MSRV".to_string(), "validate".to_string()];
+    let standing = ci_state::acknowledgement(&reds, Some("validate, item citations name items"));
+    assert_eq!(
+        standing,
+        ci_state::Acknowledgement::Mismatched {
+            missing: vec!["MSRV".to_string()],
+            invented: vec!["item citations name items".to_string()],
+        }
+    );
+    let said = ci_state::refusal(SHA, &standing).join("\n");
+    assert!(said.contains("not named, and red: MSRV"), "{said}");
+    assert!(
+        said.contains("named, and not red on this commit: item citations name items"),
+        "{said}"
+    );
+}
+
+/// A commit that is not red is not asked to acknowledge anything.
+#[test]
+fn a_commit_with_no_red_has_nothing_to_name() {
+    assert_eq!(
+        ci_state::acknowledgement(&[], None),
+        ci_state::Acknowledgement::NothingToName
+    );
+    assert!(ci_state::refusal(SHA, &ci_state::Acknowledgement::NothingToName).is_empty());
+}
+
+/// A red whose own name holds the separator is a DEAD END, said out loud.
+///
+/// NOT A PASS, WHICH IS THE POINT. Every way this gate can fail to reach a
+/// verdict has to be louder than the verdict, or the way past it is to arrange
+/// for it not to know — the exemption-shaped hole this gate exists to close,
+/// arriving through its own parser.
+#[test]
+fn a_red_whose_name_holds_the_separator_can_be_spelled_by_nothing() {
+    let reds = vec!["a job, named badly".to_string()];
+    let standing = ci_state::acknowledgement(&reds, Some("a job, named badly"));
+    assert_eq!(
+        standing,
+        ci_state::Acknowledgement::Unspellable { reds: reds.clone() },
+        "and it is unspellable even when the value looks right — splitting it \
+         yields two names that are neither of them the check"
+    );
+    let said = ci_state::refusal(SHA, &standing).join("\n");
+    assert!(said.contains("REFUSING this push"), "{said}");
+    assert!(said.contains("a job, named badly"), "{said}");
+}
+
+/// That dead end does not exist in THIS repository, and the workflows say so.
+///
+/// A LIMIT PROVEN ABSENT RATHER THAN ARGUED ABSENT. The law above is right in
+/// general and would take this repository hostage if one of its own jobs were
+/// named with a comma — so the claim "it cannot happen here" is asked of the
+/// tracked workflow files instead of being written in prose beside them.
+#[test]
+fn no_job_this_repository_declares_is_named_with_the_separator() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("the repository root");
+    let (budgets, unread) = ci_plan::readable_job_budgets(&root);
+    assert!(
+        !budgets.is_empty(),
+        "this law is vacuous unless some job was read; unread: {unread:?}"
+    );
+    // WHAT GITHUB SHOWS, which is what a check row is named by and therefore what
+    // an acknowledgement has to spell: the `name:` when a job declares one, and
+    // its id when it does not.
+    let offending: Vec<&str> = budgets
+        .iter()
+        .map(|(_, job)| job.shown_as.as_deref().unwrap_or(job.id.as_str()))
+        .filter(|name| name.contains(ci_state::ACKNOWLEDGEMENT_SEPARATOR))
+        .collect();
+    assert!(
+        offending.is_empty(),
+        "a job named with `{}` could never be acknowledged, so a red in it would \
+         be unpushable: {offending:?}",
+        ci_state::ACKNOWLEDGEMENT_SEPARATOR
     );
 }

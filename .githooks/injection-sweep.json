@@ -18,13 +18,16 @@
     "callers told the two apart, and one of the four collapses is a tree the gate",
     "never read being COMMITTED.",
     "",
-    "THE LAST FOUR ARE R1136's HALF OF THE CI REPORT. The hook used to READ",
-    "GitHub's answer itself, with three `gh -q` expressions no test here could",
-    "execute — measured silent twice, at 14 passed / 0 failed each time, while a",
-    "real `gh` would have reported a RED commit as clean. The reading is now",
-    "`tools/ci-state`, with its own sweep; what is left to this hook is CARRIAGE,",
-    "and carriage fails in ways of its own: asking about the wrong commit,",
-    "swallowing the answer, or passing over a reporter that could not answer.",
+    "THE `the-hook-…-reporter` GROUP IS R1136's HALF OF THE CI REPORT — named",
+    "rather than counted, because this paragraph said THE LAST FOUR and the",
+    "group is neither last nor four (R1297 measured five, sitting in the",
+    "middle). The hook used to READ GitHub's answer itself, with three `gh -q`",
+    "expressions no test here could execute — measured silent twice, at 14",
+    "passed / 0 failed each time, while a real `gh` would have reported a RED",
+    "commit as clean. The reading is now `tools/ci-state`, with its own sweep;",
+    "what is left to this hook is CARRIAGE, and carriage fails in ways of its",
+    "own: asking about the wrong commit, swallowing the answer, passing over a",
+    "reporter that could not answer, and reading its REFUSAL as its silence.",
     "",
     "THE LAST TWO ARE R1182's ARM, and they are here because the round that added",
     "it did not add them. `check-side-workspaces.sh` grew a THIRD gate under the",
@@ -47,8 +50,8 @@
     "manifest does not declare its red sets exhaustive — `red_set` is absent — so",
     "no injection below asserts anything about a case it did not name, and",
     "running the whole `git_hooks_smoke::` suite bought observation nobody claims",
-    "on. MEASURED and RE-MEASURED at R1290: 39 cases, of which the seventeen",
-    "injections name 8 and the filter carries 9; the other 30 would run twice per",
+    "on. MEASURED and RE-MEASURED at R1290: 39 cases, of which the injections",
+    "below name 8 and the filter carries 9; the other 30 would run twice per",
     "injection, and this is the slowest suite in the repository",
     "because every case spawns cargo inside a throwaway repository. One `--only`",
     "proof was still running after forty minutes.",
@@ -150,8 +153,8 @@
       "edits": [
         {
           "file": ".githooks/pre-push",
-          "from": "--bin ci-state -- \"$base\" >&2; then",
-          "to": "--bin ci-state -- \"$(git rev-parse HEAD)\" >&2; then"
+          "from": "--bin ci-state -- \"$base\" >&2 || ci_verdict=$?",
+          "to": "--bin ci-state -- \"$(git rev-parse HEAD)\" >&2 || ci_verdict=$?"
         }
       ],
       "expect_red": [
@@ -164,8 +167,8 @@
       "edits": [
         {
           "file": ".githooks/pre-push",
-          "from": "--bin ci-state -- \"$base\" >&2; then",
-          "to": "--bin ci-state -- \"$base\" >/dev/null 2>&1; then"
+          "from": "--bin ci-state -- \"$base\" >&2 || ci_verdict=$?",
+          "to": "--bin ci-state -- \"$base\" >/dev/null 2>&1 || ci_verdict=$?"
         }
       ],
       "expect_red": [
@@ -174,12 +177,26 @@
     },
     {
       "name": "the-hook-passes-over-a-reporter-that-could-not-report",
-      "why": "the reporter exits 2 only when it could not produce a report AT ALL, and this hook is its one production reader. Ignoring that code makes a push where nothing was checked look exactly like a push where CI was checked and found fine — the collapse the first four injections here are about, arriving through a different door",
+      "why": "the reporter exits 2 only when it could not produce a report AT ALL, and 1 when the commit is red and this push has not named it (R1297); this hook is the one production reader of both. Dropping the status makes a push where nothing was checked, and a push over an unread red, look exactly like a push where CI was checked and found fine — the collapse the first four injections here are about, arriving through a different door",
       "edits": [
         {
           "file": ".githooks/pre-push",
-          "from": "--bin ci-state -- \"$base\" >&2; then",
-          "to": "--bin ci-state -- \"$base\" >&2; false; then"
+          "from": "--bin ci-state -- \"$base\" >&2 || ci_verdict=$?",
+          "to": "--bin ci-state -- \"$base\" >&2 || true"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    {
+      "name": "the-hook-reads-an-unread-red-as-a-reporter-that-could-not-run",
+      "why": "R1297. The reporter answers THREE codes and this hook is what turns the middle one into a stopped push. Folding 1 back into the `could not run` arm prints a sentence about the reporter failing over a verdict it produced perfectly — and lets the push go, which is exactly the state that cost two consecutive rounds on 2026-09-02: `is RED`, the failing job, the step that ended it and its annotation, all printed, all behind an exit status that said fine",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "if [[ $ci_verdict -eq 1 ]]; then",
+          "to": "if [[ $ci_verdict -eq 91 ]]; then"
         }
       ],
       "expect_red": [

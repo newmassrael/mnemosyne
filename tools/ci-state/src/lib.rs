@@ -1171,12 +1171,187 @@ pub fn report(
                 )
             };
             lines.push(format!(
-                "^^ the commit you are building on is RED. Not blocking (fixing it is \
-                 itself a push), but do not push past it blind.{also}"
+                "^^ the commit you are building on is RED. Fixing it is itself a push, so \
+                 this does not stop one that says which red it is building on — see the \
+                 refusal below.{also}"
             ));
         }
     }
+    // AND "NOT FINISHED" IS PRINTED AS A REFUSAL RATHER THAN A ROW (R1297). The
+    // tally above puts `3 still running` in the same sentence as `4 success` and
+    // `1 failure`, so the one state that is NOT an answer reads as one of the
+    // answers — and a reader who has seen the line believes the commit was
+    // judged. It was the census this repository actually read: R1295 looked at a
+    // run with six jobs undecided, took "not a verdict" for "nothing to act on",
+    // and never asked again; the failure had already been sitting there for
+    // eleven minutes when it pushed.
+    if verdict(checks) == Verdict::Pending {
+        let undecided = checks
+            .iter()
+            .filter(|check| check.conclusion.is_none())
+            .count();
+        lines.push(format!(
+            "^^ NO VERDICT YET on {short} — {undecided} of {} check(s) have not concluded. \
+             This commit is NOT judged, and a tally is not a verdict: whatever these say \
+             is said after you have stopped looking. Read it again at the end of this \
+             round.",
+            checks.len()
+        ));
+    }
     lines
+}
+
+/// The variable a push uses to say which red it knows it is publishing over.
+///
+/// AN ACKNOWLEDGEMENT IS NOT A CONFIRMATION, and the difference is the whole of
+/// why this holds a value rather than a yes. A retry, a `--force`, a second
+/// invocation — every "are you sure" gate this repository could have built is
+/// discharged by doing the same thing twice, which is precisely what somebody
+/// who has not read the report does. Naming the checks cannot be done without
+/// the report in hand.
+pub const ACKNOWLEDGEMENT: &str = "MNEMOSYNE_PUSH_OVER_RED";
+
+/// How that variable spells more than one check.
+pub const ACKNOWLEDGEMENT_SEPARATOR: char = ',';
+
+/// The checks that make this commit red and that no later push retired.
+///
+/// THE SAME SUBTRACTION THE CENSUS PRINTS. A run a later push cancelled is not
+/// this commit's failure (R1242), and a gate that asked for those names would
+/// demand an acknowledgement of something that never happened — which teaches a
+/// reader that the acknowledgement is noise, the one outcome that undoes it.
+pub fn reds_to_name(checks: &[Check], superseded: &BTreeSet<String>) -> Vec<String> {
+    let mut named: Vec<String> = checks
+        .iter()
+        .filter(|check| is_failing(check))
+        .filter(|check| !superseded.contains(&check.name))
+        .map(|check| check.name.clone())
+        .collect();
+    named.sort();
+    named.dedup();
+    named
+}
+
+/// What an acknowledgement is worth against the reds it claims to name.
+///
+/// FIVE ANSWERS AND NOT TWO. "Named" and "not named" would fold three different
+/// mistakes into one sentence — an absent variable, a variable naming the wrong
+/// job, and a job whose name cannot be spelled in this variable at all — and the
+/// reader's next move is different for each.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Acknowledgement {
+    /// This commit is not red. Nothing to name, and nothing to refuse.
+    NothingToName,
+    /// Every red check is named and no other.
+    Named,
+    /// The commit is red and no acknowledgement was given.
+    Absent { reds: Vec<String> },
+    /// An acknowledgement was given and it is not this commit's red.
+    Mismatched {
+        missing: Vec<String>,
+        invented: Vec<String>,
+    },
+    /// A red check's own name contains the separator, so no acknowledgement can
+    /// spell it.
+    ///
+    /// A DEAD END THAT IS SAID OUT LOUD, never a pass. It cannot happen while
+    /// this repository's tracked workflows name their jobs — `law.rs` holds that
+    /// against the real files — and a gate that quietly let an unspellable red
+    /// through would be exactly the exemption-shaped hole this one exists to
+    /// close.
+    Unspellable { reds: Vec<String> },
+}
+
+/// Whether a push has named the red it is publishing over.
+///
+/// EXACT SET EQUALITY, in both directions. A missing name is somebody who read
+/// half the report; an invented one is somebody who read a different commit's,
+/// and both are a reader who does not know what is broken.
+pub fn acknowledgement(reds: &[String], given: Option<&str>) -> Acknowledgement {
+    if reds.is_empty() {
+        return Acknowledgement::NothingToName;
+    }
+    if reds
+        .iter()
+        .any(|red| red.contains(ACKNOWLEDGEMENT_SEPARATOR))
+    {
+        return Acknowledgement::Unspellable {
+            reds: reds.to_vec(),
+        };
+    }
+    let Some(given) = given.map(str::trim).filter(|given| !given.is_empty()) else {
+        return Acknowledgement::Absent {
+            reds: reds.to_vec(),
+        };
+    };
+    let named: BTreeSet<&str> = given
+        .split(ACKNOWLEDGEMENT_SEPARATOR)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect();
+    let wanted: BTreeSet<&str> = reds.iter().map(String::as_str).collect();
+    if named == wanted {
+        return Acknowledgement::Named;
+    }
+    Acknowledgement::Mismatched {
+        missing: wanted
+            .difference(&named)
+            .map(|name| (*name).to_string())
+            .collect(),
+        invented: named
+            .difference(&wanted)
+            .map(|name| (*name).to_string())
+            .collect(),
+    }
+}
+
+/// What the reporter says when a push may not go over this red unread.
+///
+/// EVERY LINE OR NONE. The refusal names the commit, the checks, and the exact
+/// spelling that discharges it — because a gate whose discharge is a guess is a
+/// gate people learn to route around, and routing around this one means the
+/// `--no-verify` that no exemption in this repository covers.
+pub fn refusal(sha: &str, verdict: &Acknowledgement) -> Vec<String> {
+    let short = short(sha);
+    match verdict {
+        Acknowledgement::NothingToName | Acknowledgement::Named => Vec::new(),
+        Acknowledgement::Absent { reds } => {
+            let mut lines = vec![format!(
+                "REFUSING this push — {short} is RED and nothing here says you have read \
+                 it. This is not a block on fixing a red: name what you are building on \
+                 and the push goes through."
+            )];
+            lines.push(format!(
+                "  {ACKNOWLEDGEMENT}='{}' git push",
+                reds.join(&ACKNOWLEDGEMENT_SEPARATOR.to_string())
+            ));
+            lines
+        }
+        Acknowledgement::Mismatched { missing, invented } => {
+            let mut lines = vec![format!(
+                "REFUSING this push — the acknowledgement does not name what is red on \
+                 {short}."
+            )];
+            if !missing.is_empty() {
+                lines.push(format!("  not named, and red: {}", missing.join(", ")));
+            }
+            if !invented.is_empty() {
+                lines.push(format!(
+                    "  named, and not red on this commit: {}",
+                    invented.join(", ")
+                ));
+            }
+            lines
+        }
+        Acknowledgement::Unspellable { reds } => vec![
+            format!(
+                "REFUSING this push — {short} is RED and a check's own name contains \
+                 `{ACKNOWLEDGEMENT_SEPARATOR}`, which is how this acknowledgement \
+                 separates them, so no spelling of it names this red."
+            ),
+            format!("  the red check(s): {}", reds.join(" / ")),
+        ],
+    }
 }
 
 /// What this reporter says about a commit's annotations, line by line.

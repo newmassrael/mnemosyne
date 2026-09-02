@@ -13,7 +13,13 @@
 # `fmt` and `clippy` have their own cases and are answered blindly here.
 #
 # Reads: REPORTER_SHA — the commit the hook must ask about.
-#        REPORTER_MODE — `reports` (default) or anything else, which exits 2.
+#        REPORTER_MODE — `reports` (default, exit 0), `refuses` (exit 1: a red
+#        this push has not named, R1297) or anything else, which exits 2.
+#
+# THREE CODES BECAUSE THE HOOK NOW READS THREE. Until R1297 the reporter had two
+# and the hook branched on zero / non-zero; folding 1 into 2 there would print
+# "the CI reporter could not run" over a verdict it produced perfectly, and
+# folding it into 0 is the R890 blindness the reporter exists to end.
 # Writes: $PWD/reporter-contract-violations.log, which the test asserts is empty.
 violate() { echo "$1" >> "$PWD/reporter-contract-violations.log"; }
 if [[ "${1:-}" != "run" ]]; then
@@ -51,6 +57,13 @@ case "${REPORTER_MODE:-reports}" in
         echo "ci-state: CI annotations on ${REPORTER_SHA:0:8} — 1 distinct of 3 reported:"
         echo "ci-state:   warning Node.js 20 actions are deprecated"
         exit 0
+        ;;
+    refuses)
+        echo "ci-state: CI on ${REPORTER_SHA:0:8} — 9 check(s): 1 failure, 8 success"
+        echo "ci-state:   failure — every cache declared is one CI keeps"
+        echo "ci-state: REFUSING this push — ${REPORTER_SHA:0:8} is RED and nothing"
+        echo "ci-state:   MNEMOSYNE_PUSH_OVER_RED='every cache declared is one CI keeps'"
+        exit 1
         ;;
     *) exit 2 ;;
 esac
