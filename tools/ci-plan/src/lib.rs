@@ -1708,6 +1708,80 @@ pub enum ManifestTarget {
     Unreadable(String),
 }
 
+/// Where a `cargo build` of one manifest leaves the binaries it produces, as
+/// the paths a LATER STEP OF THE SAME JOB would name them by.
+///
+/// R1308's law found gates whose PROGRAM the environment names; R1309 asks
+/// whether the job that runs such a gate sets that variable, and to ask it at
+/// all something has to say WHICH step runs the gate. This is that something,
+/// and every part of the answer is a tracked fact rather than a convention:
+/// the manifest names the package, `--release` names the profile directory, and
+/// `CARGO_TARGET_DIR` in the building step's own `env:` names the root. In this
+/// repository that is `instruments`, set beside the build for R1117's reason,
+/// and `./instruments/release/restored` is the result — a path this reader can
+/// spell rather than a string a law would have to guess at.
+///
+/// `[[bin]]` NAMES WIN WHEN THERE ARE ANY, because a crate that renames its
+/// binary leaves a path nothing else predicts, and a reader that assumed the
+/// package name would report a step as not running a gate it does run.
+///
+/// # Errors
+///
+/// When the manifest cannot be read or names no package, and when the target
+/// directory is a GitHub expression this reader cannot evaluate. Both are
+/// refusals rather than a default path: a path guessed wrong matches no step,
+/// and no step matched is exactly what a job that runs nothing looks like.
+pub fn built_binary_paths(
+    root: &Path,
+    manifest: &str,
+    command: &CargoCommand,
+) -> Result<Vec<String>, String> {
+    let raw = std::fs::read_to_string(root.join(manifest))
+        .map_err(|why| format!("{manifest} could not be read: {why}"))?;
+    let parsed: toml::Value =
+        toml::from_str(&raw).map_err(|why| format!("{manifest} does not parse as TOML: {why}"))?;
+    let mut names: Vec<String> = parsed
+        .get("bin")
+        .and_then(toml::Value::as_array)
+        .map(|bins| {
+            bins.iter()
+                .filter_map(|bin| bin.get("name").and_then(toml::Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if names.is_empty() {
+        let named = parsed
+            .get("package")
+            .and_then(|package| package.get("name"))
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| format!("{manifest} names no package, so it builds no binary"))?;
+        names.push(named.to_string());
+    }
+    let directory = command
+        .env
+        .get("CARGO_TARGET_DIR")
+        .map_or("target", String::as_str);
+    if directory.contains("${{") {
+        return Err(format!(
+            "the target directory of the build in `{}` is the GitHub expression \
+             {directory:?}, which this reader cannot evaluate — so it cannot say \
+             what path a later step would name",
+            command.owner
+        ));
+    }
+    let profile = if command.has("--release") {
+        "release"
+    } else {
+        "debug"
+    };
+    let directory = directory.trim_end_matches('/');
+    Ok(names
+        .into_iter()
+        .map(|name| format!("{directory}/{profile}/{name}"))
+        .collect())
+}
+
 /// Does this cargo subcommand REWRITE a lockfile it disagrees with?
 ///
 /// `None` for a subcommand this table does not know. Every answer here is

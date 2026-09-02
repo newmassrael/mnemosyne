@@ -3264,6 +3264,176 @@ fn no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names() {
     );
 }
 
+/// A HOSTED JOB SETS THE VARIABLE THAT NAMES ITS GATE'S PROGRAM (R1309).
+///
+/// THE HALF R1308 LEFT, AND ITS OWN CARRY NAMED IT. That law asks whether the
+/// ENVIRONMENT names a gate's program, and it stops there: `restored` is
+/// classified tree-bound because `mnemosyne-validate.yml` sets `RUSTC_WRAPPER`
+/// at the workflow level, and that sentence is a reason written in a list. The
+/// agreement it describes is held between two tracked files — a crate's `src/`
+/// and a workflow's `env:` — so it is derivable, and a reason nobody derives is
+/// a reason that stops being true without anything going red.
+///
+/// WHAT IT COSTS TO BE WRONG IS THE SHAPE THIS REPOSITORY KEEPS PAYING FOR.
+/// With the variable unset a runner still runs the gate, and `restored`'s answer
+/// becomes `none` — a census taken by nothing, reported as a census. Not a
+/// crash, not a NO VERDICT: a green that means nobody looked, which is the exact
+/// failure R1290 built its half of this pair against.
+///
+/// WHICH STEP RUNS THE GATE IS DERIVED AND NOT MATCHED BY NAME.
+/// [`ci_plan::built_binary_paths`] spells the path a build leaves on disk out of
+/// three tracked facts — the manifest names the package, `--release` names the
+/// profile, and the building step's own `CARGO_TARGET_DIR` names the root — so
+/// `./instruments/release/restored` is a path this law can look for rather than
+/// a word it hopes means something. A path it CANNOT spell is a red, because a
+/// path guessed wrong matches no step and no step matched is indistinguishable
+/// from a job that runs nothing.
+///
+/// THE STEP'S RESOLVED `env:` IS THE ANSWER, WHICH IS WHY IT IS NOT A JOB-LEVEL
+/// QUESTION. [`ci_plan::RunStep::env`] is the workflow's overlaid by the job's
+/// overlaid by the step's — GitHub's own precedence — so a variable set at any
+/// of the three levels satisfies this, and one set only on some OTHER step of
+/// the same job does not. Asking the job would have called that second case
+/// compliant.
+///
+/// PRESENCE, NOT VALUE. `RUSTC_WRAPPER: ""` is how this workflow tells cargo
+/// there is no wrapper, and `restored` answers `none` to it deliberately; that
+/// is the tree deciding, which is the whole of what this law wants. What it
+/// refuses is the variable being absent, where nothing decided and the runner's
+/// leftovers answer.
+#[test]
+fn a_hosted_job_sets_the_variable_that_names_its_gates_program() {
+    let root = repo_root();
+    let tracked = ci_plan::tracked_files(&root, &["ls-files"]);
+    let manifests = ci_plan::tracked_manifests(&root);
+
+    // THE POPULATION IS R1308'S ROUTE 2, ASKED AGAIN RATHER THAN COPIED. Same
+    // reader, same boundary — a crate's own `src/`, because a test spawning
+    // what a variable names is a question about itself.
+    let owner = |source: &str| -> Option<&String> {
+        manifests
+            .iter()
+            .filter(|manifest| {
+                let dir = manifest
+                    .strip_suffix("Cargo.toml")
+                    .unwrap_or(manifest.as_str());
+                source.starts_with(dir)
+            })
+            .max_by_key(|manifest| manifest.len())
+    };
+    let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for site in &ci_plan::rust::cargo_commands(&root).from_the_environment {
+        let ci_plan::rust::Program::FromEnvironment { variable, .. } = &site.program else {
+            continue;
+        };
+        let Some(manifest) = owner(&site.source) else {
+            continue;
+        };
+        let dir = manifest
+            .strip_suffix("Cargo.toml")
+            .unwrap_or(manifest.as_str());
+        if !site.source.starts_with(&format!("{dir}src/")) {
+            continue;
+        }
+        wanted
+            .entry(manifest.clone())
+            .or_default()
+            .insert(variable.clone());
+    }
+    assert!(
+        !wanted.is_empty(),
+        "no tracked crate's own `src/` spawns a program the environment names, \
+         so this law holds over nothing — the empty answer that reads like a \
+         clean one"
+    );
+
+    // WHERE A HOSTED JOB LEAVES EACH OF THEM ON DISK. A build this reader cannot
+    // turn into a path is a red rather than a crate quietly dropped: the drop
+    // and a clean answer are the same output.
+    let issued = ci_plan::commands_this_repository_issues(&root);
+    let mut unspellable: Vec<String> = Vec::new();
+    let mut binaries: BTreeMap<String, (String, BTreeSet<String>)> = BTreeMap::new();
+    for command in &issued.commands {
+        if !command.source.starts_with(".github/workflows/") {
+            continue;
+        }
+        let ci_plan::ManifestTarget::Named(manifest) = command.manifest(&tracked) else {
+            continue;
+        };
+        let Some(variables) = wanted.get(&manifest) else {
+            continue;
+        };
+        match ci_plan::built_binary_paths(&root, &manifest, command) {
+            Ok(paths) => {
+                for path in paths {
+                    binaries.insert(path, (manifest.clone(), variables.clone()));
+                }
+            }
+            Err(why) => unspellable.push(format!("{} — {why}", command.origin())),
+        }
+    }
+    assert!(
+        unspellable.is_empty(),
+        "a hosted job builds a gate whose program the environment names, and \
+         this reader cannot say what path the build leaves it at — so it cannot \
+         find the step that runs it, and every such step passes by not being \
+         looked at:\n  {}",
+        unspellable.join("\n  ")
+    );
+    assert!(
+        !binaries.is_empty(),
+        "no hosted job builds any crate whose program the environment names, so \
+         the walk below has nothing to look for and would report a clean tree \
+         whatever the workflows said"
+    );
+    println!(
+        "[venue] {} binary path(s) a hosted job leaves for a gate the environment \
+         names: {:?}",
+        binaries.len(),
+        binaries.keys().collect::<Vec<_>>()
+    );
+
+    // AND WHAT RUNS THEM, WITH THE ENVIRONMENT THAT SURROUNDS IT.
+    let mut ran = 0_usize;
+    let mut unset: Vec<String> = Vec::new();
+    for workflow in ci_plan::workflow_files(&root) {
+        let document = ci_plan::load_workflow(&root, &workflow);
+        for step in ci_plan::run_steps(&document) {
+            for (path, (manifest, variables)) in &binaries {
+                if !step.script.contains(path.as_str()) {
+                    continue;
+                }
+                ran += 1;
+                for variable in variables {
+                    if !step.env.contains_key(variable) {
+                        unset.push(format!(
+                            "{workflow} job `{}` step {} runs `{path}` ({manifest}) \
+                             and nothing sets ${variable}",
+                            step.job, step.index
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        ran > 0,
+        "no tracked workflow step runs any of these binaries, so this law is \
+         asking about nobody: {:?}",
+        binaries.keys().collect::<Vec<_>>()
+    );
+    println!("[venue] {ran} hosted step(s) run one of them");
+    assert!(
+        unset.is_empty(),
+        "these hosted steps run a gate whose PROGRAM the environment names, and \
+         the variable that names it is set at no level a runner would see. The \
+         gate still runs there and still answers — with whatever the runner \
+         happens to hold, which for this one is nothing at all, reported as a \
+         reading:\n  {}",
+        unset.join("\n  ")
+    );
+}
+
 // --------------------------------------------------------------- ident gate
 
 /// An address `.githooks/lib/ident-gate.sh` does not list. Written once so the

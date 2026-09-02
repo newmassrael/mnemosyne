@@ -1221,6 +1221,71 @@ fn issued(line: &str) -> CargoCommand {
     }
 }
 
+/// WHERE A HOSTED BUILD LEAVES A GATE'S BINARY (R1309).
+///
+/// The law that asks whether a job sets the variable naming its gate's program
+/// has to find the step that RUNS the gate, and this is the only thing that can
+/// say where to look. Every part of the answer is a tracked fact — package name,
+/// `--release`, `CARGO_TARGET_DIR` — so the cases here are the three that decide
+/// it and the two refusals, held against this repository's own manifests rather
+/// than a fixture, because a fixture manifest would be a fourth spelling of what
+/// a package name is.
+#[test]
+fn a_hosted_build_says_where_it_leaves_the_binary() {
+    let root = repository_root();
+
+    // THE SHAPE THE WORKFLOW ACTUALLY WRITES: `--release`, and a target
+    // directory set beside the build in that step's own `env:`.
+    let mut command =
+        issued("cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml");
+    command
+        .env
+        .insert("CARGO_TARGET_DIR".to_string(), "instruments".to_string());
+    assert_eq!(
+        ci_plan::built_binary_paths(&root, "tools/restored/Cargo.toml", &command),
+        Ok(vec!["instruments/release/restored".to_string()]),
+        "this is the path `./instruments/release/restored` in the workflow, and \
+         if this reader stops spelling it the law that looks for it silently \
+         stops finding any step at all"
+    );
+
+    // NO TARGET DIRECTORY AND NO `--release` IS CARGO'S OWN DEFAULT, which is
+    // what a build written anywhere else in this repository would leave.
+    let plain = issued("cargo build --manifest-path tools/restored/Cargo.toml");
+    assert_eq!(
+        ci_plan::built_binary_paths(&root, "tools/restored/Cargo.toml", &plain),
+        Ok(vec!["target/debug/restored".to_string()])
+    );
+
+    // A `[[bin]]` NAME WINS OVER THE PACKAGE'S, because a crate that renames its
+    // binary leaves a path the package name does not predict.
+    assert_eq!(
+        ci_plan::built_binary_paths(&root, "tools/blind-waits/Cargo.toml", &plain),
+        Ok(vec!["target/debug/blind-waits".to_string()])
+    );
+
+    // AND THE TWO REFUSALS. A manifest that is not there, and a target directory
+    // written as a GitHub expression: both are paths this reader cannot spell,
+    // and a path guessed wrong matches no step — which reads exactly like a job
+    // that runs nothing.
+    assert!(
+        ci_plan::built_binary_paths(&root, "tools/no-such-crate/Cargo.toml", &plain).is_err(),
+        "a manifest this reader cannot read must refuse rather than return a \
+         path built from a name it never saw"
+    );
+    let mut expression = issued("cargo build --manifest-path tools/restored/Cargo.toml");
+    expression.env.insert(
+        "CARGO_TARGET_DIR".to_string(),
+        "${{ github.workspace }}/instruments".to_string(),
+    );
+    assert!(
+        ci_plan::built_binary_paths(&root, "tools/restored/Cargo.toml", &expression).is_err(),
+        "a target directory this reader cannot evaluate must refuse — R1117 \
+         records that a GitHub expression here took nine jobs out of a census at \
+         once, and a path with `${{{{` in it matches no step's script"
+    );
+}
+
 #[test]
 fn a_repeatable_flag_is_read_at_every_place_it_is_written() {
     let command = issued("cargo test -p mnemosyne-cli --test alpha --test=beta --locked");

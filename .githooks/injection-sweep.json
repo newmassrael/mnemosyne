@@ -82,6 +82,7 @@
     "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs",
     "git_hooks_smoke::every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs",
     "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names",
+    "git_hooks_smoke::a_hosted_job_sets_the_variable_that_names_its_gates_program",
     "git_hooks_smoke::pre_commit_reads_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_commit_formats_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_push_formats_the_separate_workspace_the_pushed_range_touches",
@@ -373,6 +374,18 @@
         }
       ],
       "expect_red": ["no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"]
+    },
+    {
+      "name": "the-variable-that-names-a-gates-program-is-set-by-nobody",
+      "why": "R1309 — THE HALF R1308 LEFT, AND ITS OWN CARRY NAMED IT. R1308 classifies `restored` as tree-bound because the job that runs it is the job that SETS `RUSTC_WRAPPER`, and that reason lived in a list rather than in a reader. This edit takes the variable out of the workflow's `env:` and changes nothing else: the sixteen steps that run `./instruments/release/restored` still run it, still exit 0, and now take their census with whatever the runner holds — which is nothing, reported as a reading. That is the failure this pair exists for, and before this law nothing in the tree could tell it from a clean run",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "  CARGO_INCREMENTAL: 0\n  RUSTC_WRAPPER: ${{ github.workspace }}/instruments/release/rustc-log\n",
+          "to": "  CARGO_INCREMENTAL: 0\n"
+        }
+      ],
+      "expect_red": ["a_hosted_job_sets_the_variable_that_names_its_gates_program"]
     },
     {
       "name": "the-four-rs-gates-point-at-the-root-again",

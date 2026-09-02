@@ -263,6 +263,21 @@
       "tests": [
         "git_hooks_smoke::pre_push_formats_the_separate_workspace_the_pushed_range_touches"
       ]
+    },
+    "the-variable-that-names-a-gates-program-is-set-by-nobody": {
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "  CARGO_INCREMENTAL: 0\n  RUSTC_WRAPPER: ${{ github.workspace }}/instruments/release/rustc-log\n",
+          "to": "  CARGO_INCREMENTAL: 0\n"
+        }
+      ],
+      "expect_red": [
+        "a_hosted_job_sets_the_variable_that_names_its_gates_program"
+      ],
+      "tests": [
+        "git_hooks_smoke::a_hosted_job_sets_the_variable_that_names_its_gates_program"
+      ]
     }
   },
   "forgotten": {
