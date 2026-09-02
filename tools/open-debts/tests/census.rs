@@ -8,23 +8,22 @@
 
 use std::collections::BTreeSet;
 
-use open_debts::{registrations, Registration, Shape};
+use open_debts::{registrations, Registration, Shape, Unresolved};
 
-/// The census over a ledger whose retirements name no commit.
+/// The census over a ledger every name in which resolved.
 ///
-/// EVERY FIXTURE THAT PREDATES THE COMMIT CHECK (R1298) reaches the library
-/// through here, and the argument for it is a property of those fixtures rather
-/// than a convenience: none of them names a commit, so there is nothing that
-/// could have failed to resolve. The cases that DO name one build their own set
-/// and call the library directly, which is what keeps this helper from becoming
-/// a way of never exercising the parameter.
+/// EVERY FIXTURE THAT PREDATES THE NAME CHECKS reaches the library through here,
+/// and the argument for it is a property of those fixtures rather than a
+/// convenience: nothing they name failed to resolve, so an empty `Unresolved` is
+/// the truth about them and not a way of skipping the parameter. The cases that
+/// DO carry an unresolvable name build their own and call the library directly.
 fn open_autonomous(ledger: &str) -> Vec<Registration> {
-    open_debts::open_autonomous(ledger, &BTreeSet::new())
+    open_debts::open_autonomous(ledger, &Unresolved::default())
 }
 
 /// The retirement set over the same kind of ledger, for the same reason.
 fn retired(ledger: &str) -> BTreeSet<String> {
-    open_debts::retired(ledger, &BTreeSet::new())
+    open_debts::retired(ledger, &Unresolved::default())
 }
 
 /// A bullet registration, the shape most rows use.
@@ -311,7 +310,7 @@ fn a_retirement_naming_a_commit_that_exists_retires_its_row() {
         "the sha is read off the word that introduces it: {named:?}"
     );
     assert!(
-        open_debts::open_autonomous(ledger, &BTreeSet::new()).is_empty(),
+        open_debts::open_autonomous(ledger, &Unresolved::default()).is_empty(),
         "with nothing unresolved, this is an ordinary retirement"
     );
 }
@@ -325,9 +324,12 @@ fn a_retirement_naming_a_commit_that_exists_retires_its_row() {
 #[test]
 fn a_retirement_naming_a_commit_that_is_not_there_retires_nothing() {
     let ledger = "- **N904**(①) — done. CLOSED (R1297, 커밋 `4a4d0e0`)\n";
-    let unresolved: BTreeSet<String> = ["4a4d0e0".to_string()].into_iter().collect();
+    let unresolved = Unresolved {
+        commits: ["4a4d0e0".to_string()].into_iter().collect(),
+        rounds: BTreeSet::new(),
+    };
     assert!(
-        open_debts::open_autonomous(ledger, &BTreeSet::new()).is_empty(),
+        open_debts::open_autonomous(ledger, &Unresolved::default()).is_empty(),
         "the control: with the commit present the row is retired"
     );
     let open = open_debts::open_autonomous(ledger, &unresolved);
@@ -340,6 +342,103 @@ fn a_retirement_naming_a_commit_that_is_not_there_retires_nothing() {
     assert!(
         open_debts::retired(ledger, &unresolved).is_empty(),
         "and the line reader must refuse it too — one resolver, or the pair drifts"
+    );
+}
+
+/// A retirement naming a round the store does not have retires nothing.
+///
+/// THE SECOND NAME, CHECKED THE WAY THE FIRST IS (Round 1313). `--repo` was made
+/// required so a row could not be closed against a commit nobody made, and the
+/// round written beside that commit — the name this ledger gives most often —
+/// went on being believed on sight for the whole life of the rule. The mutation
+/// is the only way to see it hold, because every round the real ledger names
+/// resolves today.
+#[test]
+fn a_retirement_naming_a_round_that_is_not_in_the_store_retires_nothing() {
+    let ledger = "- **N906**(①) — done. CLOSED (R9999)\n";
+    let named = open_debts::rounds_named_by_retirements(ledger);
+    assert_eq!(
+        named.keys().collect::<Vec<_>>(),
+        vec!["R9999"],
+        "the round is collected for the caller to resolve: {named:?}"
+    );
+    assert!(
+        open_debts::open_autonomous(ledger, &Unresolved::default()).is_empty(),
+        "the control: with the round present this is an ordinary retirement"
+    );
+    let unresolved = Unresolved {
+        commits: BTreeSet::new(),
+        rounds: ["R9999".to_string()].into_iter().collect(),
+    };
+    let open = open_debts::open_autonomous(ledger, &unresolved);
+    assert_eq!(
+        open.len(),
+        1,
+        "a closure citing a round the store never got is a false claim: {open:?}"
+    );
+    assert!(
+        open_debts::retired(ledger, &unresolved).is_empty(),
+        "and the line reader refuses it too — one resolver, or the pair drifts"
+    );
+    assert!(
+        !open_debts::finished(ledger, &unresolved),
+        "so the arc is not finished, which is the whole point of asking"
+    );
+}
+
+/// Both spellings of a round are collected, because the ledger writes both.
+///
+/// `R1299` AND `Round 1299` ARE ONE ROUND and the store's key is the second.
+/// Turning one into the other is the resolver's business; what this reader owes
+/// is to hand over every name a retirement gave, spelled as written, so that
+/// nothing is quietly dropped for being written the other way.
+#[test]
+fn a_round_named_in_either_spelling_is_collected_for_resolution() {
+    let ledger = "\
+- **N907**(①) — done. CLOSED (R1299)
+- **N908**(①) — done. CLOSED (Round 1300)
+";
+    let named = open_debts::rounds_named_by_retirements(ledger);
+    assert_eq!(
+        named.keys().collect::<Vec<_>>(),
+        vec!["R1299", "Round 1300"],
+        "both spellings reach the resolver: {named:?}"
+    );
+}
+
+/// A refusal says WHICH name failed, because the repairs are different.
+///
+/// A sha that does not resolve is usually a closure written before the commit
+/// was made; a round that does not is a citation to a ledger entry nobody
+/// appended. A reader told only "refused" has to go and work out which.
+///
+/// WRITTEN IN THE LEDGER'S OWN SHAPE — `🟢<id> CLOSED (…)` on the row's own
+/// continuation line — because that is the shape the refusal reader reads: the
+/// ids it reports are the run that REACHES the word, and a sentence between the
+/// id and the word ends the run. `N147`, the one refusal the real ledger has
+/// ever carried, is written exactly like this.
+#[test]
+fn a_refusal_names_the_axis_that_failed() {
+    let ledger = "\
+- **N909**(①) — done.
+ 🟢N909 CLOSED (커밋 `4a4d0e0`)
+- **N910**(①) — done.
+ 🟢N910 CLOSED (R9999)
+";
+    let unresolved = Unresolved {
+        commits: ["4a4d0e0".to_string()].into_iter().collect(),
+        rounds: ["R9999".to_string()].into_iter().collect(),
+    };
+    let refused = open_debts::refused_retirements(ledger, &unresolved);
+    assert_eq!(
+        refused.get("N909").map(|(_, why)| *why),
+        Some(open_debts::Refusal::NamesAMissingCommit),
+        "the one whose sha is absent: {refused:?}"
+    );
+    assert_eq!(
+        refused.get("N910").map(|(_, why)| *why),
+        Some(open_debts::Refusal::NamesAMissingRound),
+        "and the one whose round is: {refused:?}"
     );
 }
 
@@ -369,32 +468,35 @@ fn a_run_id_beside_a_retirement_is_not_read_as_a_commit() {
 fn the_arc_is_not_finished_while_a_closure_cannot_be_supported() {
     let done = "- **N910**(②) — a limit, recorded rather than worked.\n";
     assert!(
-        open_debts::finished(done, &BTreeSet::new()),
+        open_debts::finished(done, &Unresolved::default()),
         "nothing open and nothing claimed falsely IS the terminating shape"
     );
 
     let still_open = "- **N911**(①) — there is work here.\n";
     assert!(
-        !open_debts::finished(still_open, &BTreeSet::new()),
+        !open_debts::finished(still_open, &Unresolved::default()),
         "an open row keeps the arc going, which is the condition's whole point"
     );
 
     let nameless = "- **N912**(②) — done.\n 🟢**N912 CLOSED — 단 다른 답으로.**\n";
     assert!(
-        open_debts::open_autonomous(nameless, &BTreeSet::new()).is_empty(),
+        open_debts::open_autonomous(nameless, &Unresolved::default()).is_empty(),
         "the control: this row is not in the autonomous branch at all, so the \
          walk alone would call the arc finished"
     );
     assert!(
-        !open_debts::finished(nameless, &BTreeSet::new()),
+        !open_debts::finished(nameless, &Unresolved::default()),
         "but a closure naming nobody is a claim the ledger cannot support, and \
          it blocks from whatever branch it sits in"
     );
 
     let dangling = "- **N913**(②) — done. CLOSED (R1, 커밋 `4a4d0e0`)\n";
-    let unresolved: BTreeSet<String> = ["4a4d0e0".to_string()].into_iter().collect();
+    let unresolved = Unresolved {
+        commits: ["4a4d0e0".to_string()].into_iter().collect(),
+        rounds: BTreeSet::new(),
+    };
     assert!(
-        open_debts::finished(dangling, &BTreeSet::new()),
+        open_debts::finished(dangling, &Unresolved::default()),
         "the control: with that commit present, this ledger is finished"
     );
     assert!(

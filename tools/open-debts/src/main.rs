@@ -25,10 +25,25 @@
 //! shas a retirement names are RESOLVED here, a retirement naming one that does
 //! not resolve retires nothing, and `--repo` is required whenever the ledger
 //! names any commit at all — being unable to check is `2`, never `0`.
+//!
+//! AND THE ROUND BESIDE THAT COMMIT WENT ON BEING BELIEVED (Round 1313). The
+//! argument above reached exactly one of the four names a retirement may give,
+//! and it was not the one this ledger writes most: a closure citing a round
+//! four digits past anything that exists retired its row on sight for the whole
+//! life of the rule. THE NUMBER IS DESCRIBED AND NOT SPELLED, because
+//! `tools/*/src/` is scanned by the code-citation gate and writing the example
+//! here would BE the hallucinated citation — R1306 met the same trap in the
+//! hook that scans for it. It is the same hole with a
+//! different name in it, and this session ran with it open — at 16:57 the census
+//! counted `N263` retired by `R1311` while the store had no such entry, which
+//! did not exist until 17:06. So a round is resolved the way a commit is, by
+//! asking the one resolver this repository has for the question, and a
+//! retirement naming one that does not resolve retires nothing.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+
+use open_debts::Unresolved;
 
 /// Whether this repository has the commit a retirement named.
 ///
@@ -55,6 +70,71 @@ fn has_commit(repo: &Path, sha: &str) -> Result<bool, String> {
     }
 }
 
+/// This repository's one resolver for "the CLI of this checkout".
+///
+/// NOT `mnemosyne-cli` FROM PATH, and the reason is written at length in the
+/// script itself: `~/.cargo/bin` is a shared slot a sibling checkout can own,
+/// and a preferred `target/release` artifact can be older than the store it is
+/// judging. A census that asked the wrong binary would answer about the wrong
+/// store in silence, which is this crate's founding complaint.
+const RESOLVER: &str = "scripts/mn";
+
+/// Whether the atomic store in this repository has the round a retirement named.
+///
+/// SPELLED `Round <digits>` FROM WHATEVER THE LEDGER WROTE, because the ledger
+/// writes `R1299` and `Round 1299` for one thing and the store's key is the
+/// second. The digits are the identity; the prefix is notation.
+///
+/// AND THE ANSWER IS ONLY TRUSTED AS "NO" ONCE THE RESOLVER HAS SHOWN IT CAN
+/// SAY "YES" — see `resolver_answers`. This call reads exit 0 as "the store has
+/// it" and anything else as "it does not", which is safe only downstream of
+/// that probe: on its own, a CLI that will not build answers every question the
+/// same way a store missing every round would.
+fn has_round(repo: &Path, round: &str) -> Result<bool, String> {
+    let digits: String = round.chars().filter(char::is_ascii_digit).collect();
+    let answer = Command::new(repo.join(RESOLVER))
+        .current_dir(repo)
+        .args(["query", "--changelog-entry"])
+        .arg(format!("Round {digits}"))
+        .output()
+        .map_err(|why| format!("{} could not be run in {}: {why}", RESOLVER, repo.display()))?;
+    Ok(answer.status.success())
+}
+
+/// Whether the resolver can answer a question about this store at all.
+///
+/// THE COMMIT AXIS GETS THIS FROM GIT FOR FREE and this one has to buy it.
+/// `rev-parse` says 0 for "yes", 1 for "no such object" and something else when
+/// git itself failed, so `has_commit` can refuse to guess. The CLI has one
+/// failure code: `… is not in the atomic store` and `mnemosyne.toml not found`
+/// are both exit 1, and so is a checkout where the CLI does not build.
+/// Without a probe, a census run on such a tree reports every round the ledger
+/// ever named as a hallucinated citation. How many that is, is a number this
+/// program prints rather than one written here from memory: its own summary
+/// line says `N of N named round(s) resolved`, and on the ledger this was built
+/// against N is ninety-one. None of them would be true, and all of them would
+/// be printed in the words of a real finding. A gate that reddens on things
+/// that are not its subject is one people turn off.
+///
+/// THE PROBE IS A QUESTION THE STORE MUST BE ABLE TO ANSWER and not a question
+/// about any round, so it cannot be confused with the judgement it protects.
+fn resolver_answers(repo: &Path) -> Result<(), String> {
+    let answer = Command::new(repo.join(RESOLVER))
+        .current_dir(repo)
+        .args(["query", "--list-changelog", "--limit", "1"])
+        .output()
+        .map_err(|why| format!("{} could not be run in {}: {why}", RESOLVER, repo.display()))?;
+    if answer.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "{}/{RESOLVER} could not read this repository's changelog at all, so \
+         nothing it says about a round is an answer: {}",
+        repo.display(),
+        String::from_utf8_lossy(&answer.stderr).trim()
+    ))
+}
+
 fn main() -> ExitCode {
     let mut ledger: Option<PathBuf> = None;
     let mut repo: Option<PathBuf> = None;
@@ -71,7 +151,7 @@ fn main() -> ExitCode {
             "--repo" => match arguments.next() {
                 Some(path) => repo = Some(PathBuf::from(path)),
                 None => {
-                    eprintln!("[open-debts] --repo needs the path of the repository whose commits the ledger cites");
+                    eprintln!("[open-debts] --repo needs the path of the repository whose commits and whose store the ledger cites");
                     return ExitCode::from(2);
                 }
             },
@@ -118,25 +198,35 @@ fn main() -> ExitCode {
     // THE NAMES A RETIREMENT GIVES ARE RESOLVED BEFORE ANYTHING IS COUNTED
     // RETIRED (R1298). A closure that names a commit is a checkable claim, and
     // this census believed one that was false for several turns.
-    let named = open_debts::commits_named_by_retirements(&text);
-    let mut unresolved: BTreeSet<String> = BTreeSet::new();
-    if !named.is_empty() {
+    let commits = open_debts::commits_named_by_retirements(&text);
+    // BOTH AXES OR NEITHER (Round 1313). Splitting the requirement — check the
+    // commits when a commit is named, check the rounds when a round is — would
+    // put back the exact asymmetry this round is paying off, one flag apart.
+    let rounds = open_debts::rounds_named_by_retirements(&text);
+    let mut unresolved = Unresolved::default();
+    if !commits.is_empty() || !rounds.is_empty() {
         let Some(repo) = repo.as_deref() else {
             eprintln!(
-                "[open-debts] NO VERDICT — {} retirement(s) name a commit and no --repo was \
-                 given to check them against. Being unable to check is not a pass",
-                named.len()
+                "[open-debts] NO VERDICT — {} retirement name(s) ({} commit(s), {} round(s)) \
+                 have nothing to be checked against: no --repo was given. Being unable to \
+                 check is not a pass",
+                commits.len() + rounds.len(),
+                commits.len(),
+                rounds.len()
             );
-            for (sha, line) in &named {
-                eprintln!("[open-debts]   unchecked: {sha} (line {line})");
+            for (sha, line) in &commits {
+                eprintln!("[open-debts]   unchecked commit: {sha} (line {line})");
+            }
+            for (round, line) in &rounds {
+                eprintln!("[open-debts]   unchecked round: {round} (line {line})");
             }
             return ExitCode::from(2);
         };
-        for (sha, line) in &named {
+        for (sha, line) in &commits {
             match has_commit(repo, sha) {
                 Ok(true) => {}
                 Ok(false) => {
-                    unresolved.insert(sha.clone());
+                    unresolved.commits.insert(sha.clone());
                 }
                 Err(why) => {
                     eprintln!("[open-debts] NO VERDICT — {why}");
@@ -145,31 +235,77 @@ fn main() -> ExitCode {
                 }
             }
         }
+        if !rounds.is_empty() {
+            // BEFORE ANY ROUND IS JUDGED ON A SILENCE, and never after: a
+            // resolver that cannot answer says "no" in the same voice as a
+            // store that genuinely lacks the round.
+            if let Err(why) = resolver_answers(repo) {
+                eprintln!("[open-debts] NO VERDICT — {why}");
+                eprintln!(
+                    "[open-debts]   {} round(s) this ledger's retirements name went unasked",
+                    rounds.len()
+                );
+                return ExitCode::from(2);
+            }
+            for (round, line) in &rounds {
+                match has_round(repo, round) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        unresolved.rounds.insert(round.clone());
+                    }
+                    Err(why) => {
+                        eprintln!("[open-debts] NO VERDICT — {why}");
+                        eprintln!(
+                            "[open-debts]   it was asked about {round}, named on line {line}"
+                        );
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+        }
     }
     let retired = open_debts::retired(&text, &unresolved);
     let open = open_debts::open_autonomous(&text, &unresolved);
     println!(
-        "[open-debts] {} registration(s) in {}, {} id(s) retired, {} of {} named commit(s) resolved",
+        "[open-debts] {} registration(s) in {}, {} id(s) retired, {} of {} named commit(s) \
+         resolved, {} of {} named round(s) resolved",
         all.len(),
         ledger.display(),
         retired.len(),
-        named.len() - unresolved.len(),
-        named.len()
+        commits.len() - unresolved.commits.len(),
+        commits.len(),
+        rounds.len() - unresolved.rounds.len(),
+        rounds.len()
     );
     // A RETIREMENT AGAINST A COMMIT THAT IS NOT THERE IS PRINTED WHATEVER BRANCH
     // IT SITS IN, and it alone stops the exit code being 0. The row it fails to
     // retire may be a ② or a ③, which the walk below never looks at — so
     // leaving this to the open set would let the arc terminate on a false
     // closure filed under another branch.
-    if !unresolved.is_empty() {
+    if !unresolved.commits.is_empty() {
         println!(
             "[open-debts] {} retirement(s) name a commit this repository does not have — \
              they retire NOTHING:",
-            unresolved.len()
+            unresolved.commits.len()
         );
-        for sha in &unresolved {
-            let line = named.get(sha).copied().unwrap_or(0);
+        for sha in &unresolved.commits {
+            let line = commits.get(sha).copied().unwrap_or(0);
             println!("[open-debts]   {sha} (line {line}) is not a commit here");
+        }
+    }
+    // AND THE SAME FOR THE ROUND (Round 1313), printed apart from the commit
+    // because the repair is a different one: a sha that does not resolve is
+    // usually a closure written before the commit was made, while a round that
+    // does not is a citation to an entry the ledger never got.
+    if !unresolved.rounds.is_empty() {
+        println!(
+            "[open-debts] {} retirement(s) name a round the atomic store does not have — \
+             they retire NOTHING:",
+            unresolved.rounds.len()
+        );
+        for round in &unresolved.rounds {
+            let line = rounds.get(round).copied().unwrap_or(0);
+            println!("[open-debts]   {round} (line {line}) is not an entry in the store");
         }
     }
     // AND EVERY RETIREMENT THIS READER REFUSED IS NAMED, whatever branch its row
@@ -202,6 +338,9 @@ fn main() -> ExitCode {
                 }
                 open_debts::Refusal::NamesAMissingCommit => {
                     "names a commit this repository does not have"
+                }
+                open_debts::Refusal::NamesAMissingRound => {
+                    "names a round the atomic store does not have"
                 }
             };
             println!("[open-debts]   {id} (line {line}) {said}");

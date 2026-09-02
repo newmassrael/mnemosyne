@@ -278,16 +278,63 @@ impl Attribution {
         self.round.is_some() || self.commit.is_some() || self.date.is_some() || self.owner_word
     }
 
-    /// Whether what it names is a commit this repository does not have.
+    /// Whether what it names is something the world could not confirm.
     ///
     /// A FALSE NAME IS WORSE THAN NO NAME, so it refuses rather than falling
-    /// back on the round beside it: the claim "this was retired by that commit"
-    /// is checkable and it is false.
+    /// back on the other names beside it: the claim "this was retired by that
+    /// commit" is checkable and it is false.
+    ///
+    /// AND THE ROUND IS ASKED THE SAME WAY THE COMMIT IS (Round 1313). It was
+    /// not, for the whole life of this rule — `round` was parsed, carried into
+    /// every report and resolved against nothing, so a closure citing a round
+    /// far past anything that exists — described rather than spelled, since
+    /// `tools/*/src/` is scanned and spelling it would BE the citation — retired
+    /// its row on sight. That is the identical defect `--repo` was made required
+    /// for, on the identical argument: the arc's termination is a count, and a
+    /// count that believes a name nobody checked can be reached by writing a
+    /// sentence. Two names, one invariant — a field with two write paths and
+    /// only one of them enforced is the shape this project's `CLAUDE.md`
+    /// forbids, and here the two paths were two halves of one attribution.
     #[must_use]
-    pub fn dangles(&self, unresolved: &BTreeSet<String>) -> bool {
+    pub fn dangles(&self, unresolved: &Unresolved) -> bool {
         self.commit
             .as_ref()
-            .is_some_and(|sha| unresolved.contains(sha))
+            .is_some_and(|sha| unresolved.commits.contains(sha))
+            || self
+                .round
+                .as_ref()
+                .is_some_and(|round| unresolved.rounds.contains(round))
+    }
+}
+
+/// The names this ledger's retirements gave that the world could not confirm.
+///
+/// ONE TYPE BECAUSE IT IS ONE QUESTION. The commit axis passed a bare set of
+/// shas through five signatures, and adding the round axis beside it as a second
+/// bare set would have made every one of them take two anonymous
+/// `BTreeSet<String>` arguments in an order nothing but a comment defends. What
+/// a caller owes this library is "here is what did not resolve", and the reason
+/// each name failed belongs to the name, not to the argument position.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Unresolved {
+    /// Shas a retirement named that the repository does not have.
+    pub commits: BTreeSet<String>,
+    /// Rounds a retirement named, spelled as the ledger spells them, that the
+    /// atomic store does not have.
+    pub rounds: BTreeSet<String>,
+}
+
+impl Unresolved {
+    /// Whether every name this ledger gave resolved.
+    ///
+    /// NO `len` BESIDE IT, and that is the rule R1310 landed rather than an
+    /// oversight: the only caller asks whether anything failed, the report
+    /// prints the two axes apart because their repairs differ, and a total
+    /// nobody names would be a method this crate carries for the shape of the
+    /// pair rather than for a reader.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.commits.is_empty() && self.rounds.is_empty()
     }
 }
 
@@ -422,11 +469,40 @@ fn round_in(line: &str) -> Option<String> {
 /// library reads text. The caller asks git and hands back what did not resolve.
 #[must_use]
 pub fn commits_named_by_retirements(ledger: &str) -> BTreeMap<String, usize> {
+    named_by_retirements(ledger, |attribution| attribution.commit)
+}
+
+/// Every round this ledger's retirements name, and the line each was named on.
+///
+/// THE OTHER HALF OF THE SAME CHECK (Round 1313), and it is a separate function
+/// for the reason its neighbour is: resolving a round means asking the atomic
+/// store, which is a program, and this library reads text.
+///
+/// SPELLED AS THE LEDGER SPELLS IT — `R1299` and `Round 1299` both occur, and
+/// the key here is what `Attribution.round` holds so that a caller's answer can
+/// be matched against it without a second normalisation rule free to drift from
+/// the first. Turning the spelling into the store's key is the caller's job,
+/// because the store's key shape is the store's business and not this reader's.
+#[must_use]
+pub fn rounds_named_by_retirements(ledger: &str) -> BTreeMap<String, usize> {
+    named_by_retirements(ledger, |attribution| attribution.round)
+}
+
+/// The one walk both name-collectors are.
+///
+/// LIFTED OUT SO THE TWO AXES CANNOT DISAGREE ABOUT WHAT A RETIREMENT IS. This
+/// crate has already paid for the same six letters meaning two things one
+/// function apart; two copies of "walk the lines, take the attributions" would
+/// be the same bill arriving again.
+fn named_by_retirements(
+    ledger: &str,
+    name: impl Fn(Attribution) -> Option<String>,
+) -> BTreeMap<String, usize> {
     let mut named = BTreeMap::new();
     for (number, line) in ledger.lines().enumerate() {
         if let Some((_, attribution)) = retirement_on(line) {
-            if let Some(sha) = attribution.commit {
-                named.entry(sha).or_insert(number + 1);
+            if let Some(given) = name(attribution) {
+                named.entry(given).or_insert(number + 1);
             }
         }
     }
@@ -441,10 +517,12 @@ pub fn commits_named_by_retirements(ledger: &str) -> BTreeMap<String, usize> {
 /// only the first calls thirty struck rows open; a reader of only the second
 /// calls every prose retirement open.
 ///
-/// `unresolved` holds the shas a retirement named that this repository does not
-/// have. A retirement naming one of them does not retire anything (R1298).
+/// `unresolved` holds the names a retirement gave that the world could not
+/// confirm — shas this repository does not have (R1298) and rounds the atomic
+/// store does not have (Round 1313). A retirement naming one of them does not
+/// retire anything.
 #[must_use]
-pub fn retired(ledger: &str, unresolved: &BTreeSet<String>) -> BTreeSet<String> {
+pub fn retired(ledger: &str, unresolved: &Unresolved) -> BTreeSet<String> {
     let mut closed = BTreeSet::new();
     // `~~N123~~` — the tables' notation, and the one the prose reader missed.
     let mut rest = ledger;
@@ -526,6 +604,15 @@ pub enum Refusal {
     NamesNothing,
     /// It named a commit this repository does not have.
     NamesAMissingCommit,
+    /// It named a round the atomic store does not have (Round 1313).
+    ///
+    /// WHICH INCLUDES A ROUND BELOW 252 and that is not an oversight: rounds
+    /// 1-251 are the off-main legacy-migration closure, they are not in the
+    /// store, and `CLAUDE.md` says a citation to one cannot be verified here and
+    /// must not be written as though it were. So a retirement resting on one is
+    /// refused with the rest, and the repair is the same — name the round that
+    /// actually closed the row, or the commit.
+    NamesAMissingRound,
 }
 
 /// Every id whose retirement this reader refused, and is retired nowhere else.
@@ -539,7 +626,7 @@ pub enum Refusal {
 #[must_use]
 pub fn refused_retirements(
     ledger: &str,
-    unresolved: &BTreeSet<String>,
+    unresolved: &Unresolved,
 ) -> BTreeMap<String, (usize, Refusal)> {
     let accepted = retired(ledger, unresolved);
     let mut refused: BTreeMap<String, (usize, Refusal)> = BTreeMap::new();
@@ -547,8 +634,18 @@ pub fn refused_retirements(
         let Some((word, attribution)) = retirement_on(line) else {
             continue;
         };
-        let why = if attribution.dangles(unresolved) {
+        // WHICH NAME FAILED IS PART OF THE FINDING (Round 1313). A row refused
+        // for a sha and a row refused for a round need different repairs, and a
+        // reader told only "refused" has to go and work out which — the shape of
+        // report this crate exists to stop being the answer.
+        let dangling_commit = attribution
+            .commit
+            .as_ref()
+            .is_some_and(|sha| unresolved.commits.contains(sha));
+        let why = if dangling_commit {
             Refusal::NamesAMissingCommit
+        } else if attribution.dangles(unresolved) {
+            Refusal::NamesAMissingRound
         } else if !attribution.names_something() {
             Refusal::NamesNothing
         } else {
@@ -579,7 +676,7 @@ pub fn refused_retirements(
 /// gate whose zero is reachable. An advisory line in a program is prose, and
 /// prose is what this crate exists to stop being the answer.
 #[must_use]
-pub fn finished(ledger: &str, unresolved: &BTreeSet<String>) -> bool {
+pub fn finished(ledger: &str, unresolved: &Unresolved) -> bool {
     open_autonomous(ledger, unresolved).is_empty()
         && unresolved.is_empty()
         && refused_retirements(ledger, unresolved).is_empty()
@@ -590,7 +687,7 @@ pub fn finished(ledger: &str, unresolved: &BTreeSet<String>) -> bool {
 /// THE ANSWER IS ROWS AND NOT A NUMBER, because a count nobody can open is a
 /// count nobody checks. Each row comes back with the line it was registered on.
 #[must_use]
-pub fn open_autonomous(ledger: &str, unresolved: &BTreeSet<String>) -> Vec<Registration> {
+pub fn open_autonomous(ledger: &str, unresolved: &Unresolved) -> Vec<Registration> {
     let closed = retired(ledger, unresolved);
     let all = registrations(ledger);
     // A ROW IS CLOSED IF ANY OF ITS REGISTRATIONS SAYS SO, including a bullet
