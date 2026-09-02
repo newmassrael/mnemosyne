@@ -305,3 +305,64 @@ fn a_ledger_whose_retirements_name_no_round_is_judged_without_asking_anything() 
         "the day-attributed retirement still retires: {said}"
     );
 }
+
+/// Every program this crate has is declared, and one of them is the default.
+///
+/// THE LAW IS HERE BECAUSE THE DEFECT CAME FROM HERE (Round 1314). The fixture
+/// above needed a program cargo builds, so R1313 put one in `src/bin/` — and
+/// that alone made `cargo run --manifest-path tools/open-debts/Cargo.toml --
+/// --ledger …` stop working, because a crate with two binaries and no
+/// `default-run` gives cargo nothing to choose. It is the way the census is run
+/// by hand, no script runs it that way, and every suite names its target
+/// explicitly, so the whole root run and every separate workspace stayed green
+/// over a program that could no longer be started. Measured, not reasoned about:
+/// exit 101, `could not determine which binary to run`.
+///
+/// TWO CLAUSES, AND THE SECOND IS THE ONE THAT CATCHES THE NEXT ONE. Naming a
+/// default fixes today; requiring that every file in `src/bin/` be written down
+/// in the manifest is what makes the next fixture binary announce itself instead
+/// of arriving as a target nobody declared. This crate's whole subject is that a
+/// thing nobody wrote down is a thing nobody checked.
+#[test]
+fn every_program_this_crate_builds_is_declared_and_one_is_the_default() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest =
+        fs::read_to_string(root.join("Cargo.toml")).expect("this crate's own manifest can be read");
+    let declared: Vec<String> = manifest
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("name = "))
+        .map(|name| name.trim().trim_matches('"').to_string())
+        .collect();
+    let default = manifest
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("default-run = "))
+        .map(|name| name.trim().trim_matches('"').to_string());
+
+    // The census is the program, whatever else this crate builds for its tests.
+    assert_eq!(
+        default.as_deref(),
+        Some("open-debts"),
+        "a crate with a second binary and no default-run cannot be `cargo run` \
+         at all — the manifest read: {manifest}"
+    );
+
+    // AND NOTHING IN `src/bin/` ARRIVES UNDECLARED, which is how the second one
+    // did. Auto-discovery is what turned a test fixture into a target of this
+    // crate without a line anywhere saying so.
+    for entry in fs::read_dir(root.join("src/bin")).expect("src/bin can be read") {
+        let path = entry.expect("its entries can be read").path();
+        if path.extension().and_then(|it| it.to_str()) != Some("rs") {
+            continue;
+        }
+        let program = path
+            .file_stem()
+            .and_then(|it| it.to_str())
+            .expect("a rust file has a stem")
+            .to_string();
+        assert!(
+            declared.contains(&program),
+            "`src/bin/{program}.rs` is a program this crate builds and the \
+             manifest does not name it: {declared:?}"
+        );
+    }
+}

@@ -39,10 +39,25 @@ rust-version = "1.94"
 license = "MIT OR Apache-2.0"
 publish = false
 description = "The census of open autonomous debts, as a program rather than a pasted one-liner"
+# THE CENSUS IS WHAT THIS CRATE IS, AND IT HAS TO SAY SO (Round 1314). R1313
+# added a second binary — the resolver fixture `tests/asking.rs` reaches by
+# symlink — and the moment it did, `cargo run --manifest-path …` stopped naming
+# anything: cargo refuses to choose and prints both. That is how the census was
+# invoked by hand, and nothing caught it, because no script runs it that way and
+# a suite that names its targets never asks which one is the default.
+default-run = "open-debts"
 
 [[bin]]
 name = "open-debts"
 path = "src/main.rs"
+
+# DECLARED RATHER THAN DISCOVERED, like every other target in this file. A
+# binary that appears merely because a file was dropped in `src/bin/` is a
+# target nobody wrote down, and the one thing this crate exists to say is that a
+# thing nobody wrote down is a thing nobody checked.
+[[bin]]
+name = "mn-stub"
+path = "src/bin/mn-stub.rs"
 
 [lib]
 name = "open_debts"
