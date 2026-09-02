@@ -701,6 +701,80 @@ fn pre_commit_reads_the_separate_workspace_a_staged_file_lives_in() {
     );
 }
 
+/// Unformatted Rust in a separate workspace is unformatted Rust (R1293).
+///
+/// `cargo fmt --all` FORMATS THE MEMBERS OF THE MANIFEST IT RESOLVES, and that
+/// is not "everything". Asked of cargo rather than assumed: `cargo metadata
+/// --no-deps` over this repository's root lists 26 packages and not one of them
+/// is a crate under `tools/`, `bench/` or `studio/` — those carry their own
+/// `[workspace]` precisely so the root's commands never reach them. So the
+/// format gate on BOTH hooks said nothing about a change confined to a side
+/// workspace, and the only thing that ever checked one is
+/// `scripts/check-side-workspaces.sh`, which R1288 moved to CI.
+///
+/// THE ROOT IS LEFT CLEAN, which is what makes this about the pointing: a hook
+/// that formats only the root sees a tree with nothing wrong in it.
+#[test]
+fn pre_commit_formats_the_separate_workspace_a_staged_file_lives_in() {
+    let f = Fixture::new();
+    f.write("tools/sub/src/lib.rs", "pub fn two()->u8{\n2\n}\n");
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "unformatted code is unformatted wherever it is staged:\n{err}"
+    );
+    assert!(
+        err.contains("commit rejected — unformatted code in")
+            && err.contains("tools/sub/Cargo.toml"),
+        "and the rejection names the workspace it was found in, because \
+         `scripts/fmt.sh` is what fixes it and a reader has to know where to \
+         look:\n{err}"
+    );
+}
+
+/// And the push hook asks the same question of the RANGE it is about to publish.
+///
+/// R1288 MEASURED WHAT READING ONE HOOK COSTS: the most expensive gate in the
+/// repository left the OTHER one, and a law that read only the commit hook would
+/// have called the move complete. R1292 repaired four gates on `pre-commit` and
+/// left both format checks pointed at the root; this is the half that would
+/// otherwise have been found the same way, one hook over.
+#[test]
+fn pre_push_formats_the_separate_workspace_the_pushed_range_touches() {
+    let f = Fixture::new();
+    f.write("tools/sub/src/lib.rs", "pub fn two()->u8{\n2\n}\n");
+    f.stage_all();
+    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    let sha = head_sha(&f);
+
+    let out = f.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&sha),
+        &[],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "a push must not publish unformatted Rust because it is in a side \
+         workspace:\n{err}"
+    );
+    assert!(
+        err.contains("unformatted code in") && err.contains("tools/sub/Cargo.toml"),
+        "and the refusal names the workspace:\n{err}"
+    );
+    // THE CENSUS IS ANNOUNCED HERE TOO. A push whose range holds no Rust grades
+    // no workspace, and that state has to be distinguishable from a gate that
+    // stopped resolving them — both otherwise print the same silence.
+    assert!(
+        err.contains("the pushed .rs live in"),
+        "the hook must say which workspaces the range resolved to:\n{err}"
+    );
+}
+
 #[test]
 fn pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defect() {
     // GATE 5c's OTHER NON-ZERO EXIT, and the one nothing here ran. `1` is

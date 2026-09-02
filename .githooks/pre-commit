@@ -194,15 +194,39 @@ fi
 
 # Gate 4 — rustfmt on .rs changes. Enforces the 4-space repo-wide baseline
 # (rustfmt.toml); rejects unformatted code so the layout stays uniform.
+#
+# OVER THE WORKSPACES THIS COMMIT'S OWN `.rs` LIVE IN (R1293), which is what
+# `--all` does not mean. `cargo fmt --all` formats the members of the manifest it
+# RESOLVES, and this repository's root workspace has twenty-six of them — none
+# of which is a crate under `tools/`, `bench/` or `studio/`, because those carry
+# their own `[workspace]` precisely so the root's commands never reach them.
+# Asked of cargo rather than assumed: `cargo metadata --no-deps` over the root
+# lists 26 packages and `injection-harness` is not among them. So a side
+# workspace's formatting was checked by NOTHING on either hook — only by
+# `scripts/check-side-workspaces.sh`, which R1288 moved to CI.
+#
+# THE SAME SHAPE R1292 REPAIRED ONE GATE OVER, and it left this one because the
+# argument for leaving it was a sentence. Measured instead: one side workspace's
+# `cargo fmt --check` is 1.33s, and it PARSES rather than building — which is the
+# distinction `pre-push` states beside its own copy for why fmt stays on a path
+# that no longer compiles anything.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     echo "[mnemosyne pre-commit] .rs staged — cargo fmt --all --check" >&2
-    if ! cargo fmt --all --check; then
-        {
-            echo "[mnemosyne pre-commit] commit rejected — unformatted code"
-            echo "  fix: cargo fmt --all && git add -u"
-        } >&2
+    # shellcheck source=.githooks/lib/rs-workspaces.sh
+    source "$(cd "$(dirname "$0")" && pwd)/lib/rs-workspaces.sh"
+    if ! rs_workspaces_of "[mnemosyne pre-commit] commit rejected" "$(pwd)" "$staged"; then
         exit 1
     fi
+    for fmt_manifest in "${RS_WORKSPACES[@]}"; do
+        if ! cargo fmt --all --check --manifest-path "$fmt_manifest"; then
+            {
+                echo "[mnemosyne pre-commit] commit rejected — unformatted code in"
+                echo "  $fmt_manifest"
+                echo "  fix: scripts/fmt.sh && git add -u"
+            } >&2
+            exit 1
+        fi
+    done
 fi
 
 # ── WHAT THIS HOOK NO LONGER DOES, AND WHERE IT IS DONE INSTEAD (R1284) ──
@@ -323,50 +347,16 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     # this gate the day its manifest does. A file with no `[workspace]` above it
     # is REFUSED rather than gated by the root: a file no workspace owns is a
     # file no walk below reads, and that is the state this block exists to end.
-    tree_root="$(pwd)"
-    rs_workspaces=()
-    while IFS= read -r rs_file; do
-        [[ "$rs_file" == *.rs ]] || continue
-        if ! rs_dir="$(cd "$(dirname "$rs_file")" 2>/dev/null && pwd)"; then
-            {
-                echo "[mnemosyne pre-commit] commit rejected — the directory of $rs_file"
-                echo "  cannot be entered, so which workspace gates it is unanswerable"
-            } >&2
-            exit 1
-        fi
-        while :; do
-            rs_manifest="$rs_dir/Cargo.toml"
-            if [[ -f "$rs_manifest" ]]; then
-                # A MANIFEST THAT EXISTS AND CANNOT BE READ IS NOT ONE WITHOUT A
-                # `[workspace]`. Walking past it would hand this file to whatever
-                # workspace lies further up, which is the mispointing above with
-                # an extra step in front of it.
-                if [[ ! -r "$rs_manifest" ]]; then
-                    {
-                        echo "[mnemosyne pre-commit] commit rejected — $rs_manifest exists and"
-                        echo "  cannot be read, so which workspace gates $rs_file is unanswerable"
-                    } >&2
-                    exit 1
-                fi
-                if grep -q '^\[workspace\]' "$rs_manifest"; then
-                    case " ${rs_workspaces[*]-} " in
-                    *" $rs_manifest "*) ;;
-                    *) rs_workspaces+=("$rs_manifest") ;;
-                    esac
-                    break
-                fi
-            fi
-            if [[ "$rs_dir" == "$tree_root" || "$rs_dir" == "/" ]]; then
-                {
-                    echo "[mnemosyne pre-commit] commit rejected — no [workspace] above"
-                    echo "  $rs_file up to $tree_root, so the four gates below would read"
-                    echo "  a tree this file is not in and report nothing about it"
-                } >&2
-                exit 1
-            fi
-            rs_dir="$(dirname "$rs_dir")"
-        done
-    done <<< "$staged"
+    # THE WALK IS A LIBRARY SINCE R1293, because `pre-push` asks the same
+    # question of the PUSHED RANGE and two spellings of "which workspace owns
+    # this file" is a pair that can disagree in silence — the same reason
+    # `ident-gate.sh` is sourced by both hooks rather than pasted into each.
+    # shellcheck source=.githooks/lib/rs-workspaces.sh
+    source "$(cd "$(dirname "$0")" && pwd)/lib/rs-workspaces.sh"
+    if ! rs_workspaces_of "[mnemosyne pre-commit] commit rejected" "$(pwd)" "$staged"; then
+        exit 1
+    fi
+    rs_workspaces=("${RS_WORKSPACES[@]}")
     echo "[mnemosyne pre-commit] staged .rs live in ${#rs_workspaces[@]} workspace(s):" \
          "${rs_workspaces[*]}" >&2
 

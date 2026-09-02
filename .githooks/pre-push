@@ -147,10 +147,73 @@ if ! "${cli[@]}" validate-workspace; then
     exit 1
 fi
 
+# OVER THE WORKSPACES THE PUSHED RANGE'S OWN `.rs` LIVE IN (R1293).
+#
+# `cargo fmt --all` formats the members of the manifest it RESOLVES, and the root
+# workspace has twenty-six of them — none of which is a crate under `tools/`,
+# `bench/` or `studio/`, because those carry their own `[workspace]` so the
+# root's commands never reach them. This line therefore said nothing about a
+# push whose changes were all in a side workspace, and neither did the commit
+# hook's copy; `scripts/check-side-workspaces.sh` is the only thing that ever
+# checked them, and R1288 moved it to CI.
+#
+# A RANGE RATHER THAN A STAGED LIST, which is the same question this hook's
+# subject asks: `pre-commit` grades what is about to be committed, this grades
+# what is about to be published. Both go through
+# `.githooks/lib/rs-workspaces.sh`, because two spellings of "which workspace
+# owns this file" is a pair that can disagree in silence — and R1288 measured
+# what reading ONE hook costs: the most expensive gate in the repository left
+# the other one, and a law that read only the first would have called the move
+# complete.
+#
+# AND A RANGE THIS HOOK CANNOT READ IS NOT AN EMPTY ONE. The paths decide which
+# trees are graded, so a `git diff` that failed would silently narrow this gate
+# to nothing — the shape `pre-commit`'s staged-list read refuses one hook over.
 echo "pre-push: cargo fmt --all --check ..." >&2
-if ! cargo fmt --all --check; then
-    echo "pre-push: unformatted code — run cargo fmt --all before push" >&2
+# shellcheck source=.githooks/lib/rs-workspaces.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/rs-workspaces.sh"
+pushed_rs=""
+for ident_range in "${ident_ranges[@]}"; do
+    # NO `-- '*.rs'` PATHSPEC ON EITHER, and that is measured rather than tidy:
+    # `git ls-tree -r --name-only HEAD -- '*.rs'` returns ZERO lines in this
+    # repository, because ls-tree's pathspec is not the glob `git diff`'s is.
+    # Two commands with two matching rules is one of them being silently empty,
+    # and an empty answer here reads exactly like a push with no Rust in it. The
+    # `.rs` filter lives in `rs_workspaces_of`, once, for both.
+    if [[ "$ident_range" == *..* ]]; then
+        range_read=(git diff --name-only --diff-filter=ACMR "$ident_range")
+    else
+        # A NEW REF ON THE REMOTE PUBLISHES THE WHOLE TREE AT THAT COMMIT, which
+        # is exactly the decision gate 0 makes one screen up about identities —
+        # `ident_ranges` carries a bare sha for that case and grades all of it.
+        # Diffing a bare sha would compare it to the WORKING TREE instead, which
+        # on a clean checkout is empty: a gate that answers "no Rust here" about
+        # a push carrying the entire repository.
+        range_read=(git ls-tree -r --name-only "$ident_range")
+    fi
+    if ! range_rs=$("${range_read[@]}"); then
+        echo "pre-push: the files in $ident_range could not be read, and an unreadable" >&2
+        echo "  range is not an empty one — it would narrow this gate to nothing" >&2
+        exit 1
+    fi
+    pushed_rs="$pushed_rs$range_rs"$'\n'
+done
+if ! rs_workspaces_of "pre-push: refused" "$(pwd)" "$pushed_rs"; then
     exit 1
+fi
+# A PUSH WITH NO RUST IN IT GRADES NO WORKSPACE, said out loud rather than left
+# as an empty loop that reads exactly like a clean run.
+if [[ ${#RS_WORKSPACES[@]} -eq 0 ]]; then
+    echo "pre-push: no .rs in the pushed range — no workspace to format-check" >&2
+else
+    echo "pre-push: the pushed .rs live in ${#RS_WORKSPACES[@]} workspace(s):" \
+         "${RS_WORKSPACES[*]}" >&2
+    for fmt_manifest in "${RS_WORKSPACES[@]}"; do
+        if ! cargo fmt --all --check --manifest-path "$fmt_manifest"; then
+            echo "pre-push: unformatted code in $fmt_manifest — run scripts/fmt.sh" >&2
+            exit 1
+        fi
+    done
 fi
 
 # WHERE THE WORKSPACE CLIPPY GATE WENT (R1287), and why nothing stands here.

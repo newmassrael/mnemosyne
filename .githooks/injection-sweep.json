@@ -79,6 +79,8 @@
     "git_hooks_smoke::every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs",
     "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home",
     "git_hooks_smoke::pre_commit_reads_the_separate_workspace_a_staged_file_lives_in",
+    "git_hooks_smoke::pre_commit_formats_the_separate_workspace_a_staged_file_lives_in",
+    "git_hooks_smoke::pre_push_formats_the_separate_workspace_the_pushed_range_touches",
     "git_hooks_smoke::the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree",
     "git_hooks_smoke::the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged",
     "git_hooks_smoke::the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
@@ -314,15 +316,43 @@
     },
     {
       "name": "the-four-rs-gates-point-at-the-root-again",
-      "why": "R1292 — the trigger and the target did not agree. Gates 5c/5d/5f/5g fire when ANY `.rs` is staged and walked the ROOT, while this repository has twenty-six workspace roots; a file staged under `tools/<crate>/` was gated by a tree it is not in, so four whole-workspace walks reported findings about files the commit never touched and none about the file it did. This puts that back: whatever workspace owns the staged file, the set collapses to the root. It is not hypothetical — R1291 shipped a test under `tools/injection-harness/` that spawns a binary reading `CARGO` without naming it, `named-environment` RAN on that commit over the root, and the hosted job found it one round later",
+      "why": "R1292 — the trigger and the target did not agree. Gates 5c/5d/5f/5g fire when ANY `.rs` is staged and walked the ROOT, while this repository has twenty-six workspace roots; a file staged under `tools/<crate>/` was gated by a tree it is not in, so four whole-workspace walks reported findings about files the commit never touched and none about the file it did. This puts that back: whatever workspace owns the file, the set collapses to the root. It is not hypothetical — R1291 shipped a test under `tools/injection-harness/` that spawns a binary reading `CARGO` without naming it, `named-environment` RAN on that commit over the root, and the hosted job found it one round later. RE-ANCHORED at R1293, which moved the walk into `lib/rs-workspaces.sh` so `pre-push` could ask it too — the SUBJECT outlived the line, and it now reaches five gates across two hooks rather than four in one, which is why its red set grew",
+      "edits": [
+        {
+          "file": ".githooks/lib/rs-workspaces.sh",
+          "from": "                if grep -q '^\\[workspace\\]' \"$manifest\"; then\n                    case \" ${RS_WORKSPACES[*]-} \" in\n                    *\" $manifest \"*) ;;\n                    *) RS_WORKSPACES+=(\"$manifest\") ;;\n                    esac\n                    break\n                fi\n",
+          "to": "                if grep -q '^\\[workspace\\]' \"$manifest\"; then\n                    RS_WORKSPACES=(\"$tree_root/Cargo.toml\")\n                    break\n                fi\n"
+        }
+      ],
+      "expect_red": [
+        "pre_commit_reads_the_separate_workspace_a_staged_file_lives_in",
+        "pre_commit_formats_the_separate_workspace_a_staged_file_lives_in",
+        "pre_push_formats_the_separate_workspace_the_pushed_range_touches"
+      ]
+    },
+    {
+      "name": "the-commit-format-gate-goes-back-to-the-root",
+      "why": "R1293 — `cargo fmt --all` formats the members of the manifest it RESOLVES, and asked of cargo rather than assumed, the root workspace has 26 packages and not one of them is a crate under `tools/`, `bench/` or `studio/`. So a format check pointed at the root says nothing about a change confined to a side workspace, and until this round both hooks were pointed there. This puts the commit half back",
       "edits": [
         {
           "file": ".githooks/pre-commit",
-          "from": "                if grep -q '^\\[workspace\\]' \"$rs_manifest\"; then\n                    case \" ${rs_workspaces[*]-} \" in\n                    *\" $rs_manifest \"*) ;;\n                    *) rs_workspaces+=(\"$rs_manifest\") ;;\n                    esac\n                    break\n                fi\n",
-          "to": "                if grep -q '^\\[workspace\\]' \"$rs_manifest\"; then\n                    rs_workspaces=(\"$tree_root/Cargo.toml\")\n                    break\n                fi\n"
+          "from": "    for fmt_manifest in \"${RS_WORKSPACES[@]}\"; do\n        if ! cargo fmt --all --check --manifest-path \"$fmt_manifest\"; then\n",
+          "to": "    for fmt_manifest in \"$(pwd)/Cargo.toml\"; do\n        if ! cargo fmt --all --check --manifest-path \"$fmt_manifest\"; then\n"
         }
       ],
-      "expect_red": ["pre_commit_reads_the_separate_workspace_a_staged_file_lives_in"]
+      "expect_red": ["pre_commit_formats_the_separate_workspace_a_staged_file_lives_in"]
+    },
+    {
+      "name": "the-push-format-gate-goes-back-to-the-root",
+      "why": "R1293 — the same defect one hook over, and R1288 measured what reading only one hook costs: the most expensive gate in the repository left the OTHER one, and a law that read the commit hook alone would have called the move complete. R1292 repaired four gates on `pre-commit` and left BOTH format checks at the root, which is why this half has an injection of its own rather than sharing the one above",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "    for fmt_manifest in \"${RS_WORKSPACES[@]}\"; do\n        if ! cargo fmt --all --check --manifest-path \"$fmt_manifest\"; then\n            echo \"pre-push: unformatted code in $fmt_manifest — run scripts/fmt.sh\" >&2\n",
+          "to": "    for fmt_manifest in \"$(pwd)/Cargo.toml\"; do\n        if ! cargo fmt --all --check --manifest-path \"$fmt_manifest\"; then\n            echo \"pre-push: unformatted code in $fmt_manifest — run scripts/fmt.sh\" >&2\n"
+        }
+      ],
+      "expect_red": ["pre_push_formats_the_separate_workspace_the_pushed_range_touches"]
     }
   ]
 }
