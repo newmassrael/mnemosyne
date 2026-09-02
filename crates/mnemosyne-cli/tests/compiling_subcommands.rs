@@ -148,16 +148,26 @@ fn what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo() {
     // repository stops issuing leaves this measurement with it, and one it
     // starts issuing arrives here without anybody remembering to add it — which
     // is the whole reason `ci_plan` assembles the population once.
-    let mut issued: BTreeSet<String> = commands_this_repository_issues(&root)
+    let from_population: BTreeSet<String> = commands_this_repository_issues(&root)
         .commands
         .iter()
         .filter_map(|command| command.subcommand().map(str::to_string))
         .collect();
+    // THE POPULATION IS THE FLOOR, NOT A NUMBER (R1305). This said
+    // `issued.len() >= 4` — a magic four, and four is smaller than the set on
+    // any day this walk works, so it caught only a walk that returned almost
+    // nothing. What it is really guarding is that these subcommands come from
+    // the population `ci_plan` assembles rather than from a hand list, which is
+    // the fact `DECLARED_AND_UNREADABLE`'s entry for this site turns on: the
+    // words here are a variable AT THE SPAWN and still this repository's own
+    // enumerable set, so the limit is the READER's and the way off that list is
+    // to make them readable. A hand list would quietly make that false.
     assert!(
-        issued.len() >= 4,
-        "this repository issues more than four distinct subcommands, so a \
-         shorter list is a walk that stopped: {issued:?}"
+        !from_population.is_empty(),
+        "this repository issues cargo commands, so an empty set is a walk that \
+         stopped rather than a repository that issues none"
     );
+    let mut issued = from_population.clone();
     // AND EVERY NAME THE TABLE SAYS COMPILES NOTHING, whether this repository
     // issues it or not. That half of the table is what makes a caller SKIP a
     // clean, so an entry nobody measured is a stale artifact surviving into the
@@ -168,6 +178,17 @@ fn what_a_subcommand_leaves_for_a_clean_to_remove_is_asked_of_cargo() {
         ci_plan::COMPILES_NOTHING
             .iter()
             .map(|name| (*name).to_string()),
+    );
+    // AND EVERY WORD THIS SITE IS HANDED CAME FROM ONE OF THOSE TWO SOURCES —
+    // asserted rather than left to the reader of the two statements above,
+    // because it is the claim the exemption entry now rests on.
+    assert!(
+        issued
+            .iter()
+            .all(|subcommand| from_population.contains(subcommand)
+                || ci_plan::COMPILES_NOTHING.contains(&subcommand.as_str())),
+        "a subcommand from neither source is a hand list arriving by another \
+         door: {issued:?}"
     );
 
     let home = tempfile::tempdir().expect("temp dir");

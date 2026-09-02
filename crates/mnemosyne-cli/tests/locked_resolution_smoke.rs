@@ -719,15 +719,39 @@ fn a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile() {
 /// it. The observation was written down without being run, which is the habit
 /// R1278's own entry names.
 ///
+/// R1305 SHORTENED NOTHING AND CORRECTED A REASON, which is the other way this
+/// list stays honest. N216 asked for the same move R1278 and R1279 made — find
+/// the shape the remainder shares, give it a declaration, empty the list — and
+/// measuring it refused on three counts. The list is TWO, not the three that row
+/// names. R1279's own entry above had already corrected the "one shape" claim.
+/// And the obligation that row proposed, that the subcommand come from the
+/// `resolves_the_lockfile` table, is not one these two could carry: their
+/// subcommand is a variable AT THE SPAWN, which is where the reader looks.
+///
+/// WHAT MEASURING DID FIND is that the first entry's stated reason was false.
+/// It said the caller "builds the list while it runs"; the caller derives it
+/// from `commands_this_repository_issues` and `COMPILES_NOTHING`. The words are
+/// this repository's own population, enumerable, and the thing that cannot read
+/// them is the reader. That distinction decides which of the law's two exits
+/// applies — and a reason nobody checks is how it went unnoticed, since the law
+/// below holds MEMBERSHIP in both directions and says nothing about the prose
+/// beside it.
+///
 /// A list nobody is trying to shorten is a list that grows; a list shortened by
-/// a sentence nobody checked is worse than one that stayed long.
+/// a sentence nobody checked is worse than one that stayed long; and a list kept
+/// by a sentence nobody checked is the same defect standing still.
 const DECLARED_AND_UNREADABLE: [(&str, &str, &str); 2] = [
     (
         "crates/mnemosyne-cli/tests/compiling_subcommands.rs",
         "compiles_in_fixture",
-        "the subcommand is one of the words its caller hands over, and that \
-         caller builds the list while it runs — so no way through this site is \
-         one a table of subcommands can be keyed on. It spells no pin, and \
+        "the subcommand is one of the words its caller hands over, so at the \
+         spawn it is a variable and no way through this site is one this \
+         reader can key a table on. R1305 corrected the second half of this \
+         sentence: the caller does NOT build that list arbitrarily — it derives \
+         it from `commands_this_repository_issues` plus `COMPILES_NOTHING`, \
+         which is this repository's own enumerable population. So the limit is \
+         the READER's, not the site's, and the way off this list is the second \
+         one the law offers: make the words readable. It spells no pin, and \
          whether the list it is handed holds one is not a question a hole can \
          answer",
     ),
