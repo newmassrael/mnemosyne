@@ -44,10 +44,25 @@
         }
       ],
       "expect_red": [
-        "no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home"
+        "no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
       ],
       "tests": [
-        "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home"
+        "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
+      ]
+    },
+    "a-program-the-environment-names-is-a-program-nobody-classified": {
+      "edits": [
+        {
+          "file": "tools/cache-price/src/main.rs",
+          "from": "    let out = Command::new(\"gh\")\n",
+          "to": "    let out = Command::new(std::env::var(\"GH_PATH\").unwrap_or_default())\n"
+        }
+      ],
+      "expect_red": [
+        "no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
+      ],
+      "tests": [
+        "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
       ]
     },
     "a-tree-gate-loses-the-hosted-step-that-took-it": {

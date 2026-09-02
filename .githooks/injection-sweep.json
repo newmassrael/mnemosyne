@@ -81,7 +81,7 @@
     "git_hooks_smoke::pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run",
     "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs",
     "git_hooks_smoke::every_gate_a_hook_stopped_running_is_one_the_hosted_workflow_runs",
-    "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home",
+    "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names",
     "git_hooks_smoke::pre_commit_reads_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_commit_formats_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_push_formats_the_separate_workspace_the_pushed_range_touches",
@@ -360,7 +360,19 @@
           "to": "      - name: unread-declaration (every declaration has a reader)\n        run: >\n          cargo run -q --locked --manifest-path tools/unread-declaration/Cargo.toml\n          --bin unread-declaration -- --repo .\n\n      - name: mnemosyne-cli validate-workspace\n        run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace\n"
         }
       ],
-      "expect_red": ["no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home"]
+      "expect_red": ["no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"]
+    },
+    {
+      "name": "a-program-the-environment-names-is-a-program-nobody-classified",
+      "why": "R1308 — THE ROUTE THE LAW ABOVE HAD ONLY ONE OF. Its population was every crate whose own `src/` reads `HOME`, and `$HOME` is one spelling of \"this machine decides where the program is\" rather than the only one: `tools/restored` runs the recorder `RUSTC_WRAPPER` points at, names no `HOME`, is given a hosted job, and was in no list and in no population — the shape `unread-declaration` was in before R1290, one variable over. This edit makes `cache-price` reach the same way: its `gh` stops being a literal and becomes whatever `$GH_PATH` names, so a crate that nobody has classified starts asking a question a runner may have no answer to. Under the HOME-only derivation this edit is invisible; under the widened one it is an unclassified member, which is a red and not a pass",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/main.rs",
+          "from": "    let out = Command::new(\"gh\")\n",
+          "to": "    let out = Command::new(std::env::var(\"GH_PATH\").unwrap_or_default())\n"
+        }
+      ],
+      "expect_red": ["no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"]
     },
     {
       "name": "the-four-rs-gates-point-at-the-root-again",

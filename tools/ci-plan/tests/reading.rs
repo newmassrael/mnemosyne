@@ -2113,6 +2113,59 @@ fn a_binary_this_workspace_builds_is_not_mistaken_for_cargo() {
     assert!(matches!(site.program, Program::OurBinary(_)), "{site:#?}");
 }
 
+/// A PROGRAM THE ENVIRONMENT NAMES IS AN ANSWER, NOT A FAILURE TO READ (R1308).
+///
+/// The venue law over this repository derived its population from one syntax —
+/// a crate's own `src/` calling `env::var("HOME")` — and `$HOME` is one spelling
+/// of "this machine decides where the program is" rather than the only one.
+/// `tools/restored` runs the recorder `RUSTC_WRAPPER` names, reads no `HOME`,
+/// and sat outside every list because this reader filed that spawn under
+/// [`Program::Unplaceable`], where "I cannot name it" and "the machine names it"
+/// were the same sentence.
+///
+/// THE THREE SHAPES ARE THE THREE HOPS THIS READER ALREADY TAKES: beside the
+/// spawn, through a `let`, and through a call. And the last two cases are the
+/// boundaries — `CARGO` is read as cargo because cargo has laws of its own, and
+/// an expression consulting TWO variables names no one program, so it stays
+/// unplaceable rather than being resolved to whichever was read first.
+#[test]
+fn a_program_the_environment_names_is_named_by_its_variable() {
+    for text in [
+        r#"fn f() { Command::new(std::env::var("RUSTC_WRAPPER").unwrap()).arg("x"); }"#,
+        r#"fn f() { let w = std::env::var("RUSTC_WRAPPER").unwrap(); Command::new(&w).arg("x"); }"#,
+        r#"fn f() { Command::new(wrapper()).arg("x"); }
+           fn wrapper() -> String { std::env::var_os("RUSTC_WRAPPER").unwrap().into() }"#,
+    ] {
+        let site = only(text);
+        assert_eq!(
+            match &site.program {
+                Program::FromEnvironment { variable, .. } => variable.as_str(),
+                other => panic!("{text}\n{other:#?}"),
+            },
+            "RUSTC_WRAPPER",
+            "{text}"
+        );
+    }
+
+    // CARGO IS STILL CARGO, which is why the environment is read AFTER the two
+    // cargo tests: this repository's laws about lockfiles and doors ask about
+    // cargo sites, and a site moved out of that bucket is a site those laws stop
+    // seeing.
+    let site = only(r#"fn f() { Command::new(std::env::var("CARGO").unwrap()).arg("build"); }"#);
+    assert!(
+        matches!(site.program, Program::CargoBesideTheDoor(_)),
+        "{site:#?}"
+    );
+
+    // TWO VARIABLES NAME NO ONE PROGRAM. Picking the first would be picking, and
+    // the arm carries a variable a venue judgement is written against.
+    let site = only(
+        r#"fn f() { let p = std::env::var("A").ok().or_else(|| std::env::var("B").ok()).unwrap();
+                    Command::new(&p).arg("x"); }"#,
+    );
+    assert!(matches!(site.program, Program::Unplaceable(_)), "{site:#?}");
+}
+
 #[test]
 fn a_program_named_by_a_parameter_is_not_resolved_through_a_function_of_the_same_name() {
     // THE FIRST RUN'S OWN DEFECT. `Command::new(program)` inside a function

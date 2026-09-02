@@ -439,7 +439,7 @@ jobs:
       #
       # It is excused in `git_hooks_smoke::CANNOT_LEAVE_THIS_MACHINE` beside the
       # two gates that were already there, and
-      # `no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home` is what
+      # `no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names` is what
       # keeps this comment from being the only thing that says so: it derives
       # the population from the tools' own source and goes red if a step for one
       # of them comes back.

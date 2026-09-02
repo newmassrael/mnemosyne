@@ -234,6 +234,23 @@ pub enum Program {
     OurBinary(String),
     /// Another program, spelled as a literal — `git`, `bash`, `tar`.
     Named(String),
+    /// A program whose NAME COMES FROM THE PROCESS ENVIRONMENT — the wrapper
+    /// `RUSTC_WRAPPER` points at, a tool some variable names. The variable is
+    /// carried beside the expression because which one it is decides the only
+    /// question a venue law asks: whether a second machine, handed the same
+    /// tree, can be pointed at the same program at all.
+    ///
+    /// R1308, AND IT IS A HOP THIS READER ALREADY TOOK AND THEN THREW AWAY. The
+    /// expression resolves through the same one-hop `let` / `const` / `fn` walk
+    /// every other arm uses; before this arm the answer landed in
+    /// [`Program::Unplaceable`], where "this reader cannot name it" and "the
+    /// machine names it" were written down as the same sentence.
+    FromEnvironment {
+        /// The variable that names the program, read off the syntax.
+        variable: String,
+        /// The expression as written, for a report somebody has to act on.
+        written: String,
+    },
     /// An expression this reader cannot name a program from, even after
     /// following it one hop. NOT a pass: a spawn whose program is unknown is a
     /// spawn that might be cargo.
@@ -482,6 +499,7 @@ impl RustSpawn {
             | Program::OurBinary(how)
             | Program::Named(how)
             | Program::Unplaceable(how) => how.clone(),
+            Program::FromEnvironment { variable, written } => format!("{written} [${variable}]"),
         };
         for word in &self.words {
             out.push(' ');
@@ -696,6 +714,7 @@ impl RustSpawn {
             | Program::CargoBesideTheDoor(_)
             | Program::OurBinary(_)
             | Program::Named(_)
+            | Program::FromEnvironment { .. }
             | Program::Unplaceable(_) => return None,
         };
         Some(
@@ -896,6 +915,13 @@ pub struct RustSpawns {
     pub our_binaries: usize,
     /// Spawns of another program, named by a literal — `git`, `bash`, `tar`.
     pub other_programs: usize,
+    /// Spawns whose program THE ENVIRONMENT names, each carrying the variable.
+    ///
+    /// THE SITES RATHER THAN A COUNT, for the reason [`RustSpawns::declaring`]
+    /// is the names rather than a count: the law that asks this asks WHICH crate
+    /// owns one, and a caller handed a number would have to walk the tree again
+    /// to find out. R1308.
+    pub from_the_environment: Vec<RustSpawn>,
     /// WHICH SITES declared each [`Declared`] arm, whatever became of their
     /// words — see [`Declared::arm`], keyed by [`RustSpawn::origin`].
     ///
@@ -1078,6 +1104,10 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                 }
                 Program::Named(_) => {
                     found.other_programs += 1;
+                    continue;
+                }
+                Program::FromEnvironment { .. } => {
+                    found.from_the_environment.push(site);
                     continue;
                 }
             };
@@ -2840,7 +2870,50 @@ fn read_program(expression: &syn::Expr) -> Program {
     if rendered_text.contains("\"CARGO\"") || names_cargo(&rendered_text) {
         return Program::CargoBesideTheDoor(rendered_text);
     }
+    // THE ENVIRONMENT NAMING THE PROGRAM IS AN ANSWER, NOT A FAILURE TO READ —
+    // and it is read AFTER the two cargo tests above on purpose: `env::var
+    // ("CARGO")` names cargo, and cargo is a question this repository already
+    // has laws about. What is left is a program some OTHER variable names.
+    if let Some(variable) = names_a_variable(expression) {
+        return Program::FromEnvironment {
+            variable,
+            written: format!("${rendered_text}"),
+        };
+    }
     Program::Unplaceable(format!("${rendered_text}"))
+}
+
+/// The one environment variable an expression reads, when it reads exactly one.
+///
+/// ASKED OF THE SYNTAX, the way `no_hosted_job_runs_a_gate_that_reaches_a_program_
+/// only_this_machine_names` asks its own question, so a variable's name written
+/// in a comment or a message is not a read of it. `var` and `var_os` are the two
+/// spellings, however the path in front of them is written.
+///
+/// EXACTLY ONE, because an expression that consults two variables to decide a
+/// program is one this reader cannot name a single answer for, and naming the
+/// first would be picking. Those fall through to [`Program::Unplaceable`],
+/// which is where "not named" already lives.
+fn names_a_variable(expression: &syn::Expr) -> Option<String> {
+    struct Reads(BTreeSet<String>);
+    impl<'ast> Visit<'ast> for Reads {
+        fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
+            if let syn::Expr::Path(path) = &*node.func {
+                if let Some(last) = path.path.segments.last() {
+                    let name = last.ident.to_string();
+                    if (name == "var" || name == "var_os") && node.args.len() == 1 {
+                        if let Some(variable) = string_literal(&node.args[0]) {
+                            self.0.insert(variable);
+                        }
+                    }
+                }
+            }
+            syn::visit::visit_expr_call(self, node);
+        }
+    }
+    let mut found = Reads(BTreeSet::new());
+    found.visit_expr(expression);
+    (found.0.len() == 1).then(|| found.0.into_iter().next().unwrap_or_default())
 }
 
 /// Does this expression's spelling name cargo — `cargo()`, `&cargo`,

@@ -139,10 +139,12 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
     );
     println!(
         "[one-door] {} carried, {} of this workspace's own binaries, {} other \
-         program(s) named, {} spawn(s) whose program this reader cannot name",
+         program(s) named, {} whose program the environment names, {} spawn(s) \
+         whose program this reader cannot name",
         found.carried.len(),
         found.our_binaries,
         found.other_programs,
+        found.from_the_environment.len(),
         found.unplaceable.len()
     );
     for site in &found.carried {
