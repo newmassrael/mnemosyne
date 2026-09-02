@@ -563,6 +563,28 @@ pub fn refused_retirements(
     refused
 }
 
+/// Whether this ledger says the debt arc is finished.
+///
+/// THE PREDICATE IS THE LIBRARY'S BECAUSE IT IS THE ANSWER (R1299). It was three
+/// conditions written inline in `main.rs`, where nothing but a person could ask
+/// it — and this is the one question the whole arc terminates on.
+///
+/// AND A REFUSAL BLOCKS IT NOW, which reverses the line R1298 drew one round
+/// earlier. That round let an unattributed retirement print without blocking,
+/// on the argument that a gate taking the arc hostage over notation would be an
+/// exemption-shaped mistake pointing the other way. The argument was made
+/// WITHOUT KNOWING THE POPULATION. Measured, it is ONE row — `N147`, whose
+/// closing round is written six lines above it in the ledger's own history —
+/// and one row that a single line repairs is not hostage-taking, it is a
+/// gate whose zero is reachable. An advisory line in a program is prose, and
+/// prose is what this crate exists to stop being the answer.
+#[must_use]
+pub fn finished(ledger: &str, unresolved: &BTreeSet<String>) -> bool {
+    open_autonomous(ledger, unresolved).is_empty()
+        && unresolved.is_empty()
+        && refused_retirements(ledger, unresolved).is_empty()
+}
+
 /// What the ledger holds open under the autonomous branch.
 ///
 /// THE ANSWER IS ROWS AND NOT A NUMBER, because a count nobody can open is a

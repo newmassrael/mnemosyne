@@ -178,14 +178,17 @@ fn main() -> ExitCode {
     // simply have been different, and a census that changes its answer without
     // saying which row moved is the thing this program was written to replace.
     //
-    // PRINTED, NOT BLOCKING, AND THAT ASYMMETRY IS DELIBERATE. A retirement
-    // naming a commit that does not exist is a claim this ledger makes that is
-    // FALSE, and "the arc is finished" must not be printed over one. A
-    // retirement naming nothing is a claim nobody can chase — a gap in the
-    // notation, not a lie — and where it matters it already blocks by itself:
-    // the row it fails to retire stays in the walk below. A gate that took the
-    // whole arc hostage over notation would be the exemption-shaped mistake in
-    // the other direction.
+    // AND A REFUSAL BLOCKS THE ARC FROM FINISHING (R1299), which is a reversal of
+    // the line R1298 drew one round earlier. That round printed an unattributed
+    // retirement without blocking, arguing that a gate holding the arc hostage
+    // over notation would be the exemption-shaped mistake pointing the other
+    // way — an argument made WITHOUT KNOWING HOW MANY ROWS IT EXCUSED. Measured
+    // on the real ledger it excused exactly one, `N147`, whose closing round is
+    // written six lines above it in the same file. A rule that lets a claim
+    // through because checking looked expensive, on a population nobody counted,
+    // is the escape hatch this repository keeps paying for; and an advisory line
+    // printed by a program is prose, which is the thing this crate exists to
+    // stop being the answer.
     let refused = open_debts::refused_retirements(&text, &unresolved);
     if !refused.is_empty() {
         println!(
@@ -204,7 +207,10 @@ fn main() -> ExitCode {
             println!("[open-debts]   {id} (line {line}) {said}");
         }
     }
-    if open.is_empty() && unresolved.is_empty() {
+    // THE TERMINATION CONDITION IS ASKED OF THE LIBRARY (R1299), where a law can
+    // ask it too. It was three conditions spelled out here, and the one question
+    // this whole arc ends on had no reader but a person.
+    if open_debts::finished(&text, &unresolved) {
         println!(
             "[open-debts] the autonomous branch is EMPTY — everything left is a \
              limit, a cost judgement, an owner's word or history"
@@ -214,7 +220,7 @@ fn main() -> ExitCode {
     if open.is_empty() {
         println!(
             "[open-debts] the autonomous branch is empty, but the arc is NOT finished: \
-             a closure above names a commit that does not exist"
+             a closure above is a claim this ledger cannot support"
         );
         return ExitCode::from(1);
     }

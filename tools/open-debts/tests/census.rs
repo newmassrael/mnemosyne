@@ -357,6 +357,52 @@ fn a_run_id_beside_a_retirement_is_not_read_as_a_commit() {
     );
 }
 
+/// An empty branch is not a finished arc while a closure cannot be supported.
+///
+/// THE PREDICATE THE WHOLE ARC ENDS ON, asked of the library so a law can ask it
+/// too. Three shapes, and each was a way to reach `0` without the work being
+/// done: a row still open, a closure against a commit that is not there, and a
+/// closure naming nobody at all. The last one is the reversal R1299 made — it
+/// printed and passed for one round, on an argument written before anyone had
+/// counted how many rows it excused.
+#[test]
+fn the_arc_is_not_finished_while_a_closure_cannot_be_supported() {
+    let done = "- **N910**(②) — a limit, recorded rather than worked.\n";
+    assert!(
+        open_debts::finished(done, &BTreeSet::new()),
+        "nothing open and nothing claimed falsely IS the terminating shape"
+    );
+
+    let still_open = "- **N911**(①) — there is work here.\n";
+    assert!(
+        !open_debts::finished(still_open, &BTreeSet::new()),
+        "an open row keeps the arc going, which is the condition's whole point"
+    );
+
+    let nameless = "- **N912**(②) — done.\n 🟢**N912 CLOSED — 단 다른 답으로.**\n";
+    assert!(
+        open_debts::open_autonomous(nameless, &BTreeSet::new()).is_empty(),
+        "the control: this row is not in the autonomous branch at all, so the \
+         walk alone would call the arc finished"
+    );
+    assert!(
+        !open_debts::finished(nameless, &BTreeSet::new()),
+        "but a closure naming nobody is a claim the ledger cannot support, and \
+         it blocks from whatever branch it sits in"
+    );
+
+    let dangling = "- **N913**(②) — done. CLOSED (R1, 커밋 `4a4d0e0`)\n";
+    let unresolved: BTreeSet<String> = ["4a4d0e0".to_string()].into_iter().collect();
+    assert!(
+        open_debts::finished(dangling, &BTreeSet::new()),
+        "the control: with that commit present, this ledger is finished"
+    );
+    assert!(
+        !open_debts::finished(dangling, &unresolved),
+        "and with it absent the arc must not be called finished"
+    );
+}
+
 /// The two write paths answer the same question the same way.
 ///
 /// THE DEFECT WAS THAT THEY DID NOT. `retired` demanded a run of ids reaching
