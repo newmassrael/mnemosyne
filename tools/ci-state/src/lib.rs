@@ -1267,9 +1267,19 @@ pub struct Walked {
 /// did not exist yet. A commit whose checks have all concluded HAS a verdict —
 /// whatever it says, somebody could read it — and the pending tail in front of
 /// it is exactly the set nobody could. Measured at the same moment: depth 2.
+/// EXHAUSTIVE RATHER THAN `matches!` (R1303), and the difference is a whole
+/// verdict. R1300 wrote this as `matches!(…, Red | Clear)`, which names two of
+/// this enum's four variants and leaves the other two to a catch-all `matches!`
+/// supplies for free — so a fifth verdict would arrive here as "not judged"
+/// with nobody asked. `tools/unasked-variant` is the law that says so, and it
+/// caught this; what it could not do was reach anybody, which is the round this
+/// is part of.
 #[must_use]
 pub fn judged(checks: &[Check]) -> bool {
-    matches!(verdict(checks), Verdict::Red | Verdict::Clear)
+    match verdict(checks) {
+        Verdict::Red | Verdict::Clear => true,
+        Verdict::Nothing | Verdict::Pending => false,
+    }
 }
 
 /// The reds a walk leaves outstanding, given newest-first.

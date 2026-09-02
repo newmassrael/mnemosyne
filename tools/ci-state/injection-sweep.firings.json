@@ -1374,8 +1374,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    matches!(verdict(checks), Verdict::Red | Verdict::Clear)",
-          "to": "    matches!(verdict(checks), Verdict::Clear)"
+          "from": "        Verdict::Red | Verdict::Clear => true,",
+          "to": "        Verdict::Clear => true,\n        Verdict::Red => false,"
         }
       ],
       "expect_red": [
