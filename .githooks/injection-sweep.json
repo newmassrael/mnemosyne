@@ -149,6 +149,20 @@
       "expect_red": ["the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree"]
     },
     {
+      "name": "an-added-gate-need-not-say-which-round-decided-it",
+      "why": "R1307. A commit can land a gate and cite NOTHING, which rule 5 cannot catch because it checks the citations a message has and this message has none — `8adec8d` added an identity gate across three files and names no round, so the audit trail does not say why that gate exists. Drop the staged-adds test and the rule has no subject: every commit passes it, which is the state that let that one through. Measured before it was made to block: 147 of the 150 commits that add such a file already cite a round",
+      "edits": [
+        {
+          "file": ".githooks/commit-msg",
+          "from": "    if [[ -n \"$gates_added\" && -z \"$cited_rounds\" ]]; then",
+          "to": "    if [[ -n \"\" && -z \"$cited_rounds\" ]]; then"
+        }
+      ],
+      "expect_red": [
+        "commit_msg_accepts_the_house_format_and_names_every_violation"
+      ]
+    },
+    {
       "name": "a-cited-round-is-taken-on-trust",
       "why": "R1306. A commit subject is where a round number is written most often and checked least: measured over `origin/main`, 1062 of 1098 commits cite one, `validate-code-refs` scans `crates/*/src/` and `CLAUDE.md` records that commit messages are NOT covered, and four citations on this branch name a round the store does not have — one of them forty rounds AHEAD of the newest round that existed when it was written. The number is described rather than spelled, because spelling it here makes the citation and the code-citation gate refuses the commit for it. Stop asking the resolver and every citation passes, which is the state that let those four through",
       "edits": [

@@ -65,6 +65,21 @@
         "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
       ]
     },
+    "an-added-gate-need-not-say-which-round-decided-it": {
+      "edits": [
+        {
+          "file": ".githooks/commit-msg",
+          "from": "    if [[ -n \"$gates_added\" && -z \"$cited_rounds\" ]]; then",
+          "to": "    if [[ -n \"\" && -z \"$cited_rounds\" ]]; then"
+        }
+      ],
+      "expect_red": [
+        "commit_msg_accepts_the_house_format_and_names_every_violation"
+      ],
+      "tests": [
+        "git_hooks_smoke::commit_msg_accepts_the_house_format_and_names_every_violation"
+      ]
+    },
     "an-unreadable-manifest-is-read-as-one-without-a-workspace": {
       "edits": [
         {

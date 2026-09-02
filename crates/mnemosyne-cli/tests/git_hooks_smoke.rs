@@ -507,6 +507,80 @@ fn commit_msg_accepts_the_house_format_and_names_every_violation() {
         "and told why, which is a different sentence:\n{err}"
     );
 
+    // A COMMIT THAT ADDS A GATE SAYS WHICH ROUND DECIDED IT (R1307), and the
+    // control comes first so the rejection below cannot be an accident of the
+    // fixture: with nothing staged, a message citing no round is fine.
+    //
+    // MEASURED BEFORE THE RULE BLOCKED: of the 150 commits on `origin/main` that
+    // add a file under `.githooks/` or a `tests/` path, 147 already cite a round
+    // and three do not — one of them the identity gate this rule is named for.
+    let uncited = "docs(narrative): a commit that adds nothing\n\n- one bullet\n";
+    fs::write(f.path().join("COMMIT_EDITMSG_case"), uncited).expect("write message");
+    let out = f.run_hook(
+        "commit-msg",
+        &[f.path()
+            .join("COMMIT_EDITMSG_case")
+            .to_str()
+            .expect("path is utf-8")],
+        "",
+        &[("MN_STUB_ROUNDS", "1305")],
+    );
+    assert!(
+        out.status.success(),
+        "a commit that adds no gate needs no citation:\n{}",
+        stderr_of(&out)
+    );
+
+    fs::create_dir_all(f.path().join(".githooks")).expect("hooks dir");
+    fs::write(f.path().join(".githooks/a-new-gate"), "#!/bin/sh\nexit 0\n").expect("gate");
+    f.git(&["add", ".githooks/a-new-gate"]);
+    let out = f.run_hook(
+        "commit-msg",
+        &[f.path()
+            .join("COMMIT_EDITMSG_case")
+            .to_str()
+            .expect("path is utf-8")],
+        "",
+        &[("MN_STUB_ROUNDS", "1305")],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "the same message must be REFUSED once a gate file is staged:\n{err}"
+    );
+    assert!(
+        err.contains("ADDS 1 gate or law file(s) and cites no round"),
+        "and it must say how many and why:\n{err}"
+    );
+    assert!(
+        err.contains(".githooks/a-new-gate"),
+        "naming the first one, so the author does not have to guess:\n{err}"
+    );
+
+    // AND A CITATION IS WHAT DISCHARGES IT — not merely having staged something,
+    // which would make the rule a thing you satisfy by unstaging.
+    let cited = "docs(narrative): R1305 a gate this round decided\n\n- one bullet\n";
+    fs::write(f.path().join("COMMIT_EDITMSG_case"), cited).expect("write message");
+    let out = f.run_hook(
+        "commit-msg",
+        &[f.path()
+            .join("COMMIT_EDITMSG_case")
+            .to_str()
+            .expect("path is utf-8")],
+        "",
+        &[("MN_STUB_ROUNDS", "1305")],
+    );
+    assert!(
+        out.status.success(),
+        "citing the round that decided it is the way through:\n{}",
+        stderr_of(&out)
+    );
+    // AND THE INDEX GOES BACK, because the cases after this one share the
+    // fixture and this rule reads the index: leaving the gate staged made the
+    // typographic case below fail for a reason that had nothing to do with it,
+    // which is how a test starts asserting about its own leftovers.
+    f.git(&["rm", "--cached", "-q", ".githooks/a-new-gate"]);
+
     // The typographic whitelist is the counterpart of the English-only rule:
     // without this the Korean case above would also pass with the rule deleted.
     let out = f.commit_msg("docs(narrative): typography stays legal\n\n- sec 4.7 \u{2192} ok\n");

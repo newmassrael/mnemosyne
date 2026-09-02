@@ -251,6 +251,43 @@ citing it, or cite the round that actually decides this")
     fi
 done <<< "$cited_rounds"
 
+# --- Rule 6: a commit that ADDS a gate says which round decided it (R1307) ---
+#
+# THE OTHER HALF OF THE ROW R1306 CLOSED HALF OF. A commit can land a gate and
+# cite nothing at all: `8adec8d` added an identity gate across three files and
+# names no round, so nothing in the audit trail says why that gate exists. Rule 5
+# cannot catch it — it checks the citations a message HAS, and this message has
+# none.
+#
+# THE PREDICATE IS "ADDS", NOT "IS ABOUT A GATE", because the second is a
+# judgement and would refuse ordinary commits. Adding a file under `.githooks/`
+# or a `tests/` law is a thing the index answers.
+#
+# MEASURED BEFORE IT WAS DECIDED TO BLOCK, which is the discipline R1298 got
+# wrong and R1299 reversed: of the 150 commits on `origin/main` that add such a
+# file, 147 already cite a round and THREE do not. The rule is therefore a
+# reachable zero rather than a wall — the practice is already kept, and what was
+# missing is a reader.
+#
+# AND A STAGED LIST THAT COULD NOT BE READ IS A REFUSAL, never an empty one. That
+# is R1281's lesson from `pre-commit`, where the same read ended in `|| true`:
+# `git diff --cached` fails only on ERROR, an empty index being a zero exit with
+# no output, so the only thing a fallback could mask was a read that failed —
+# which then looks exactly like a commit that added nothing.
+if ! staged_adds=$(git diff --cached --name-only --diff-filter=A); then
+    errors+=("the staged list of added files could not be read, and a rule keyed \
+on it must not read that as a commit that added nothing")
+else
+    gates_added="$(printf '%s\n' "$staged_adds" \
+        | grep -E '^\.githooks/|(^|/)tests/' || true)"
+    if [[ -n "$gates_added" && -z "$cited_rounds" ]]; then
+        added_count="$(printf '%s\n' "$gates_added" | grep -c . || true)"
+        errors+=("this commit ADDS $added_count gate or law file(s) and cites no \
+round — the audit trail would not say why they exist. Append the round entry and \
+cite it, first added: $(printf '%s\n' "$gates_added" | head -1)")
+    fi
+fi
+
 if [[ "${#errors[@]}" -gt 0 ]]; then
     {
         echo "[mnemosyne commit-msg] COMMIT_FORMAT.md violations:"
