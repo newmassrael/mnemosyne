@@ -1,0 +1,56 @@
+# open-debts — the census that decides when this project's debt work is finished.
+#
+# WHY IT IS A PROGRAM AND NOT A NOTE. The north star's termination condition is a
+# COUNT: the "① autonomous" branch of the outstanding-debt ledger reaching zero
+# while everything left is a limit, a cost judgement, an owner's word or history.
+# That count was taken by a shell one-liner pasted into the ledger itself, and in
+# two sessions it was wrong three ways:
+#
+#   1. IT COUNTED ITS OWN DOCUMENTATION. The paragraph explaining the markup
+#      wrote real ids as examples, so the walk read them as registrations — and
+#      the paragraph WARNING about that made the same mistake one screen down.
+#      A rule that excludes a section is a boundary, and boundaries drift; a
+#      census that does not live in the document cannot count itself at all.
+#   2. IT COUNTED A MENTION AS A ROW. `신규 = **N123**(①자율)` inside an old
+#      round summary is somebody naming a debt, not registering one, and a row
+#      whose whole body is its own classification marker has nothing in it to do.
+#   3. IT MISSED THIS FILE'S OWN RETIREMENT NOTATION. A closed row is struck
+#      through — `| ~~N123~~ | 🟢 R1244 CLOSED |` — and the detector looked for
+#      the word CLOSED within a few characters of the id, which that table row
+#      puts a round number and two emoji away. N123 has been closed since R1245
+#      and was counted OPEN.
+#
+# The third one made the number wrong, and the number is the thing the whole
+# arc terminates on. A count nobody can test is a count that is wrong quietly.
+#
+# THE LEDGER IS OUTSIDE THIS REPOSITORY and that is not a problem this crate has
+# to solve: it takes a path. What it never does is read one by default — a census
+# with a built-in target is a census that answers about the wrong file in silence.
+#
+# A SEPARATE in-repo workspace, the pattern of the other `tools/*`: its own
+# `[workspace]` so the root workspace's build gates never compile it.
+[workspace]
+
+[package]
+name = "open-debts"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "The census of open autonomous debts, as a program rather than a pasted one-liner"
+
+[[bin]]
+name = "open-debts"
+path = "src/main.rs"
+
+[lib]
+name = "open_debts"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints.clippy]
+all = "deny"
