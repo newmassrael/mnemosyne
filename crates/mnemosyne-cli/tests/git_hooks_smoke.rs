@@ -427,6 +427,86 @@ fn commit_msg_accepts_the_house_format_and_names_every_violation() {
         }
     }
 
+    // A ROUND A COMMIT CITES IS ONE THE STORE HAS (R1306), and this pair is the
+    // rule's own accept-and-reject. It is outside the table above because it is
+    // the one rule here that ASKS SOMETHING: the stub resolver answers 0 only
+    // for the rounds it was told about, so the accepted case proves the query
+    // ran and the rejected case proves a round nobody has is refused.
+    //
+    // MEASURED BEFORE IT WAS BUILT: of 1098 commits on `main`, 1062 cite a
+    // round, and four cite one the store does not have — including a `Round
+    // 1345` written when the newest round was in the twelve hundreds. Nothing
+    // asked, because `validate-code-refs` scans `crates/*/src/` and `CLAUDE.md`
+    // says commit messages are not covered.
+    let cited_and_present = "docs(narrative): R1305 a round the store has\n\n- one bullet\n";
+    fs::write(f.path().join("COMMIT_EDITMSG_case"), cited_and_present).expect("write message");
+    let out = f.run_hook(
+        "commit-msg",
+        &[f.path()
+            .join("COMMIT_EDITMSG_case")
+            .to_str()
+            .expect("path is utf-8")],
+        "",
+        &[("MN_STUB_ROUNDS", "1305")],
+    );
+    assert!(
+        out.status.success(),
+        "commit-msg must ACCEPT a citation the resolver confirms:\n{}",
+        stderr_of(&out)
+    );
+    assert!(
+        f.mn_calls().contains("query --changelog-entry Round 1305"),
+        "and it must have ASKED — a rule that accepts without asking would pass \
+         this case with the query deleted:\n{}",
+        f.mn_calls()
+    );
+
+    let cited_and_absent = "docs(narrative): R9999 a round nobody has\n\n- one bullet\n";
+    fs::write(f.path().join("COMMIT_EDITMSG_case"), cited_and_absent).expect("write message");
+    let out = f.run_hook(
+        "commit-msg",
+        &[f.path()
+            .join("COMMIT_EDITMSG_case")
+            .to_str()
+            .expect("path is utf-8")],
+        "",
+        &[("MN_STUB_ROUNDS", "1305")],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "commit-msg must REJECT a round the resolver does not confirm:\n{err}"
+    );
+    assert!(
+        err.contains("Round 9999 was not confirmed"),
+        "and must name which round and why:\n{err}"
+    );
+
+    // AND A PRE-252 ROUND IS REFUSED FOR ITS OWN REASON. Rounds 1-251 are the
+    // off-main legacy-migration closure, so the resolver cannot confirm one and
+    // `CLAUDE.md` says it must not be written as though it could — a reader told
+    // only "not confirmed" would go looking for an entry that was never there.
+    let cited_and_legacy = "docs(narrative): Round 169 is off-main\n\n- one bullet\n";
+    fs::write(f.path().join("COMMIT_EDITMSG_case"), cited_and_legacy).expect("write message");
+    let out = f.run_hook(
+        "commit-msg",
+        &[f.path()
+            .join("COMMIT_EDITMSG_case")
+            .to_str()
+            .expect("path is utf-8")],
+        "",
+        &[("MN_STUB_ROUNDS", "1305")],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "a pre-252 citation is refused:\n{err}"
+    );
+    assert!(
+        err.contains("Round 169 is off-main"),
+        "and told why, which is a different sentence:\n{err}"
+    );
+
     // The typographic whitelist is the counterpart of the English-only rule:
     // without this the Korean case above would also pass with the rule deleted.
     let out = f.commit_msg("docs(narrative): typography stays legal\n\n- sec 4.7 \u{2192} ok\n");

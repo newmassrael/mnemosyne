@@ -195,6 +195,62 @@ if non_english_lines=$(${pcre_locale[@]+"${pcre_locale[@]}"} \
     fi
 fi
 
+# --- Rule 5: every round this message cites is one the store has (R1306) ---
+#
+# CITATION HYGIENE HAD NO READER HERE, and `CLAUDE.md` says so in as many words:
+# `validate-code-refs` scans `crates/*/src/` and "commit messages, ledger prose,
+# `CLAUDE.md`, and memory are NOT covered". A commit subject is where a round
+# number is written most often and checked least — measured over `origin/main`,
+# 1062 of 1098 commits cite one — and four citations on this branch name a round
+# the store does not have, one of them a number forty rounds AHEAD of the newest
+# round that existed when it was written.
+#
+# THE EXAMPLE IS DESCRIBED AND NOT SPELLED, and R1306 learned that from this
+# repository's own gate: writing the offending number here made the citation,
+# and `validate-code-refs` — which does scan `.githooks/` — refused the commit
+# for two hallucination-class citations that were both this comment quoting one.
+# Naming a thing performs it, which is the third place this session met that.
+#
+# ASKED OF THE ONE RESOLVER, never matched against a listing. Stored keys come in
+# two shapes — `Round 568` and `Round 293 — <title>` — and `CLAUDE.md` records
+# that prefix-matching them by hand answered "hallucinated" for a quarter of the
+# ledger. `query --changelog-entry` is the resolver the code-citation gate
+# already uses, so there is no second answer to drift from it.
+#
+# A ROUND BELOW 252 IS REFUSED TOO, and told why rather than left to guess:
+# rounds 1-251 are off-main legacy-migration closure and are not in the store, so
+# a citation to one cannot be verified and `CLAUDE.md` says it must not be
+# written as though it were. Measured before this was decided: six commits in the
+# whole history cite one, naming three distinct rounds, so the zero is reachable.
+#
+# A RESOLVER THAT COULD NOT RUN IS A LINE, NOT A PASS in the direction of
+# silence: if the CLI cannot be built the rule says so and lets the commit
+# through, because a repository nobody can commit to when a build breaks is worse
+# than an unchecked citation — and the citation is still there for the next
+# commit made on a tree that builds.
+# THE SAME ONE RESOLVER THE OTHER HOOKS CALL, spelled the same relative way
+# (Round 823). A non-zero answer is a refusal here as it is in `pre-commit` —
+# "the store does not have it" and "the CLI could not answer" both mean this
+# citation was NOT confirmed, and for a citation gate that is the same verdict.
+cli=(scripts/mn)
+cited_rounds="$(grep -oE '\bR[0-9]{3,4}\b|\bRound [0-9]{3,4}\b' "$msg_file" \
+    | grep -oE '[0-9]{3,4}' | sort -u || true)"
+while read -r round; do
+    [[ -z "$round" ]] && continue
+    if "${cli[@]}" query --changelog-entry "Round $round" >/dev/null 2>&1; then
+        continue
+    fi
+    if [[ "$round" -lt 252 ]]; then
+        errors+=("Round $round is off-main — rounds 1-251 are the \
+legacy-migration closure and are not in the store, so a citation to one cannot \
+be verified. Name the round that actually decides this")
+    else
+        errors+=("Round $round was not confirmed — \`scripts/mn query \
+--changelog-entry \"Round $round\"\` did not answer 0. Append the entry before \
+citing it, or cite the round that actually decides this")
+    fi
+done <<< "$cited_rounds"
+
 if [[ "${#errors[@]}" -gt 0 ]]; then
     {
         echo "[mnemosyne commit-msg] COMMIT_FORMAT.md violations:"

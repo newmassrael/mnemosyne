@@ -5,6 +5,21 @@
   ],
   "complete": false,
   "fired": {
+    "a-cited-round-is-taken-on-trust": {
+      "edits": [
+        {
+          "file": ".githooks/commit-msg",
+          "from": "    if \"${cli[@]}\" query --changelog-entry \"Round $round\" >/dev/null 2>&1; then",
+          "to": "    if true; then"
+        }
+      ],
+      "expect_red": [
+        "commit_msg_accepts_the_house_format_and_names_every_violation"
+      ],
+      "tests": [
+        "git_hooks_smoke::commit_msg_accepts_the_house_format_and_names_every_violation"
+      ]
+    },
     "a-file-no-workspace-owns-is-handed-to-the-root": {
       "edits": [
         {

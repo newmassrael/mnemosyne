@@ -5,10 +5,26 @@
 # one fails here rather than passing silently.
 #
 # Reads: MN_STUB_EXIT — the code to end with, default 0.
+#        MN_STUB_ROUNDS — the rounds `query --changelog-entry` resolves, space
+#        separated. Any other round answers 1, which is what the real CLI does
+#        for an entry the store does not have (R1306).
 # Writes: $PWD/mn-calls.log, one call per line.
 echo "$@" >> "$PWD/mn-calls.log"
 case "${1:-}" in
     validate-code-refs|validate-workspace) ;;
+    query)
+        # THE ONE VERB THAT ANSWERS ABOUT ITS ARGUMENT, so the stub has to as
+        # well: a stub that said 0 for every round would make the citation rule
+        # accept a hallucinated one, which is the case it exists to reject.
+        if [[ "${2:-}" == "--changelog-entry" ]]; then
+            for known in ${MN_STUB_ROUNDS:-}; do
+                [[ "${3:-}" == "Round $known" ]] && exit 0
+            done
+            exit 1
+        fi
+        echo "stub mn: no query flag is named '${2:-}'" >&2
+        exit 127
+        ;;
     *)
         echo "stub mn: no CLI verb is named '${1:-}'" >&2
         exit 127
