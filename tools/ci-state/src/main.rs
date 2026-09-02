@@ -147,23 +147,10 @@ fn state_of(root: &Path, sha: &str) -> Report {
     // check it is asking about — the name was thrown away here, one line down,
     // and getting it back cost three `gh api` calls by hand the day a red commit
     // carried two failing jobs and five flat lines.
-    let mut read: Vec<Said> = Vec::new();
-    let mut notes: Vec<String> = Vec::new();
-    for check in checks.iter().filter(|c| c.output.annotations_count > 0) {
-        match gh(root, &annotations_query(check.id))
-            .and_then(|body| annotations_in(check.id, &body))
-        {
-            Ok(some) => read.extend(some.into_iter().map(|annotation| Said {
-                check: check.name.clone(),
-                annotation,
-            })),
-            // NAMED, AND THE REST STILL READ: one check whose annotations cannot
-            // be fetched must not take the other checks' annotations down with
-            // it, and the shortfall shows up in the "N distinct of D reported"
-            // line either way.
-            Err(why) => notes.push(format!("NOTE {why}")),
-        }
-    }
+    let (read, notes) = annotations_of(
+        root,
+        checks.iter().filter(|c| c.output.annotations_count > 0),
+    );
 
     let retired = ci_state::superseded_checks(&checks, &read);
     let mut lines = report(sha, &checks, &retired);
@@ -271,13 +258,179 @@ fn state_of(root: &Path, sha: &str) -> Report {
     //
     // THE VARIABLE IS READ HERE AND NOWHERE ELSE, so the one place that decides
     // is the one place that has the reds in hand.
-    let reds = ci_state::reds_to_name(&checks, &retired);
+    // AND THE PENDING TAIL BEHIND IT IS WALKED (R1300). Asking only about
+    // `origin/main` left the hole R1297 named: a commit that was still PENDING
+    // when the next push went over it is never any later push's base, so its run
+    // goes red afterwards with no reader at all. The walk stops at the first
+    // JUDGED commit, which is where verdicts start existing again.
+    let mut walk = vec![ci_state::Walked {
+        sha: sha.to_string(),
+        checks: checks.clone(),
+        superseded: retired.clone(),
+    }];
+    if !ci_state::judged(&checks) {
+        match parents_of(root, sha) {
+            Ok(parents) => {
+                let mut reached = false;
+                for parent in &parents {
+                    match lean_state(root, parent) {
+                        Ok(step) => {
+                            reached = ci_state::judged(&step.checks);
+                            walk.push(step);
+                            if reached {
+                                break;
+                            }
+                        }
+                        // A WALK THAT COULD NOT SEE IS SAID OUT LOUD, never
+                        // treated as a walk that saw nothing.
+                        Err(why) => {
+                            lines.push(format!(
+                                "NOTE the walk stopped at {} — {why}",
+                                ci_state::short(parent)
+                            ));
+                            reached = true;
+                            break;
+                        }
+                    }
+                }
+                if !reached {
+                    lines.push(format!(
+                        "^^ WALKED {} commit(s) back from {} without reaching one whose \
+                         checks concluded. Everything behind that is unasked, and this \
+                         gate is not telling you it is fine — it is telling you CI has \
+                         not finished a run in that many pushes",
+                        walk.len(),
+                        ci_state::short(sha)
+                    ));
+                }
+            }
+            Err(why) => lines.push(format!("NOTE could not walk back from {sha} — {why}")),
+        }
+    }
+    let outstanding = ci_state::outstanding_reds(&walk);
+    if walk.len() > 1 {
+        lines.push(format!(
+            "walked {} commit(s) to the first judged one; {} red(s) outstanding across them",
+            walk.len(),
+            outstanding.len()
+        ));
+        for (at, job) in &outstanding {
+            lines.push(format!("  outstanding on {}: {job}", ci_state::short(at)));
+        }
+    }
+
+    // AND LAST, WHETHER THIS PUSH MAY GO OVER WHAT WAS JUST PRINTED (R1297).
+    // Read from the SAME `checks` and the SAME `retired` set the census above was
+    // phrased from — asking GitHub a second time would let the report and the
+    // verdict be about two different answers.
+    //
+    // THE VARIABLE IS READ HERE AND NOWHERE ELSE, so the one place that decides
+    // is the one place that has the reds in hand.
+    let mut reds: Vec<String> = outstanding.into_iter().map(|(_, job)| job).collect();
+    reds.sort();
+    reds.dedup();
     let given = std::env::var(ci_state::ACKNOWLEDGEMENT).ok();
     let standing = ci_state::acknowledgement(&reds, given.as_deref());
     let refusal = ci_state::refusal(sha, &standing);
     let refused = !refusal.is_empty();
     lines.extend(refusal);
     Report { lines, refused }
+}
+
+/// What these checks' annotations say, paired with the check that said it.
+///
+/// ONE COPY, AND THIS REPOSITORY'S OWN GATE IS WHY IT IS ONE (R1300). The walk
+/// needed the same read the base report already did, and writing it twice was
+/// caught at the commit: an existing injection anchors on the line that pairs an
+/// annotation with the check that said it, and the harness refused a manifest
+/// whose anchor had come to match TWICE. Re-anchoring would have made the sweep
+/// legal and left two copies of a read that must agree — the two-write-paths
+/// shape this project's own `CLAUDE.md` forbids — so the anchor stayed and the
+/// duplicate went. The prose here does not spell that line either, for the same
+/// reason: quoting an anchor is one of the ways to become a second match.
+///
+/// PAIRED WITH THE CHECK THAT SAID IT (R1238). The name was thrown away here
+/// once, and getting it back cost three `gh api` calls by hand the day a red
+/// commit carried two failing jobs and five flat lines.
+///
+/// NAMED, AND THE REST STILL READ: one check whose annotations cannot be
+/// fetched must not take the other checks' annotations down with it, and the
+/// shortfall shows up in the "N distinct of D reported" line either way.
+fn annotations_of<'a>(
+    root: &Path,
+    asking: impl Iterator<Item = &'a Check>,
+) -> (Vec<Said>, Vec<String>) {
+    let mut read: Vec<Said> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    for check in asking {
+        match gh(root, &annotations_query(check.id))
+            .and_then(|body| annotations_in(check.id, &body))
+        {
+            Ok(some) => read.extend(some.into_iter().map(|annotation| Said {
+                check: check.name.clone(),
+                annotation,
+            })),
+            Err(why) => notes.push(format!("NOTE {why}")),
+        }
+    }
+    (read, notes)
+}
+
+/// How far back this walk will go before it says it could not find out.
+///
+/// A BOUND THAT EXCUSES NOTHING TODAY, measured rather than picked: the walk from
+/// `609101f` reaches a judged commit in 2, and the deepest thing in the recent
+/// history — the distance to an all-success commit, which is NOT this walk's
+/// stopping rule — is 10. Hitting this is therefore a statement about CI, not
+/// about the cap, and it is printed as one.
+const WALK_CAP: usize = 40;
+
+/// The commits behind this one, newest first.
+fn parents_of(root: &Path, sha: &str) -> Result<Vec<String>, String> {
+    let answer = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-list", &format!("--max-count={}", WALK_CAP + 1), sha])
+        .output()
+        .map_err(|why| format!("git could not be run: {why}"))?;
+    if !answer.status.success() {
+        return Err(format!(
+            "git rev-list refused: {}",
+            String::from_utf8_lossy(&answer.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&answer.stdout)
+        .lines()
+        .skip(1)
+        .map(str::to_string)
+        .collect())
+}
+
+/// What CI said about one commit the walk passed, and nothing more.
+///
+/// LEAN ON PURPOSE. The base commit gets the whole report — steps, annotations,
+/// budgets, trends — because that is what a person is being told about. A commit
+/// the walk merely passes needs exactly two facts: did anything fail, and was
+/// that failure a run a later push retired. Everything else would multiply the
+/// most expensive part of this program by the depth of the walk.
+fn lean_state(root: &Path, sha: &str) -> Result<ci_state::Walked, String> {
+    let answer = gh(root, &checks_query(sha))?;
+    let checks = checks_in(sha, &answer)?;
+    // THE ANNOTATIONS ONLY WHERE A FAILURE COULD BE SOMEBODY ELSE'S (R1242). A
+    // commit with nothing failing needs no second call, which is what keeps the
+    // ordinary walk one request per commit.
+    let (read, _notes) = annotations_of(
+        root,
+        checks
+            .iter()
+            .filter(|check| is_failing(check) && check.output.annotations_count > 0),
+    );
+    let superseded = ci_state::superseded_checks(&checks, &read);
+    Ok(ci_state::Walked {
+        sha: sha.to_string(),
+        checks,
+        superseded,
+    })
 }
 
 /// GitHub, asked what one job of one commit did step by step.

@@ -1083,3 +1083,115 @@ fn no_job_this_repository_declares_is_named_with_the_separator() {
         ci_state::ACKNOWLEDGEMENT_SEPARATOR
     );
 }
+
+// ── THE WALK BEHIND THE BASE (R1300) ────────────────────────────────────────
+
+/// A verdict that EXISTS is where the walk stops, and Clear is not that line.
+///
+/// THE DEBT ROW ASKED FOR A WALK BACK TO A CLEAR COMMIT and measuring refuted
+/// it: from `609101f` the nearest all-success commit is TEN back, because this
+/// repository pushes every twenty minutes and a run takes thirty to sixty, so
+/// nearly every run is cancelled by the next push. Judged is reachable — depth 2
+/// at the same moment — and it is the right line anyway, because the hole is
+/// about verdicts that did not exist yet.
+#[test]
+fn the_walk_stops_where_a_verdict_exists_and_not_where_it_is_clean() {
+    let clear = [check(1, "validate", Some("success"), 0)];
+    let red = [check(1, "validate", Some("failure"), 0)];
+    let pending = [check(1, "validate", None, 0)];
+    assert!(ci_state::judged(&clear), "an all-success commit is judged");
+    assert!(
+        ci_state::judged(&red),
+        "and so is a RED one — somebody could read it, which is the whole \
+         difference from the tail this walk exists to cover"
+    );
+    assert!(
+        !ci_state::judged(&pending),
+        "a commit still running has no verdict to read"
+    );
+    assert!(
+        !ci_state::judged(&[]),
+        "and neither has one nothing ever ran on"
+    );
+}
+
+/// A newer green retires an older red, which is what keeps this a gate.
+///
+/// MEASURED ON THE REAL HISTORY: `separate in-repo workspaces` failed on
+/// `c7540f1` and `0d1c333`, was fixed, and ran green on `1eab0c0`. A walk that
+/// demanded every red it ever passed would demand those two for ever — and a
+/// refusal nobody can discharge is one people learn to bypass.
+#[test]
+fn a_red_a_later_commit_ran_green_is_not_outstanding() {
+    let walk = vec![
+        ci_state::Walked {
+            sha: "1eab0c05".to_string(),
+            checks: vec![check(1, "separate in-repo workspaces", Some("success"), 0)],
+            superseded: std::collections::BTreeSet::new(),
+        },
+        ci_state::Walked {
+            sha: "0d1c3336".to_string(),
+            checks: vec![check(2, "separate in-repo workspaces", Some("failure"), 0)],
+            superseded: std::collections::BTreeSet::new(),
+        },
+    ];
+    assert!(
+        ci_state::outstanding_reds(&walk).is_empty(),
+        "the tree moved past it, and no memory of an acknowledgement was needed"
+    );
+
+    // THE CONTROL, AND IT IS THE MUTATION FOR THIS RULE: the same commit with
+    // nothing green newer must leave the red outstanding, or the paragraph above
+    // is asserting that this function returns nothing.
+    let unfixed = vec![walk[1].clone()];
+    assert_eq!(
+        ci_state::outstanding_reds(&unfixed),
+        vec![(
+            "0d1c3336".to_string(),
+            "separate in-repo workspaces".to_string()
+        )],
+        "with no newer green sighting the red is this push's to name"
+    );
+}
+
+/// A commit's own greens do not retire its own reds.
+///
+/// A JOB CANNOT BE BOTH ON ONE COMMIT, so the sighting that matters is a LATER
+/// one; recording this commit's greens before reading its reds would let a
+/// ten-job commit with one failure look clean.
+#[test]
+fn a_commit_does_not_clear_its_own_red_with_its_other_jobs() {
+    let walk = vec![ci_state::Walked {
+        sha: "0d1c3336".to_string(),
+        checks: vec![
+            check(1, "validate", Some("success"), 0),
+            check(2, "separate in-repo workspaces", Some("failure"), 0),
+        ],
+        superseded: std::collections::BTreeSet::new(),
+    }];
+    assert_eq!(
+        ci_state::outstanding_reds(&walk).len(),
+        1,
+        "nine green jobs do not answer for the tenth"
+    );
+}
+
+/// And a run a later push retired is not a red the walk carries.
+///
+/// THE SUBTRACTION IS R1242's AND IT IS READ HERE RATHER THAN RE-DERIVED. Nearly
+/// every commit in this repository's recent history carries cancelled checks for
+/// exactly this reason; a walk that counted them would refuse every push.
+#[test]
+fn the_walk_does_not_carry_a_red_a_later_push_retired() {
+    let mut superseded = std::collections::BTreeSet::new();
+    superseded.insert("validate".to_string());
+    let walk = vec![ci_state::Walked {
+        sha: "7557cb27".to_string(),
+        checks: vec![check(1, "validate", Some("cancelled"), 0)],
+        superseded,
+    }];
+    assert!(
+        ci_state::outstanding_reds(&walk).is_empty(),
+        "a run a later push ended says nothing about this commit"
+    );
+}

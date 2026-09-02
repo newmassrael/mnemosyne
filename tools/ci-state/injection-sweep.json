@@ -332,6 +332,34 @@
       ]
     },
     {
+      "name": "the-walk-stops-at-a-clean-commit-instead-of-a-judged-one",
+      "why": "R1300. The debt row asked for a walk back until a CLEAR commit and measuring refuted it: from `609101f` the nearest all-success commit is ten back, because this repository pushes every twenty minutes and a run takes thirty to sixty, so nearly every run is cancelled by the next push. Judged — every check concluded, whatever it said — is reachable at depth 2 and is the right line anyway, because the hole is about verdicts that did not exist yet. Narrow this back to Clear and the walk has no stopping point on this repository's own history",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    matches!(verdict(checks), Verdict::Red | Verdict::Clear)",
+          "to": "    matches!(verdict(checks), Verdict::Clear)"
+        }
+      ],
+      "expect_red": [
+        "the_walk_stops_where_a_verdict_exists_and_not_where_it_is_clean"
+      ]
+    },
+    {
+      "name": "an-older-red-is-demanded-after-a-newer-commit-ran-it-green",
+      "why": "R1300. Without the newer-green sighting the walk is a WALL rather than a gate: measured on the real history, `separate in-repo workspaces` failed on `c7540f1` and `0d1c333`, was fixed, and ran green on `1eab0c0` — and a walk that demanded every red it ever passed would demand those two for ever. A refusal nobody can discharge is the one people learn to bypass, and the bypass here is the `--no-verify` no exemption in this repository covers",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "                && !green_since.contains(check.name.as_str())",
+          "to": "                && true"
+        }
+      ],
+      "expect_red": [
+        "a_red_a_later_commit_ran_green_is_not_outstanding"
+      ]
+    },
+    {
       "name": "a-run-a-later-push-retired-is-still-called-red",
       "why": "the defect exactly as it stood, and it cost a session's own attention: `74035d7` reported three cancelled checks, one of them twenty-seven minutes into `cargo test --workspace`, and the reason was the NEXT push on the same ref. Every fact printed beside it pointed at the commit — the conclusion, the step it stopped at, how many steps never ran — and the commit had done nothing at all",
       "edits": [

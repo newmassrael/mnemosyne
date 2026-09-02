@@ -1094,7 +1094,11 @@ fn outcome(check: &Check) -> &str {
 }
 
 /// The first eight characters of a sha, as everything here prints it.
-pub(crate) fn short(sha: &str) -> String {
+///
+/// PUBLIC SINCE R1300, because the walk names commits the library never sees:
+/// a second spelling in `main.rs` is how two parts of one report come to print
+/// the same commit differently.
+pub fn short(sha: &str) -> String {
     sha.chars().take(8).collect()
 }
 
@@ -1213,6 +1217,75 @@ pub const ACKNOWLEDGEMENT: &str = "MNEMOSYNE_PUSH_OVER_RED";
 
 /// How that variable spells more than one check.
 pub const ACKNOWLEDGEMENT_SEPARATOR: char = ',';
+
+/// One commit a push walked past, with what CI said about it.
+///
+/// THE WALK EXISTS BECAUSE ONE COMMIT WAS NOT ENOUGH (R1300). Gate 6 asked about
+/// `origin/main` and nothing else, so a commit that was still PENDING when the
+/// next push went over it was never asked about again: no later push's base is
+/// that commit, its run goes red afterwards, and the red has no reader. R1297
+/// closed the case where the base is ALREADY red and named this one as the hole
+/// it left.
+#[derive(Debug, Clone)]
+pub struct Walked {
+    pub sha: String,
+    pub checks: Vec<Check>,
+    /// The names R1242's subtraction already removed for this commit.
+    pub superseded: BTreeSet<String>,
+}
+
+/// Whether this commit's verdict EXISTS — every check concluded, either way.
+///
+/// THE WALK'S STOPPING POINT, and it is deliberately not "Clear". The debt row
+/// asked for a walk back until a commit whose verdict is Clear, and measuring
+/// that refuted it: from `609101f` the nearest all-success commit is `cea5584`,
+/// TEN commits back, because this repository pushes every twenty minutes and a
+/// run takes thirty to sixty, so nearly every run is cancelled by the next push.
+/// A rule with no reachable stopping point is not a bound.
+///
+/// AND JUDGED IS THE RIGHT LINE ANYWAY, because the hole is about verdicts that
+/// did not exist yet. A commit whose checks have all concluded HAS a verdict —
+/// whatever it says, somebody could read it — and the pending tail in front of
+/// it is exactly the set nobody could. Measured at the same moment: depth 2.
+#[must_use]
+pub fn judged(checks: &[Check]) -> bool {
+    matches!(verdict(checks), Verdict::Red | Verdict::Clear)
+}
+
+/// The reds a walk leaves outstanding, given newest-first.
+///
+/// A NEWER GREEN SIGHTING RETIRES AN OLDER RED, and it needs no memory of what
+/// anybody acknowledged: if job `J` failed on an older commit and has since run
+/// green, the tree moved past it. Without this the gate is a WALL rather than a
+/// gate — measured on the real history, `separate in-repo workspaces` failed on
+/// `c7540f1` and `0d1c333`, was fixed, and ran green on `1eab0c0`; a walk that
+/// demanded every red it ever passed would demand those two for ever, and a
+/// refusal nobody can discharge is one people learn to bypass.
+///
+/// THE GREENS OF A COMMIT DO NOT RETIRE ITS OWN REDS. They are recorded after
+/// that commit's reds are read, because a job cannot be both on one commit and
+/// the sighting that matters is a LATER one.
+#[must_use]
+pub fn outstanding_reds(walk: &[Walked]) -> Vec<(String, String)> {
+    let mut green_since: BTreeSet<&str> = BTreeSet::new();
+    let mut outstanding = Vec::new();
+    for step in walk {
+        for check in &step.checks {
+            if is_failing(check)
+                && !step.superseded.contains(&check.name)
+                && !green_since.contains(check.name.as_str())
+            {
+                outstanding.push((step.sha.clone(), check.name.clone()));
+            }
+        }
+        for check in &step.checks {
+            if check.conclusion.as_deref() == Some(RAN_TO_COMPLETION) {
+                green_since.insert(check.name.as_str());
+            }
+        }
+    }
+    outstanding
+}
 
 /// The checks that make this commit red and that no later push retired.
 ///
