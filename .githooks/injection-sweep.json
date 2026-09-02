@@ -81,6 +81,8 @@
     "git_hooks_smoke::pre_commit_reads_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_commit_formats_the_separate_workspace_a_staged_file_lives_in",
     "git_hooks_smoke::pre_push_formats_the_separate_workspace_the_pushed_range_touches",
+    "git_hooks_smoke::a_manifest_that_cannot_be_read_refuses_rather_than_guessing",
+    "git_hooks_smoke::a_file_no_workspace_owns_is_refused_rather_than_handed_to_the_root",
     "git_hooks_smoke::the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree",
     "git_hooks_smoke::the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged",
     "git_hooks_smoke::the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
@@ -353,6 +355,30 @@
         }
       ],
       "expect_red": ["pre_push_formats_the_separate_workspace_the_pushed_range_touches"]
+    },
+    {
+      "name": "an-unreadable-manifest-is-read-as-one-without-a-workspace",
+      "why": "R1295 — the walk that decides WHICH TREE five gates read must not answer from a manifest it could not open. Walking past an unreadable `Cargo.toml` hands the file to whatever workspace lies further up, which is exactly the mispointing R1292 repaired with one extra step in front of it: `could not tell` arriving as `the root owns it`. This removes the refusal, so the walk guesses",
+      "edits": [
+        {
+          "file": ".githooks/lib/rs-workspaces.sh",
+          "from": "                if [[ ! -r \"$manifest\" ]]; then\n",
+          "to": "                if false; then\n"
+        }
+      ],
+      "expect_red": ["a_manifest_that_cannot_be_read_refuses_rather_than_guessing"]
+    },
+    {
+      "name": "a-file-no-workspace-owns-is-handed-to-the-root",
+      "why": "R1295 — the other refusal, and the one whose default IS the defect this library was built for. A file the walk cannot place used to be gated by the root by construction; reaching the tree root with nothing found has to REFUSE rather than fall back, or the library re-creates the mispointing it exists to end. This turns the refusal into a silent stop, so the file resolves to no workspace and the gates keyed on it read nothing",
+      "edits": [
+        {
+          "file": ".githooks/lib/rs-workspaces.sh",
+          "from": "            if [[ \"$dir\" == \"$tree_root\" || \"$dir\" == \"/\" ]]; then\n",
+          "to": "            if [[ \"$dir\" == \"$tree_root\" || \"$dir\" == \"/\" ]]; then\n                break\n            fi\n            if false; then\n"
+        }
+      ],
+      "expect_red": ["a_file_no_workspace_owns_is_refused_rather_than_handed_to_the_root"]
     }
   ]
 }

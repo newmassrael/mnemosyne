@@ -3174,3 +3174,111 @@ fn pre_push_rejects_a_range_carrying_an_identity_the_allow_list_does_not_name() 
          scope the author needs before starting it:\n{err}"
     );
 }
+
+// ------------------------------------------- which workspace owns a file
+
+/// Ask `.githooks/lib/rs-workspaces.sh` directly, the way both hooks do.
+///
+/// THE LIBRARY IS THE UNIT (R1295). Its two REFUSALS — a `Cargo.toml` that
+/// exists and cannot be read, and no `[workspace]` above a file at all — are
+/// unreachable through a hook: the fixture's root carries a `[workspace]` and
+/// every gate in front of these would stop first. A branch nothing can reach
+/// through the caller is a branch nobody has seen answer, which is the whole of
+/// what R1292 and R1293 built this library to prevent one layer up.
+fn rs_workspaces_of(root: &Path, paths: &str) -> Output {
+    let library = repo_root().join(".githooks/lib/rs-workspaces.sh");
+    Command::new("bash")
+        .arg("-c")
+        .arg(format!(
+            "source {}; rs_workspaces_of 'test:' \"$1\" \"$2\" && printf '%s\\n' \
+             \"${{RS_WORKSPACES[@]}}\"",
+            library.display()
+        ))
+        .arg("bash")
+        .arg(root)
+        .arg(paths)
+        .output()
+        .expect("run the workspace walk")
+}
+
+/// The innermost `[workspace]` above a file owns it, and the answer is the set.
+///
+/// FIRST, because both refusals below are differences against this: a walk that
+/// answered nothing would satisfy "it refused" for the wrong reason.
+#[test]
+fn the_innermost_workspace_above_a_file_is_the_one_that_owns_it() {
+    let root = TempDir::new().expect("tempdir");
+    let at = root.path();
+    fs::write(at.join("Cargo.toml"), "[workspace]\n").expect("root manifest");
+    fs::create_dir_all(at.join("tools/sub/src")).expect("mkdir");
+    fs::write(at.join("tools/sub/Cargo.toml"), "[workspace]\n").expect("side manifest");
+    fs::create_dir_all(at.join("crates/core/src")).expect("mkdir");
+    // A MEMBER, NOT A WORKSPACE: no `[workspace]` here, so the walk keeps going.
+    fs::write(at.join("crates/core/Cargo.toml"), "[package]\n").expect("member manifest");
+
+    let out = rs_workspaces_of(at, "tools/sub/src/lib.rs\ncrates/core/src/lib.rs\n");
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.status.success(), "both files are owned:\n{said}");
+    assert!(
+        said.contains("tools/sub/Cargo.toml"),
+        "the side file's own workspace, not the root:\n{said}"
+    );
+    assert!(
+        said.contains(&format!("{}/Cargo.toml", at.display())),
+        "and the member's owner is the root above it:\n{said}"
+    );
+}
+
+/// A manifest that exists and cannot be READ is not one without a `[workspace]`.
+///
+/// Walking past it hands the file to whatever workspace lies further up — the
+/// mispointing R1292 repaired, with an extra step in front of it. The refusal is
+/// what keeps "I could not tell" from reading as "the root owns it".
+#[test]
+fn a_manifest_that_cannot_be_read_refuses_rather_than_guessing() {
+    let root = TempDir::new().expect("tempdir");
+    let at = root.path();
+    fs::write(at.join("Cargo.toml"), "[workspace]\n").expect("root manifest");
+    fs::create_dir_all(at.join("tools/sub/src")).expect("mkdir");
+    let shut = at.join("tools/sub/Cargo.toml");
+    fs::write(&shut, "[workspace]\n").expect("side manifest");
+    // NOT AN EXECUTABLE BIT ANYWHERE: this file is made unreadable, never runnable.
+    fs::set_permissions(&shut, fs::Permissions::from_mode(0o000)).expect("chmod");
+
+    let out = rs_workspaces_of(at, "tools/sub/src/lib.rs\n");
+    let said = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        !out.status.success(),
+        "an unreadable manifest is not an absent one:\n{said}"
+    );
+    assert!(
+        said.contains("exists and cannot be read"),
+        "and the refusal says WHICH question it could not answer:\n{said}"
+    );
+    // Put it back, or the temporary directory cannot be removed on some systems.
+    fs::set_permissions(&shut, fs::Permissions::from_mode(0o644)).expect("chmod back");
+}
+
+/// And a file with no `[workspace]` above it at all is refused, not given to the
+/// root by default — the root being what "no answer" used to resolve to.
+#[test]
+fn a_file_no_workspace_owns_is_refused_rather_than_handed_to_the_root() {
+    let root = TempDir::new().expect("tempdir");
+    let at = root.path();
+    fs::create_dir_all(at.join("src")).expect("mkdir");
+    // No Cargo.toml anywhere: the walk reaches the tree root and has nothing.
+    let out = rs_workspaces_of(at, "src/lib.rs\n");
+    let said = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        !out.status.success(),
+        "a file no workspace owns is a file no gate below reads:\n{said}"
+    );
+    assert!(
+        said.contains("no [workspace] above"),
+        "and the refusal names the file and where it stopped looking:\n{said}"
+    );
+}

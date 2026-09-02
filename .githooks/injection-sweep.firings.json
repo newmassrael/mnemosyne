@@ -5,6 +5,21 @@
   ],
   "complete": false,
   "fired": {
+    "a-file-no-workspace-owns-is-handed-to-the-root": {
+      "edits": [
+        {
+          "file": ".githooks/lib/rs-workspaces.sh",
+          "from": "            if [[ \"$dir\" == \"$tree_root\" || \"$dir\" == \"/\" ]]; then\n",
+          "to": "            if [[ \"$dir\" == \"$tree_root\" || \"$dir\" == \"/\" ]]; then\n                break\n            fi\n            if false; then\n"
+        }
+      ],
+      "expect_red": [
+        "a_file_no_workspace_owns_is_refused_rather_than_handed_to_the_root"
+      ],
+      "tests": [
+        "git_hooks_smoke::a_file_no_workspace_owns_is_refused_rather_than_handed_to_the_root"
+      ]
+    },
     "a-gate-that-can-only-say-no-verdict-here-is-given-a-job-here": {
       "edits": [
         {
@@ -33,6 +48,21 @@
       ],
       "tests": [
         "git_hooks_smoke::every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs"
+      ]
+    },
+    "an-unreadable-manifest-is-read-as-one-without-a-workspace": {
+      "edits": [
+        {
+          "file": ".githooks/lib/rs-workspaces.sh",
+          "from": "                if [[ ! -r \"$manifest\" ]]; then\n",
+          "to": "                if false; then\n"
+        }
+      ],
+      "expect_red": [
+        "a_manifest_that_cannot_be_read_refuses_rather_than_guessing"
+      ],
+      "tests": [
+        "git_hooks_smoke::a_manifest_that_cannot_be_read_refuses_rather_than_guessing"
       ]
     },
     "an-unreadable-staged-list-reads-as-an-empty-one": {
