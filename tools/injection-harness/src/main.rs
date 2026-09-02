@@ -331,6 +331,13 @@ fn main() {
         }
         Some((_, Some(Verb::Sweep))) => run(&argv[1..]),
         Some((_, Some(Verb::Forget))) => forget(&argv[1..]),
+        // `anchors --repo <path>` answers in THREE codes and so exits itself,
+        // for the same reason every gate in this repository does: 0 judged and
+        // clean, 1 judged and this change breaks these, 2 NOT judged. Folding it
+        // into the `Result` above would spend code 1 on both "your change killed
+        // an anchor" and "git could not be asked", and those are the two the
+        // third code exists to keep apart.
+        Some((_, Some(Verb::Anchors))) => anchors(&argv[1..]),
         Some((word, None)) => Err(format!(
             "unknown verb {word:?} — usage: injection-harness {}",
             Verb::USAGE
@@ -341,6 +348,164 @@ fn main() {
         eprintln!("injection-harness: {problem}");
         std::process::exit(1);
     }
+}
+
+/// `anchors --repo <path>` — say which of this repository's own sweeps THE
+/// CHANGE BEING COMMITTED breaks. Never returns.
+///
+/// R1291 — THE ROUND THAT MOVES A GATE IS THE ONE HOLDING THE INFORMATION, and
+/// nothing asked it. An anchor is exact text and the source it names moves; the
+/// law that notices reads a TREE, so it can say an anchor is dead and cannot say
+/// who killed it. R1287 moved a gate off `pre-push`, took one injection's anchor
+/// with it and orphaned another's firing record; both were found by a hosted job
+/// one round later, and R1289 had to `git log -S` the anchor text to learn which
+/// commit had done it. Measured over this repository's history, the same shape
+/// has cost it more than once: R1205 restructured the workspace lister and left
+/// SIX dead anchors, and R1258 gave this very tool verbs and invalidated all
+/// thirty-one documented commands at once — the harness's own header records
+/// that the only reason none of them shipped is that a person went through them
+/// by hand.
+///
+/// THE INDEX AGAINST `HEAD`, and that is what makes it safe on the commit path.
+/// Reporting every dead anchor in the tree would block a commit for damage
+/// somebody else did — and this working tree has more than one writer. The
+/// difference is exactly this change's.
+///
+/// TWO REPAIRS, AND THE MESSAGE NAMES BOTH, because R1289 measured that they are
+/// not interchangeable: an injection whose SUBJECT the change removed is retired
+/// with `forget`, and one whose subject outlived the line it anchored on is
+/// re-anchored and re-run. Applying the first to the second deletes a proof.
+fn anchors(argv: &[String]) -> ! {
+    let mut repository: Option<PathBuf> = None;
+    let mut args = argv.iter();
+    while let Some(word) = args.next() {
+        match word.as_str() {
+            "--repo" => match args.next() {
+                Some(path) => repository = Some(PathBuf::from(path)),
+                None => {
+                    eprintln!("[anchors] --repo needs a path to a repository root");
+                    std::process::exit(2);
+                }
+            },
+            other => {
+                eprintln!("[anchors] unknown argument {other} — usage: anchors --repo <path>");
+                std::process::exit(2);
+            }
+        }
+    }
+    let Some(root) = repository else {
+        eprintln!("[anchors] usage: injection-harness anchors --repo <path>");
+        std::process::exit(2);
+    };
+    match judge_the_change(&root) {
+        Ok(0) => std::process::exit(0),
+        Ok(code) => std::process::exit(code),
+        Err(why) => {
+            // NO VERDICT SAID OUT LOUD. A gate that could not ask reports zero
+            // findings, and zero findings is what a clean tree looks like.
+            eprintln!("[anchors] NO VERDICT — {why}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// The measurement behind [`anchors`], separated so every failure to ASK is an
+/// `Err` and every answer is an exit code.
+fn judge_the_change(root: &Path) -> Result<i32, String> {
+    let tracked = injection_harness::tracked_json(root)?;
+    // BOTH REVISIONS OVER THE SAME PATH LIST, so a finding present at one and
+    // absent at the other is about the CONTENT and never about which files each
+    // side happened to be asked for.
+    let index_json =
+        injection_harness::read_at(root, injection_harness::Revision::Index, &tracked)?;
+    let head_json = injection_harness::read_at(root, injection_harness::Revision::Head, &tracked)?;
+
+    // THE FILES THE ANCHORS NAME ARE A SECOND READ, because which files those
+    // are is only knowable after the manifests have been parsed — and they are
+    // read at both revisions for the same reason the manifests are.
+    let named = |json: &injection_harness::Blobs| -> Vec<String> {
+        let mut paths: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (path, raw) in json {
+            if injection_harness::a_test_input(path) {
+                continue;
+            }
+            let Ok(manifest) = serde_json::from_str::<injection_harness::Manifest>(raw) else {
+                continue;
+            };
+            for injection in &manifest.injections {
+                for edit in &injection.edits {
+                    if let Some(target) =
+                        injection_harness::edit_path(path, &manifest.repo, &edit.file)
+                    {
+                        paths.insert(target);
+                    }
+                }
+            }
+        }
+        paths.into_iter().collect()
+    };
+    let index_files = injection_harness::read_at(
+        root,
+        injection_harness::Revision::Index,
+        &named(&index_json),
+    )?;
+    let head_files =
+        injection_harness::read_at(root, injection_harness::Revision::Head, &named(&head_json))?;
+
+    let (index_broken, index_sweeps) = injection_harness::broken_sweeps(&index_json, &index_files);
+    let (head_broken, head_sweeps) = injection_harness::broken_sweeps(&head_json, &head_files);
+
+    let mut findings: Vec<String> = index_broken.difference(&head_broken).cloned().collect();
+    // A SWEEP THAT STOPPED READING AS ONE IS THE FINDING NO ANCHOR CHECK MAKES,
+    // because a manifest with a typo leaves the population rather than failing
+    // in it — every one of its injections becomes invisible at once, silently,
+    // which is the shape the tracked-sweep law was written for. Deleting a sweep
+    // on purpose is not this: the file is gone from the index too.
+    for path in head_sweeps.difference(&index_sweeps) {
+        if index_json.contains_key(path) {
+            findings.push(format!(
+                "{path} read as a sweep at HEAD and does not now, so every injection in it has \
+                 left the population without failing"
+            ));
+        }
+    }
+    findings.sort();
+
+    let carried = head_broken.len();
+    println!(
+        "[anchors] {} sweep(s) in the index over {} tracked .json; {} finding(s) this change \
+         introduces, {carried} already standing at HEAD",
+        index_sweeps.len(),
+        tracked.len(),
+        findings.len()
+    );
+    for standing in &head_broken {
+        println!("[anchors] already at HEAD, not this change's: {standing}");
+    }
+    if findings.is_empty() {
+        return Ok(0);
+    }
+    eprintln!(
+        "[anchors] this change breaks {} of this repository's own sweeps:",
+        findings.len()
+    );
+    for finding in &findings {
+        eprintln!("[anchors]   {finding}");
+    }
+    eprintln!(
+        "[anchors] AN ANCHOR IS EXACT TEXT AND THE SOURCE IT NAMES MOVES. There are two \
+         repairs and they are not interchangeable:"
+    );
+    eprintln!(
+        "[anchors]   the injection's SUBJECT is gone with the code — retire the row:\n\
+         [anchors]     injection-harness forget <manifest> --injection <name> --because <why>"
+    );
+    eprintln!(
+        "[anchors]   the subject outlived the line — re-anchor onto text that still exists, \
+         then RE-RUN that injection so its evidence is about the definition it names:\n\
+         [anchors]     injection-harness sweep <manifest> --only <name>"
+    );
+    Ok(1)
 }
 
 /// `forget <manifest.json> --injection <name> --because <why>` — record that a
@@ -529,10 +694,18 @@ fn run(argv: &[String]) -> Result<(), String> {
     // the control's tree must not still hold a claim this run has already
     // decided is void. See `injection_harness::void_stale_evidence` for why
     // removing evidence here is not a way to launder any.
-    for name in injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)? {
+    let voided = injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)?;
+    for name in &voided.stale {
         eprintln!(
             "[record] `{name}` was proven against a different definition — that evidence \
              is void and this run re-proves it"
+        );
+    }
+    if !voided.uncovered.is_empty() {
+        eprintln!(
+            "[record] this sweep's record claimed to have been proven WHOLE and does not \
+             cover {:?} — the claim was already false and is withdrawn; no row was removed",
+            voided.uncovered
         );
     }
 

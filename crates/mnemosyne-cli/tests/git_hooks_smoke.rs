@@ -2406,7 +2406,7 @@ fn pre_push_reports_what_a_second_machine_found_and_never_blocks() {
 /// no runner has one. Which of these rows a reader must not have to take on
 /// trust is the point of
 /// [`no_hosted_job_runs_a_gate_that_reaches_for_a_program_under_home`].
-const CANNOT_LEAVE_THIS_MACHINE: [(&str, &str, &str); 3] = [
+const CANNOT_LEAVE_THIS_MACHINE: [(&str, &str, &str); 4] = [
     (
         "run",
         "tools/one-machine/Cargo.toml",
@@ -2429,6 +2429,16 @@ const CANNOT_LEAVE_THIS_MACHINE: [(&str, &str, &str); 3] = [
          `$HOME` — untracked here, installed by no job. A runner has no such \
          file, so the gate's only honest answer there is exit 2, NO VERDICT, \
          which is what a hosted step for it printed on every push it ran",
+    ),
+    (
+        "run",
+        "tools/injection-harness/Cargo.toml",
+        "its subject is THE CHANGE BEING COMMITTED — the index held against \
+         `HEAD` — and that exists only at the moment somebody makes it. A runner \
+         checks out one revision and has no index to hold against anything, so \
+         the question has no subject there. What CI runs over the same anchors \
+         is the tracked-sweep law, which reads a TREE and cannot say who broke \
+         one; this says who, while they are still standing there",
     ),
 ];
 

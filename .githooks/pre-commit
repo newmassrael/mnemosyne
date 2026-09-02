@@ -83,6 +83,15 @@
 #      for the two weeks between R888 repairing the runner and a build host
 #      compiling 269 crates to find out.
 #
+#   5i. Anchor gate (R1291) — `tools/injection-harness anchors`, on EVERY
+#      commit: which of this repository's own sweeps THIS CHANGE breaks. An
+#      anchor is exact text and the source it names moves, so the round that
+#      moves a gate holds the information and nothing asked it. The index is
+#      held against `HEAD`, so a dead anchor somebody else left is printed and
+#      never blocking — this tree has more than one writer — and a new one is
+#      refused, with the two repairs named apart (`forget` when the injection's
+#      SUBJECT went with the code, re-anchor and re-run when only the line did).
+#
 #   7. Second-machine gate (R1234) — `tools/one-machine --send`, on EVERY
 #      commit: this tree's syscall census is put on a machine the placement
 #      program chooses, detached, and `pre-push` reads what it wrote. The
@@ -522,6 +531,53 @@ elif [[ $requirement_verdict -ne 0 ]]; then
     {
         echo "[mnemosyne pre-commit] commit rejected — the requirement gate could not judge" \
              "what CI installs (exit $requirement_verdict); its own message is above"
+    } >&2
+    exit 1
+fi
+
+# Gate 5i — anchor gate (R1291) — `tools/injection-harness anchors`, on EVERY
+# commit: which of this repository's own sweeps THE CHANGE BEING COMMITTED
+# breaks. An injection's anchor is exact text and the source it names moves, so
+# the round that moves a gate is the one holding the information — and nothing
+# asked it. R1287 took one anchor with a block it removed and orphaned another
+# injection's firing record; a hosted job found both ONE ROUND LATER, and R1289
+# had to `git log -S` the anchor text to learn which commit had done it.
+#
+# THE INDEX AGAINST `HEAD`, which is what makes it safe here. Reporting every
+# dead anchor in the tree would stop a commit for damage its author never
+# touched, and this working tree has more than one writer. Standing findings are
+# PRINTED and never blocking; the difference is what this commit owes.
+#
+# NO `if staged` GUARD: a change anywhere in the tree can move an anchor's text,
+# and the population is every tracked sweep rather than a staged path. Measured
+# at 1.8s warm over 38 sweeps and 426 tracked `.json`, which is the cost of one
+# `git cat-file --batch` per revision — a `git show` per file is 1.83s of spawn
+# alone, and that measurement is why the reader is batched.
+#
+# The three codes, as Gates 5a/5c/5d/5e/5h read them. 2 here means git could not
+# be asked, which is not the same as a tree whose anchors hold.
+echo "[mnemosyne pre-commit] what this change breaks in this repository's own sweeps" >&2
+gates="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ ! -f "$gates/tools/injection-harness/Cargo.toml" ]]; then
+    echo "[mnemosyne pre-commit] commit rejected — the anchor gate is missing" \
+         "at $gates/tools/injection-harness/Cargo.toml" >&2
+    exit 1
+fi
+anchor_verdict=0
+cargo run -q --locked --manifest-path "$gates/tools/injection-harness/Cargo.toml" \
+    -- anchors --repo "$(pwd)" || anchor_verdict=$?
+if [[ $anchor_verdict -eq 1 ]]; then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — this change breaks a sweep of this"
+        echo "  repository's own; the two repairs are named above, and they are not the same"
+        echo "  run: cargo run -q --manifest-path tools/injection-harness/Cargo.toml \\"
+        echo "         -- anchors --repo ."
+    } >&2
+    exit 1
+elif [[ $anchor_verdict -ne 0 ]]; then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — the anchor gate could not be asked" \
+             "about this change (exit $anchor_verdict); its own message is above"
     } >&2
     exit 1
 fi

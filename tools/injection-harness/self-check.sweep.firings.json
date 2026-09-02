@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": true,
+  "complete": false,
   "fired": {
     "a-decision-with-no-reason-is-recorded-anyway": {
       "edits": [
@@ -304,6 +304,22 @@
         "forgetting_a_row_an_injection_still_needs_is_refused"
       ]
     },
+    "a-sweep-that-left-the-population-leaves-quietly": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    for path in head_sweeps.difference(&index_sweeps) {\n        if index_json.contains_key(path) {\n            findings.push(format!(\n                \"{path} read as a sweep at HEAD and does not now, so every injection in it has \\\n                 left the population without failing\"\n            ));\n        }\n    }\n    findings.sort();\n",
+          "to": "    findings.sort();\n"
+        }
+      ],
+      "expect_red": [
+        "a_sweep_that_stops_parsing_is_refused_rather_than_dropped"
+      ],
+      "tests": [
+        "a_sweep_that_stops_parsing_is_refused_rather_than_dropped",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "a-sweep-whose-anchor-came-loose-goes-unnoticed": {
       "edits": [
         {
@@ -375,8 +391,8 @@
       "edits": [
         {
           "file": "src/lib.rs",
-          "from": "    if hits != 1 {",
-          "to": "    if hits == 0 {"
+          "from": "    let hits = text.matches(&edit.from).count();\n    if hits != 1 {",
+          "to": "    let hits = text.matches(&edit.from).count();\n    if hits == 0 {"
         }
       ],
       "expect_red": [
@@ -475,6 +491,22 @@
         "forgetting_a_row_that_is_not_there_is_refused_rather_than_recorded"
       ]
     },
+    "not-judged-goes-back-to-being-judged-clean": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "            eprintln!(\"[anchors] NO VERDICT — {why}\");\n            std::process::exit(2);\n",
+          "to": "            eprintln!(\"[anchors] NO VERDICT — {why}\");\n            std::process::exit(0);\n"
+        }
+      ],
+      "expect_red": [
+        "a_tree_git_cannot_be_asked_about_gets_no_verdict"
+      ],
+      "tests": [
+        "a_tree_git_cannot_be_asked_about_gets_no_verdict",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "nothing-leads-its-own-process-group": {
       "edits": [
         {
@@ -529,8 +561,8 @@
       "edits": [
         {
           "file": "src/main.rs",
-          "from": "    for name in injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)? {",
-          "to": "    for name in Vec::<String>::new() {"
+          "from": "    let voided = injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)?;",
+          "to": "    let voided = injection_harness::Voided::default();"
         }
       ],
       "expect_red": [
@@ -541,6 +573,24 @@
         "a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited",
         "every_tracked_sweep_still_applies_to_the_tree_it_names",
         "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it"
+      ]
+    },
+    "the-evidence-beside-the-anchor-is-nobodys-business": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        let record = firings_path(Path::new(path));\n        let Some(raw) = record.to_str().and_then(|at| json.get(at)) else {\n            continue;\n        };\n        let Ok(record) = serde_json::from_str::<Firings>(raw) else {\n            continue;\n        };\n        for (name, row) in &record.fired {\n            match manifest.injections.iter().find(|it| &it.name == name) {\n                None => findings.insert(format!(\n                    \"{path}: the record holds a firing for `{name}` and the manifest has no such \\\n                     injection\"\n                )),\n                Some(injection) if !records_the_same_injection(row, injection) => {\n                    findings.insert(format!(\n                        \"{path}: the record's firing for `{name}` was proven against a different \\\n                         definition\"\n                    ))\n                }\n                Some(_) => false,\n            };\n        }\n        for (name, why) in unsound_decisions(&record, &manifest) {\n            findings.insert(format!(\"{path}: the decision retiring `{name}` — {why:?}\"));\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_change_that_orphans_a_firing_record_is_refused",
+        "a_change_that_rewrites_an_injection_voids_its_evidence"
+      ],
+      "tests": [
+        "a_change_that_orphans_a_firing_record_is_refused",
+        "a_change_that_rewrites_an_injection_voids_its_evidence",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },
     "the-excuse-is-this-manifests-rather-than-the-trees": {
@@ -687,6 +737,22 @@
         "every_sweep_that_documents_how_to_run_itself_documents_something_that_would_run",
         "every_test_a_sweep_names_is_one_this_tree_still_has",
         "every_tracked_firing_record_belongs_to_a_sweep_this_repository_tracks",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
+    "the-question-goes-back-to-being-about-the-tree": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    let mut findings: Vec<String> = index_broken.difference(&head_broken).cloned().collect();\n",
+          "to": "    let mut findings: Vec<String> = index_broken.iter().cloned().collect();\n"
+        }
+      ],
+      "expect_red": [
+        "damage_already_on_head_is_not_this_changes"
+      ],
+      "tests": [
+        "damage_already_on_head_is_not_this_changes",
         "every_tracked_sweep_still_applies_to_the_tree_it_names"
       ]
     },

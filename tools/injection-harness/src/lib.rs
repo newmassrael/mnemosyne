@@ -257,20 +257,62 @@ pub fn records_the_same_injection(row: &Firing, injection: &Injection) -> bool {
 /// has nothing under it, and leaving it set would be the one shape R1198 built
 /// this record to catch — a file that claims to be whole while some injection is
 /// unaccounted for.
-pub fn void_stale_evidence(manifest: &Path, about: &[Injection]) -> Result<Vec<String>, String> {
+pub fn void_stale_evidence(manifest: &Path, about: &[Injection]) -> Result<Voided, String> {
     let path = firings_path(manifest);
     let Some(mut record) = read_firings(&path)? else {
-        return Ok(Vec::new());
+        return Ok(Voided::default());
     };
-    let voided = stale_evidence(&record, about);
-    if !voided.is_empty() {
-        for name in &voided {
+    let mut voided = Voided {
+        stale: stale_evidence(&record, about),
+        // AND THE SAME DEADLOCK HAS A SECOND DOOR, which R1291 walked into while
+        // proving a gate of its own. A record that claims WHOLE and a manifest
+        // that has gained an injection since are in contradiction, R1198's law
+        // says so by going red — inside the suite that IS this repository's own
+        // self-check control — and the message it prints is "prove it with
+        // `--only`", which is the one thing a red control makes impossible. Four
+        // added injections, four instructions that could not be followed.
+        //
+        // WITHDRAWING THE CLAIM IS RECORDING A FACT, not laundering one. The
+        // claim says a run over the whole manifest established every row; a row
+        // this run is about to prove for the first time is one no such run
+        // covered, so the claim was already false before this touched it. What
+        // would be laundering is inventing the ROW, and nothing here does.
+        uncovered: if record.complete {
+            about
+                .iter()
+                .filter(|injection| !record.fired.contains_key(&injection.name))
+                .map(|injection| injection.name.clone())
+                .collect()
+        } else {
+            Vec::new()
+        },
+    };
+    voided.stale.sort();
+    voided.uncovered.sort();
+    if !voided.stale.is_empty() || !voided.uncovered.is_empty() {
+        for name in &voided.stale {
             record.fired.remove(name);
         }
         record.complete = false;
         write_firings(&path, &record)?;
     }
     Ok(voided)
+}
+
+/// What a pre-control pass took out of a record's way, in two kinds.
+///
+/// TWO FIELDS AND NOT ONE LIST, because the two are different sentences to
+/// whoever reads the run: evidence REMOVED because it was about another
+/// injection, and a completeness CLAIM withdrawn because the manifest has an
+/// injection no whole run ever covered. Reporting them together would say a
+/// proof was thrown away when none was.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Voided {
+    /// Rows dropped: proven against a definition this manifest no longer has.
+    pub stale: Vec<String>,
+    /// Injections this run will prove that the record's WHOLE claim did not
+    /// cover. The rows are untouched; the claim over them is what goes.
+    pub uncovered: Vec<String>,
 }
 
 /// Which of these injections a record holds evidence about that no longer
@@ -399,6 +441,10 @@ pub enum Verb {
     /// Retire one row of a firing record, with the reason it answers to
     /// nothing.
     Forget,
+    /// Say which of this repository's own sweeps THE CHANGE BEING COMMITTED
+    /// breaks — the index held against `HEAD`, so a pre-existing dead anchor is
+    /// not laid at this commit's door and a new one is.
+    Anchors,
     /// NOT FOR A PERSON TO TYPE: this binary re-exec'd as the owner of one suite
     /// run. `supervise::supervised_command` is the only thing that spells it,
     /// and it is in this enum rather than beside it because the first word is
@@ -411,7 +457,8 @@ impl Verb {
     /// How a person is told what this tool answers to.
     pub const USAGE: &'static str = "sweep <manifest.json> [--control-only] \
                                      [--only <name>]... | forget <manifest.json> \
-                                     --injection <name> --because <why>";
+                                     --injection <name> --because <why> | anchors \
+                                     --repo <path>";
 
     /// The verb this word names, if it names one.
     #[must_use]
@@ -419,6 +466,7 @@ impl Verb {
         match word {
             "sweep" => Some(Verb::Sweep),
             "forget" => Some(Verb::Forget),
+            "anchors" => Some(Verb::Anchors),
             "supervise" => Some(Verb::Supervise),
             _ => None,
         }
@@ -1139,6 +1187,256 @@ pub fn answers_to(red: &str, expected: &str) -> bool {
         || red
             .strip_suffix(expected)
             .is_some_and(|prefix| prefix.ends_with("::"))
+}
+
+// ------------------------------------------------- what a change breaks
+
+/// One revision of this repository, as `git` names it.
+///
+/// TWO AND NOT A STRING, because the two are asked for different reasons and a
+/// caller that could pass any revision would be inviting the question this gate
+/// exists to refuse: "broken somewhere" is not the finding. The finding is
+/// "broken HERE and not there".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Revision {
+    /// What this commit is about to be: the index.
+    Index,
+    /// What it is being made on top of. Absent before the first commit, which
+    /// is an EMPTY revision and not a refusal.
+    Head,
+}
+
+impl Revision {
+    /// How `git cat-file` is asked for a path at this revision.
+    fn spell(self, path: &str) -> String {
+        match self {
+            Revision::Index => format!(":{path}"),
+            Revision::Head => format!("HEAD:{path}"),
+        }
+    }
+}
+
+/// Read many tracked paths at one revision in ONE `git cat-file --batch`.
+///
+/// MEASURED, AND THE MEASUREMENT CHOSE THE TOOL. The obvious spelling is one
+/// `git show` per file, and over this repository's tracked `.json` that is 409
+/// processes and **1.83 seconds** — nearly all of it spawn. The same bytes
+/// through one batched reader: **0.10 seconds**. A gate on the commit path is
+/// worth what it costs, and eighteen times is not a detail.
+///
+/// A PATH MISSING AT THIS REVISION IS AN ABSENCE AND NOT AN ERROR — a file this
+/// commit adds has no `HEAD:` side, and that is the ordinary case rather than a
+/// fault. What IS an error is git failing to answer at all, because a reader
+/// that turned "could not ask" into "nothing there" is how a gate reports zero
+/// findings over a tree it never read.
+pub fn read_at(root: &Path, revision: Revision, paths: &[String]) -> Result<Blobs, String> {
+    use std::io::{Read, Write};
+
+    if paths.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    // THE BATCH PROTOCOL IS LINE-ORIENTED AND ITS ERROR REPLY IS `<what you
+    // asked> missing`, so a path carrying whitespace makes a reply this reader
+    // cannot tell from an absence. It would then read as "not at this revision"
+    // at BOTH revisions, cancel in the difference, and take that file's anchors
+    // out of the population in silence. Refused instead of handled, because
+    // this repository has no such path and a reader that quietly answers about
+    // fewer files than it was asked for is the defect this whole gate is about.
+    if let Some(odd) = paths.iter().find(|path| path.contains(char::is_whitespace)) {
+        return Err(format!(
+            "{odd:?} carries whitespace, which `git cat-file --batch` cannot be asked about \
+             line by line — this reader would report it as absent rather than as unasked"
+        ));
+    }
+    let mut child = std::process::Command::new("git")
+        .args(["cat-file", "--batch"])
+        .current_dir(root)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("git cat-file --batch in {}: {e}", root.display()))?;
+    let query: String = paths
+        .iter()
+        .map(|path| format!("{}\n", revision.spell(path)))
+        .collect();
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "git cat-file --batch took no stdin".to_string())?
+        .write_all(query.as_bytes())
+        .map_err(|e| format!("writing to git cat-file: {e}"))?;
+    let mut out = Vec::new();
+    child
+        .stdout
+        .take()
+        .ok_or_else(|| "git cat-file --batch gave no stdout".to_string())?
+        .read_to_end(&mut out)
+        .map_err(|e| format!("reading git cat-file: {e}"))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("waiting for git cat-file: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "git cat-file --batch in {} exited {status}",
+            root.display()
+        ));
+    }
+    parse_batch(&out, paths)
+}
+
+/// The content of the paths that exist at a revision, by path.
+pub type Blobs = BTreeMap<String, String>;
+
+/// One response per query line, IN ORDER, which is what makes the mapping back
+/// to paths sound: `git cat-file --batch` echoes the object id and not the name
+/// it was asked by, so two files with identical content are indistinguishable in
+/// the output and only the ordering says which is which.
+fn parse_batch(out: &[u8], paths: &[String]) -> Result<Blobs, String> {
+    let mut blobs = BTreeMap::new();
+    let mut at = 0usize;
+    for path in paths {
+        let end = out[at..]
+            .iter()
+            .position(|b| *b == b'\n')
+            .ok_or_else(|| format!("git cat-file ran out of answers at {path}"))?;
+        let header = String::from_utf8_lossy(&out[at..at + end]).to_string();
+        at += end + 1;
+        // `<oid> missing` / `<oid> ambiguous`, and anything else that is not a
+        // three-word blob header, is an ABSENCE at this revision.
+        let words: Vec<&str> = header.split_whitespace().collect();
+        if words.len() != 3 || words[1] != "blob" {
+            continue;
+        }
+        let size: usize = words[2]
+            .parse()
+            .map_err(|_| format!("git cat-file gave {path} a size of {:?}", words[2]))?;
+        let body = out
+            .get(at..at + size)
+            .ok_or_else(|| format!("git cat-file cut {path} short"))?;
+        at += size + 1; // the newline git writes after every body
+                        // A blob that is not UTF-8 is not a manifest and not a file an anchor's
+                        // exact text could match, so it is read as absent rather than refused.
+        if let Ok(text) = std::str::from_utf8(body) {
+            blobs.insert(path.clone(), text.to_string());
+        }
+    }
+    Ok(blobs)
+}
+
+/// Where an injection's edit lands, as `git` spells the path.
+///
+/// LEXICAL, LIKE [`read_manifest`]'s resolution and for the same reason: the
+/// target of an anchor at a revision that is not checked out is a path git
+/// answers about, not a file on disk, and `canonicalize` needs one that exists.
+#[must_use]
+pub fn edit_path(manifest: &str, repo: &Path, file: &str) -> Option<String> {
+    let mut parts: Vec<&str> = manifest.split('/').collect();
+    parts.pop(); // the manifest's own name; what is left is its directory
+    for step in repo
+        .to_str()?
+        .split('/')
+        .chain(file.split('/'))
+        .filter(|step| !step.is_empty() && *step != ".")
+    {
+        if step == ".." {
+            parts.pop()?;
+        } else {
+            parts.push(step);
+        }
+    }
+    Some(parts.join("/"))
+}
+
+/// What one revision holds that is BROKEN about this repository's own sweeps,
+/// and which of its files read as sweeps at all.
+///
+/// R1291 — THE POINT IS THE SET DIFFERENCE AND NOT THIS SET. Asked of one
+/// revision, this reports every dead anchor and every unsound record in the
+/// tree, most of which are somebody else's or nobody's. Asked of the index AND
+/// of `HEAD`, the difference is exactly what the change being committed broke —
+/// which is the question the round holding the information can answer and the
+/// question `every_tracked_sweep_still_applies_to_the_tree_it_names` cannot,
+/// because that law reads a tree and a tree does not remember who edited it.
+///
+/// EVERY FINDING IS ONE LINE AND THE LINE IS STABLE, because the difference is
+/// taken over strings. A message that carried a count or a timestamp would make
+/// every pre-existing finding look new.
+///
+/// A PATH THAT DOES NOT PARSE AS A MANIFEST IS NOT A SWEEP AT THIS REVISION and
+/// is not a finding here — most tracked `.json` in this repository is something
+/// else. What catches the manifest broken by a typo is the second return value:
+/// a path that read as a sweep at `HEAD` and does not now has left the
+/// population, and the caller says so.
+#[must_use]
+pub fn broken_sweeps(json: &Blobs, files: &Blobs) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut findings = BTreeSet::new();
+    let mut sweeps = BTreeSet::new();
+    for (path, raw) in json {
+        if a_test_input(path) {
+            continue;
+        }
+        let Ok(manifest) = serde_json::from_str::<Manifest>(raw) else {
+            continue;
+        };
+        sweeps.insert(path.clone());
+        for injection in &manifest.injections {
+            for edit in &injection.edits {
+                let Some(target) = edit_path(path, &manifest.repo, &edit.file) else {
+                    findings.insert(format!(
+                        "{path}: `{}` anchors outside this repository, at {}",
+                        injection.name, edit.file
+                    ));
+                    continue;
+                };
+                let Some(text) = files.get(&target) else {
+                    findings.insert(format!(
+                        "{path}: `{}` anchors in {target}, which this revision does not have",
+                        injection.name
+                    ));
+                    continue;
+                };
+                let hits = text.matches(&edit.from).count();
+                if hits != 1 {
+                    findings.insert(format!(
+                        "{path}: `{}` anchors in {target} and its text occurs {hits} times, not once",
+                        injection.name
+                    ));
+                }
+            }
+        }
+        // AND THE EVIDENCE BESIDE IT, because R1289 paid for both halves in one
+        // round: R1287 removed a gate, one injection's anchor died with it and
+        // one firing record was left holding a proof about an injection the
+        // manifest no longer had. The second was invisible to every anchor
+        // check, and it is the same question asked one file over.
+        let record = firings_path(Path::new(path));
+        let Some(raw) = record.to_str().and_then(|at| json.get(at)) else {
+            continue;
+        };
+        let Ok(record) = serde_json::from_str::<Firings>(raw) else {
+            continue;
+        };
+        for (name, row) in &record.fired {
+            match manifest.injections.iter().find(|it| &it.name == name) {
+                None => findings.insert(format!(
+                    "{path}: the record holds a firing for `{name}` and the manifest has no such \
+                     injection"
+                )),
+                Some(injection) if !records_the_same_injection(row, injection) => {
+                    findings.insert(format!(
+                        "{path}: the record's firing for `{name}` was proven against a different \
+                         definition"
+                    ))
+                }
+                Some(_) => false,
+            };
+        }
+        for (name, why) in unsound_decisions(&record, &manifest) {
+            findings.insert(format!("{path}: the decision retiring `{name}` — {why:?}"));
+        }
+    }
+    (findings, sweeps)
 }
 
 #[cfg(test)]

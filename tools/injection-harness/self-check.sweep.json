@@ -204,12 +204,12 @@
     },
     {
       "name": "an-anchor-that-matches-twice-is-close-enough",
-      "why": "matching nothing and matching twice are the two ways an anchor stops describing one change — the second is the quieter, because the edit still lands, on whichever copy came first, and the sweep reports a red nobody described. `tools/uncompiled-sources` grew a second call site with the same three lines and its sweep had been refusing on that ever since",
+      "why": "matching nothing and matching twice are the two ways an anchor stops describing one change — the second is the quieter, because the edit still lands, on whichever copy came first, and the sweep reports a red nobody described. `tools/uncompiled-sources` grew a second call site with the same three lines and its sweep had been refusing on that ever since. RE-ANCHORED at R1291, by the defect it is about, happening to it: this crate gained a second `if hits != 1 {` — indented deeper, inside `broken_sweeps` — and a bare line is a SUBSTRING of a more deeply indented one, so the four-space anchor matched both. The anchor now carries the line above it, whose indentation the deeper copy does not share",
       "edits": [
         {
           "file": "src/lib.rs",
-          "from": "    if hits != 1 {",
-          "to": "    if hits == 0 {"
+          "from": "    let hits = text.matches(&edit.from).count();\n    if hits != 1 {",
+          "to": "    let hits = text.matches(&edit.from).count();\n    if hits == 0 {"
         }
       ],
       "expect_red": [
@@ -361,12 +361,12 @@
     },
     {
       "name": "the-evidence-a-run-is-replacing-outlives-the-control-it-reddens",
-      "why": "R1200 — the deadlock this sweep IS. Its control runs the harness's own suite, which holds R1198's law over firing records, so a row proven against an edited injection reddens the control and the harness refuses to start on a red control: the `--only` run that would clear the row can never happen. R1199 met it and escaped only because that row was still uncommitted, so `git checkout` could remove it; a committed one leaves discarding the whole record and re-proving every injection in it, which is the cost `--only` exists to avoid. Stop voiding the evidence this run is on its way to replacing and the trap comes back",
+      "why": "R1200 — the deadlock this sweep IS. Its control runs the harness's own suite, which holds R1198's law over firing records, so a row proven against an edited injection reddens the control and the harness refuses to start on a red control: the `--only` run that would clear the row can never happen. R1199 met it and escaped only because that row was still uncommitted, so `git checkout` could remove it; a committed one leaves discarding the whole record and re-proving every injection in it, which is the cost `--only` exists to avoid. Stop voiding the evidence this run is on its way to replacing and the trap comes back. RE-ANCHORED at R1291, which found the SECOND door of the same deadlock — a record claiming WHOLE against a manifest that has gained an injection — and had to change this very call site to open it; the anchor is on the call rather than on the loop that reads its result",
       "edits": [
         {
           "file": "src/main.rs",
-          "from": "    for name in injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)? {",
-          "to": "    for name in Vec::<String>::new() {"
+          "from": "    let voided = injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)?;",
+          "to": "    let voided = injection_harness::Voided::default();"
         }
       ],
       "expect_red": [
@@ -635,6 +635,57 @@
         }
       ],
       "expect_red": ["every_expectation_a_sweep_names_is_one_that_could_fail"]
+    },
+    {
+      "name": "the-question-goes-back-to-being-about-the-tree",
+      "why": "R1291 — THE WHOLE OF THIS GATE IS THE DIFFERENCE. Reporting what the index holds, rather than what it holds and HEAD did not, turns a gate about THIS CHANGE into one about the tree — and this working tree has more than one writer, so most of what it would then refuse belongs to somebody else. A gate that stops a commit for a defect its author never touched is a gate that teaches people to reach for `--no-verify`",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    let mut findings: Vec<String> = index_broken.difference(&head_broken).cloned().collect();\n",
+          "to": "    let mut findings: Vec<String> = index_broken.iter().cloned().collect();\n"
+        }
+      ],
+      "expect_red": ["damage_already_on_head_is_not_this_changes"]
+    },
+    {
+      "name": "a-sweep-that-left-the-population-leaves-quietly",
+      "why": "R1291 — a manifest broken by a typo does not FAIL an anchor check, it stops being a sweep, and every injection in it becomes invisible at once. That is the shape the tracked-sweep law was written for, and an anchor walk alone cannot see it: there is nothing left to walk. The finding comes from the population having shrunk, so this removes the only place that notices",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    for path in head_sweeps.difference(&index_sweeps) {\n        if index_json.contains_key(path) {\n            findings.push(format!(\n                \"{path} read as a sweep at HEAD and does not now, so every injection in it has \\\n                 left the population without failing\"\n            ));\n        }\n    }\n    findings.sort();\n",
+          "to": "    findings.sort();\n"
+        }
+      ],
+      "expect_red": ["a_sweep_that_stops_parsing_is_refused_rather_than_dropped"]
+    },
+    {
+      "name": "the-evidence-beside-the-anchor-is-nobodys-business",
+      "why": "R1291 — R1289 paid for BOTH halves in one round and they are one file apart: R1287 removed a gate, one injection's anchor died with it, and one firing record was left holding a proof about an injection the manifest no longer had. The second is invisible to every anchor check ever written, because the anchor it names is gone rather than dead. This removes the half that looks at the evidence",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        let record = firings_path(Path::new(path));\n        let Some(raw) = record.to_str().and_then(|at| json.get(at)) else {\n            continue;\n        };\n        let Ok(record) = serde_json::from_str::<Firings>(raw) else {\n            continue;\n        };\n        for (name, row) in &record.fired {\n            match manifest.injections.iter().find(|it| &it.name == name) {\n                None => findings.insert(format!(\n                    \"{path}: the record holds a firing for `{name}` and the manifest has no such \\\n                     injection\"\n                )),\n                Some(injection) if !records_the_same_injection(row, injection) => {\n                    findings.insert(format!(\n                        \"{path}: the record's firing for `{name}` was proven against a different \\\n                         definition\"\n                    ))\n                }\n                Some(_) => false,\n            };\n        }\n        for (name, why) in unsound_decisions(&record, &manifest) {\n            findings.insert(format!(\"{path}: the decision retiring `{name}` — {why:?}\"));\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_change_that_orphans_a_firing_record_is_refused",
+        "a_change_that_rewrites_an_injection_voids_its_evidence"
+      ]
+    },
+    {
+      "name": "not-judged-goes-back-to-being-judged-clean",
+      "why": "R1291 — the third exit code is the one this repository keeps paying for: a gate that could not be asked reports zero findings, and zero findings is what a clean tree looks like. Collapsing it into success is the failure mode a hosted `unread-declaration` step shipped for two pushes, one round before this gate was written",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "            eprintln!(\"[anchors] NO VERDICT — {why}\");\n            std::process::exit(2);\n",
+          "to": "            eprintln!(\"[anchors] NO VERDICT — {why}\");\n            std::process::exit(0);\n"
+        }
+      ],
+      "expect_red": ["a_tree_git_cannot_be_asked_about_gets_no_verdict"]
     }
   ]
 }
