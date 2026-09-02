@@ -20,6 +20,25 @@
         "an_answer_about_a_runs_jobs_this_gate_cannot_read_is_a_refusal"
       ]
     },
+    "a-dependency-bump-is-refused-like-any-other-cold-build": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                    Some(true) => continue,",
+          "to": "                    Some(true) => {}"
+        }
+      ],
+      "expect_red": [
+        "a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused"
+      ],
+      "tests": [
+        "a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
+        "a_streak_of_runs_that_wrote_nothing_does_not_put_the_interval_out_of_reach",
+        "the_generation_that_counts_is_the_one_that_predates_the_run"
+      ]
+    },
     "a-key-is-judged-over-the-interval-its-own-workflow-could-have-seen": {
       "edits": [
         {
@@ -73,6 +92,75 @@
         "a_truncated_jobs_page_is_a_refusal_rather_than_a_run_that_saved_nothing"
       ]
     },
+    "an-interval-nobody-bounded-is-the-push-range": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            WindowSource::Unavailable(why) => match &floor {\n                Some(generation) => Window::Unbounded {\n                    generation: generation.key.clone(),\n                    created_at: generation.created_at.clone(),\n                    why: why.clone(),\n                },\n                None => Window::ThisPush {\n                    start: push.clone(),\n                    why: why.clone(),\n                },\n            },",
+          "to": "            WindowSource::Unavailable(why) => Window::ThisPush {\n                start: push.clone(),\n                why: why.clone(),\n            },"
+        }
+      ],
+      "expect_red": [
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval",
+        "the_walk_stops_at_the_archive_it_is_bounding_against"
+      ],
+      "tests": [
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval",
+        "the_walk_stops_at_the_archive_it_is_bounding_against"
+      ]
+    },
+    "only-the-newest-generation-could-have-been-restored": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        newest_predating(self.held.iter().chain(self.superseded.iter()), started_at)",
+          "to": "        newest_predating(self.held.iter().chain([].iter()), started_at)"
+        }
+      ],
+      "expect_red": [
+        "the_generation_that_counts_is_the_one_that_predates_the_run"
+      ],
+      "tests": [
+        "a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_cache_this_run_built_from_nothing_is_a_job_that_was_never_warm",
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
+        "a_key_that_missed_with_no_archive_under_it_is_not_refused_as_a_wasted_cache",
+        "a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build",
+        "a_missed_key_with_no_record_says_what_it_did_not_measure",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval",
+        "an_unmeasured_miss_on_a_cache_with_no_fallback_says_the_miss_was_the_cold",
+        "the_generation_that_counts_is_the_one_that_predates_the_run",
+        "the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correctly",
+        "the_walk_stops_at_the_archive_it_is_bounding_against"
+      ]
+    },
+    "the-archive-this-run-saved-was-one-it-could-have-restored": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        .filter(|generation| to_the_second(&generation.created_at) <= to_the_second(started_at))",
+          "to": "        .filter(|generation| !generation.key.is_empty() && !started_at.is_empty())"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_restored_nothing_with_nothing_to_restore_is_not_refused_for_it",
+        "the_generation_that_counts_is_the_one_that_predates_the_run"
+      ],
+      "tests": [
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_checkout_with_no_parent_commit_is_unjudged_rather_than_one_that_changed_nothing",
+        "a_job_that_restored_nothing_with_nothing_to_restore_is_not_refused_for_it",
+        "a_key_that_missed_with_no_archive_under_it_is_not_refused_as_a_wasted_cache",
+        "a_streak_of_runs_that_wrote_nothing_does_not_put_the_interval_out_of_reach",
+        "the_generation_that_counts_is_the_one_that_predates_the_run",
+        "the_walk_stops_at_the_archive_it_is_bounding_against"
+      ]
+    },
     "the-interval-comes-from-the-workflow-that-declares-the-key": {
       "edits": [
         {
@@ -91,6 +179,37 @@
         "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
         "every_declared_key_is_judged_over_its_own_archives_history"
       ]
+    },
+    "the-page-of-runs-is-five-again": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "pub const RUNS_PER_PAGE: usize = 100;",
+          "to": "pub const RUNS_PER_PAGE: usize = 5;"
+        }
+      ],
+      "expect_red": [
+        "a_streak_of_runs_that_wrote_nothing_does_not_put_the_interval_out_of_reach"
+      ],
+      "tests": [
+        "a_streak_of_runs_that_wrote_nothing_does_not_put_the_interval_out_of_reach"
+      ]
+    },
+    "the-walk-runs-on-past-the-archive-it-bounds-against": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "                    if cache_budget::walked_past(prior, floor) {\n                        break;\n                    }",
+          "to": "                    if false {\n                        break;\n                    }"
+        }
+      ],
+      "expect_red": [
+        "the_walk_stops_at_the_archive_it_is_bounding_against"
+      ],
+      "tests": [
+        "the_walk_stops_at_the_archive_it_is_bounding_against"
+      ]
     }
-  }
+  },
+  "forgotten": {}
 }

@@ -23,6 +23,15 @@
 //! answer is the whole storage or its first page, and a stub that ignores its
 //! arguments agrees with a gate that stopped asking for it.
 //!
+//! RECORDING AN ARGUMENT IS NOT THE SAME AS ANSWERING IT, WHICH R1312 PAID FOR.
+//! The stub recorded `per_page` and then handed back whatever page the fixture
+//! had written, so every case here received the whole answer however small a
+//! page the gate asked for — and the depth of that page is what decides which
+//! runs a key's interval can be bounded by. It stood at five while this
+//! repository's cadence put the run that mattered fifteen rows down, and
+//! nothing in this file could go red for it. The stub honours it now, on the
+//! run list.
+//!
 //! AND THE RUNNER'S OWN VARIABLES ARE NAMED RATHER THAN ASSUMED ABSENT. This
 //! suite runs on a runner too, where `GITHUB_RUN_ID` is set and would send the
 //! gate down a second reading it has no stub for — green here and red there,
@@ -155,7 +164,45 @@ enum Runs {
     /// runs, 122 archives were written inside runs that concluded failure, and
     /// two caches of one run routinely disagree.
     RanAtHeadMinusAndWroteNothing(usize),
+    /// A STREAK OF RUNS THAT WROTE NOTHING, and behind them the one that wrote
+    /// the archive — this repository's own shape, and the state R1312 paid for.
+    ///
+    /// Its concurrency group cancels the run in flight when the next push
+    /// arrives, and a cancelled run usually does not reach its post steps — the
+    /// run that DID write here is one GitHub calls `cancelled` too, so the
+    /// conclusion is not what says whether an archive was written. Measured
+    /// 2026-09-02: FOURTEEN consecutive runs wrote no archive at all, and the
+    /// run that last wrote `Linux-cargo-validate-` was FIFTEEN back. Whether
+    /// this gate can see that far is decided by how deep a page it asks for, and
+    /// that number had been five since R1207 with nothing able to go red for it.
+    WroteTheArchiveBehindAStreakOf {
+        /// How many newer runs reached no post step.
+        silent: usize,
+        /// How far back in the fixture's own history the writer ran.
+        wrote_at_head_minus: usize,
+    },
+    /// EVERY RUN SILENT, some of them older than the archive being bounded
+    /// against — the shape that says where the walk STOPS.
+    ///
+    /// The run that WROTE an archive started before it, so a candidate older
+    /// than that archive cannot be the one being looked for. Both halves are
+    /// needed to see it: without the older ones there is nothing the walk could
+    /// wastefully ask about, and without a writer missing from the page the walk
+    /// would return before reaching them. The verdict is the same either way —
+    /// what differs is only how many calls it cost, which is why this shape's
+    /// oracle is what `gh` was asked.
+    SilentBeforeAndAfterTheArchive {
+        /// Runs stamped AFTER the archive was written — all of them have to be
+        /// asked about.
+        newer: usize,
+        /// Runs stamped BEFORE it — the first is the last one worth asking.
+        older: usize,
+    },
 }
+
+/// When the archive [`Runs::SilentBeforeAndAfterTheArchive`] bounds against was
+/// written — between the two halves of that fixture's run history.
+const ARCHIVE_WRITTEN: &str = "2026-08-05T00:00:00.000000000Z";
 
 /// When the fixture's last run of its own workflow started — before the run being
 /// judged, which is what makes it an earlier observation.
@@ -166,9 +213,15 @@ const LAST_RAN_AT: &str = "2026-08-09T00:00:00Z";
 fn runs_page(runs: &[(&str, &str, &str)]) -> String {
     let rows: Vec<String> = runs
         .iter()
-        .map(|(sha, conclusion, started)| {
+        .enumerate()
+        .map(|(row, (sha, conclusion, started))| {
+            // AN ID PER ROW, so a case can give one run's jobs a different
+            // answer from another's. One id for the whole page was enough while
+            // every fixture held a single run, and it made the streak below
+            // unwritable: every candidate would have reported the same save.
+            let id = 7 + row;
             format!(
-                "{{\"id\":7,\"head_branch\":\"main\",\"head_sha\":\"{sha}\",\
+                "{{\"id\":{id},\"head_branch\":\"main\",\"head_sha\":\"{sha}\",\
                  \"status\":\"completed\",\"conclusion\":\"{conclusion}\",\
                  \"run_started_at\":\"{started}\"}}"
             )
@@ -347,11 +400,72 @@ impl Fixture {
                 LAST_RAN_AT,
             )])
         };
+        // AND, WHERE THE CASE NEEDS THEM, ONE JOBS ANSWER PER RUN. The ids are
+        // `runs_page`'s own — row 0 is 7 — so a case that says "these wrote
+        // nothing and that one wrote the archive" says it about the same rows
+        // GitHub's answer carries.
+        let mut per_run: Vec<(u64, String)> = Vec::new();
         let (runs, jobs) = match self.runs {
             Runs::NoneYet => (runs_page(&[]), jobs_page(true)),
             Runs::LastWroteTheArchiveAtHeadMinus(back) => (at_head_minus(back), jobs_page(true)),
             Runs::RanAtHeadMinusAndWroteNothing(back) => (at_head_minus(back), jobs_page(false)),
+            Runs::WroteTheArchiveBehindAStreakOf {
+                silent,
+                wrote_at_head_minus,
+            } => {
+                let cancelled = git_says(root, &["rev-parse", "HEAD~1"]);
+                let writer = git_says(root, &["rev-parse", &format!("HEAD~{wrote_at_head_minus}")]);
+                let mut rows: Vec<(String, String, String)> = (0..silent)
+                    .map(|step| {
+                        (
+                            cancelled.clone(),
+                            "cancelled".to_string(),
+                            // NEWEST FIRST AND ALL OF THEM AFTER THE WRITER, so
+                            // the walk has to go past every one of them to reach
+                            // the run that bounds the interval.
+                            format!("2026-08-09T{:02}:00:00Z", 12 - step),
+                        )
+                    })
+                    .collect();
+                rows.push((writer, "success".to_string(), LAST_RAN_AT.to_string()));
+                for (row, _) in rows.iter().enumerate() {
+                    per_run.push((7 + row as u64, jobs_page(row == silent)));
+                }
+                let page = runs_page(
+                    &rows
+                        .iter()
+                        .map(|(sha, conclusion, started)| {
+                            (sha.as_str(), conclusion.as_str(), started.as_str())
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                (page, jobs_page(false))
+            }
+            Runs::SilentBeforeAndAfterTheArchive { newer, older } => {
+                let sha = git_says(root, &["rev-parse", "HEAD~1"]);
+                let rows: Vec<(String, String, String)> = (0..newer)
+                    .map(|step| format!("2026-08-09T{:02}:00:00Z", newer - step))
+                    .chain((0..older).map(|step| format!("2026-08-04T{:02}:00:00Z", older - step)))
+                    .map(|started| (sha.clone(), "cancelled".to_string(), started))
+                    .collect();
+                for (row, _) in rows.iter().enumerate() {
+                    per_run.push((7 + row as u64, jobs_page(false)));
+                }
+                let page = runs_page(
+                    &rows
+                        .iter()
+                        .map(|(sha, conclusion, started)| {
+                            (sha.as_str(), conclusion.as_str(), started.as_str())
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                (page, jobs_page(false))
+            }
         };
+        for (id, body) in &per_run {
+            std::fs::write(root.join("stub").join(format!("jobs.{id}.json")), body)
+                .expect("the stub's answer about one run's jobs");
+        }
         // THE ANSWERS ARE DATA, and the program that hands them over is one cargo
         // built (R1192). This used to interpolate all four bodies into a shell
         // script and chmod it, which is a file this process writes and then runs
@@ -1047,9 +1161,17 @@ fn a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect() 
         stdout(&out)
     );
 
-    // THE CONTROL. With no run of that workflow to be found, the gate narrows to
-    // the push — and the same repository is refused for a rebuild it had every
-    // right to. Everything else about the two fixtures is identical.
+    // THE CONTROL. With no run of that workflow to be found, the interval this
+    // key's archive could have seen is not bounded — and R1312 is the round that
+    // stopped substituting a narrower one for it. Everything else about the two
+    // fixtures is identical.
+    //
+    // WHAT THIS ARM ASSERTED UNTIL THEN WAS THE FALSE RED ITSELF: exit `1`, a
+    // `Recreated` refusal, the sentence `SAVED BY THIS RUN` — the gate telling a
+    // repository that a rebuild the push range simply could not see was a
+    // defect. The repair does not make the arm green; it moves it from the
+    // verdict that blames the repository to the one that reports the gate's own
+    // horizon, which is exit `2`.
     let at = Fixture {
         caches: a_key_rebuilt_during_the_run(),
         commits: 3,
@@ -1061,20 +1183,29 @@ fn a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect() 
     let out = gate_in_run(at.path());
     assert_eq!(
         code(&out),
-        1,
-        "over the push alone nothing the key hashes moved\nstdout:\n{}\nstderr:\n{}",
+        2,
+        "with no run to bound the interval the gate could not look, which is not \
+         the same answer as a repository that rebuilt a cache for no \
+         reason\nstdout:\n{}\nstderr:\n{}",
         stdout(&out),
         stderr(&out)
     );
     assert!(
-        stderr(&out).contains("SAVED BY THIS RUN"),
-        "which is the refusal that turned main red\n{}",
+        !stderr(&out).contains("SAVED BY THIS RUN"),
+        "and it does NOT reach the refusal that turned main red\n{}",
         stderr(&out)
     );
     assert!(
-        stdout(&out).contains("no run of `.github/workflows/ci.yml`"),
-        "and the report says the interval was narrowed and why, rather than \
-         printing a number from a question nobody can see\n{}",
+        stderr(&out).contains("UNKNOWN rather than wrong"),
+        "it names the key it could not judge and says which of the two answers \
+         that is\n{}",
+        stderr(&out)
+    );
+    assert!(
+        stdout(&out).contains("over NO INTERVAL") && stdout(&out).contains(&format!("{PREFIX}was")),
+        "and the report names the archive whose writing bounds the interval \
+         nobody reached, rather than printing a number from a question nobody \
+         can see\n{}",
         stdout(&out)
     );
 }
@@ -1107,9 +1238,10 @@ fn a_run_that_wrote_no_archive_does_not_bound_the_interval() {
     let out = gate_in_run(wrote_nothing.path());
     assert_eq!(
         code(&out),
-        1,
-        "the run is there and the archive is not, so the interval narrows to the \
-         push and the miss is unexplained\nstdout:\n{}\nstderr:\n{}",
+        2,
+        "the run is there and the archive is not, so nothing bounds the interval \
+         and the miss is UNJUDGED — which R1312 separated from the miss that is \
+         unexplained\nstdout:\n{}\nstderr:\n{}",
         stdout(&out),
         stderr(&out)
     );
@@ -1120,10 +1252,126 @@ fn a_run_that_wrote_no_archive_does_not_bound_the_interval() {
         stdout(&out)
     );
     assert!(
-        stdout(&out).contains("1 candidate(s) asked"),
+        stdout(&out).contains("1 examined walking back"),
         "and how many runs it asked before saying so — a count of zero and a count \
          of one are different states\n{}",
         stdout(&out)
+    );
+}
+
+/// A streak of runs that wrote nothing does not put the interval out of reach.
+///
+/// THIS IS RUN 33607225800, AND IT IS THE FALSE RED R1312 PAID FOR. This
+/// repository's workflow declares `cancel-in-progress`, so a push that arrives
+/// while a run is in flight cancels it — and a cancelled run usually does not
+/// reach its post steps, so it writes no archive. Under a round cadence shorter
+/// than a run, that is not an occasional row to skip: measured on 2026-09-02,
+/// FOURTEEN consecutive runs wrote no archive at all, and the run that last
+/// wrote `Linux-cargo-validate-` was FIFTEEN back — itself a run GitHub calls
+/// `cancelled`. The gate asked for a page of FIVE, found no writer in it,
+/// substituted the push range, and refused eight archives as unexplained
+/// rebuilds — while `.github/workflows/mnemosyne-validate.yml`, which every one
+/// of those keys names in its own `hashFiles`, had moved three commits earlier.
+///
+/// WHAT MADE IT INVISIBLE HERE WAS THE FIXTURE'S OWN `gh`. It ignored
+/// `per_page`, so every case in this file received whatever page the fixture
+/// wrote however small a page the gate asked for — the parameter that decides
+/// this could not be observed, and the constant sat at five for five rounds
+/// with nothing able to go red for it. The stub honours it now, which is what
+/// makes the streak below a measurement rather than a description.
+#[test]
+fn a_streak_of_runs_that_wrote_nothing_does_not_put_the_interval_out_of_reach() {
+    // SIX SILENT RUNS, one more than the page this gate used to ask for, and the
+    // writer behind them. The lockfile moved at the commit that writer ran
+    // BEFORE, so the interval since it wrote the archive holds the movement and
+    // the push range does not — the same two-interval shape as the case above,
+    // with the streak as the only thing standing between them.
+    let at = Fixture {
+        caches: a_key_rebuilt_during_the_run(),
+        commits: 4,
+        lockfile_moves_at: &[2],
+        runs: Runs::WroteTheArchiveBehindAStreakOf {
+            silent: 6,
+            wrote_at_head_minus: 3,
+        },
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(at.path());
+    assert_eq!(
+        code(&out),
+        0,
+        "the walk goes past every run that wrote nothing and bounds the interval \
+         with the one that did, where the lockfile's movement is\nstdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stdout(&out).contains("1 of 1 key(s) had their hashed inputs moved"),
+        "and the rebuild is the price of a dependency change\n{}",
+        stdout(&out)
+    );
+    assert!(
+        stdout(&out).contains("last wrote its archive") && !stdout(&out).contains("NO INTERVAL"),
+        "bounded by the run that wrote the archive, not left unbounded\n{}",
+        stdout(&out)
+    );
+}
+
+/// The walk stops at the archive it is bounding against, not at every run.
+///
+/// THE OTHER HALF OF THE PAGE R1312 WIDENED. A page of a hundred is a hundred
+/// runs whose jobs could be asked about one call each, and this gate used to be
+/// kept cheap by a page of five — a number that bought its cost by being wrong.
+/// What bounds the cost honestly is the evidence: the run that WROTE an archive
+/// started before it, so a candidate older than that archive cannot be the one
+/// being looked for and every call past it buys nothing.
+///
+/// THE ORACLE IS WHAT `gh` WAS ASKED, which is the only place the saving is
+/// visible: the verdict is the same either way, and a walk that paid for ninety
+/// more calls would be green and slow. The first fixture written for this law
+/// had a writer inside the page, so the walk returned before it could overrun
+/// anything and the injection aimed here came back 0 red — a law about a stop,
+/// posed over a history with nothing to stop at.
+#[test]
+fn the_walk_stops_at_the_archive_it_is_bounding_against() {
+    let at = Fixture {
+        // THREE RUNS EITHER SIDE OF THE ARCHIVE, and none of them wrote it. All
+        // three newer ones have to be asked about; the first of the older ones
+        // settles it, and the two behind it are the calls a walk bounded by a
+        // page size rather than by evidence would still pay for.
+        caches: page_created(
+            2,
+            &[
+                (
+                    &format!("{PREFIX}now"),
+                    SMALL,
+                    "2026-08-10T10:14:11.221132000Z",
+                ),
+                (&format!("{PREFIX}was"), SMALL, ARCHIVE_WRITTEN),
+            ],
+        ),
+        commits: 3,
+        runs: Runs::SilentBeforeAndAfterTheArchive { newer: 3, older: 3 },
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(at.path());
+    assert_eq!(
+        code(&out),
+        2,
+        "no run wrote the archive, so the interval is unbounded either \
+         way\nstdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    let asked = std::fs::read_to_string(at.path().join("stub/asked")).expect("the stub recorded");
+    let jobs_asked = asked.lines().filter(|line| line.contains("/jobs?")).count();
+    assert_eq!(
+        jobs_asked, 4,
+        "three runs newer than the archive and the FIRST one older, and not a \
+         call past it — a candidate that started before an archive cannot be the \
+         run that wrote it:\n{asked}"
     );
 }
 
@@ -1166,10 +1414,26 @@ fn a_run_whose_start_time_is_missing_is_unjudged_rather_than_a_run_at_time_zero(
 /// keys this push legitimately invalidated is what excuses a cache the run
 /// rebuilt, so reading an unanswerable diff as an empty one refuses every key
 /// the commit had every right to move.
+///
+/// THE STORAGE HERE HOLDS ONE ARCHIVE AND IT IS NEWER THAN THE RUN, which R1312
+/// made load-bearing rather than incidental. A key with an OLDER generation is
+/// asked over the interval since that generation was written, and where no run
+/// bounds it the answer is that the gate could not look — a refusal that never
+/// reaches git, so a fixture built that way would exit `2` for the wrong reason
+/// and this law would pass without the shallow checkout being the cause. With no
+/// generation to bound against, the push range is the honest interval, the diff
+/// IS attempted, and it is the checkout that refuses it.
 #[test]
 fn a_checkout_with_no_parent_commit_is_unjudged_rather_than_one_that_changed_nothing() {
     let at = Fixture {
-        caches: page(&[(&format!("{PREFIX}abc"), SMALL)]),
+        caches: page_created(
+            1,
+            &[(
+                &format!("{PREFIX}abc"),
+                SMALL,
+                "2026-08-10T10:14:11.221132000Z",
+            )],
+        ),
         commits: 1,
         ..Fixture::default()
     }

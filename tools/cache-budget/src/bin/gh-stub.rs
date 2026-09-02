@@ -23,6 +23,7 @@
 //! | `asked` | appended: the words of every call, one per line, a blank line between calls |
 //! | `runs.json` | the answer to a workflow's run list |
 //! | `jobs.json` | the answer to a run's job list |
+//! | `jobs.<id>.json` | the same, for ONE run — used when it exists |
 //! | `run.json` | the answer about one run |
 //! | `caches.json` | the answer about cache storage — the default arm |
 //!
@@ -30,6 +31,17 @@
 //! have nothing in common but their transport, so a stub handing the cache page
 //! to a question about a run would agree with a gate that asked for the wrong
 //! thing.
+//!
+//! AND IT HONOURS `per_page` ON THE RUN LIST, which R1312 found it was not doing.
+//! A stub that answers a question it was not asked is a fixture that cannot see
+//! the parameter it ignored: the depth of that page decides which runs the gate
+//! can bound an interval with, it stood at five for five rounds, and NOTHING in
+//! this suite could go red for it — the answer came back whole however small a
+//! page the gate asked for. It is scoped to the run list on purpose. The cache
+//! endpoint is asked with `--paginate` and has laws of its own about pages that
+//! disagree with their count, and the jobs endpoint has a law about a page that
+//! stopped early; truncating either here would answer those with this program
+//! instead of with their own fixtures.
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -70,27 +82,84 @@ fn main() -> ExitCode {
     }
 
     let asked = arguments.join(" ");
-    let answer = if asked.contains("/actions/workflows/") {
-        "runs.json"
+    let runs = asked.contains("/actions/workflows/");
+    let path = if runs {
+        directory.join("runs.json")
     } else if asked.contains("/jobs?") {
-        "jobs.json"
-    } else if asked.contains("/actions/runs/") {
-        "run.json"
-    } else {
-        "caches.json"
-    };
-    let path = directory.join(answer);
-    match std::fs::read(&path) {
-        Ok(bytes) => {
-            if let Err(why) = std::io::stdout().write_all(&bytes) {
-                eprintln!("gh-stub: cannot hand over {}: {why}", path.display());
-                return ExitCode::from(1);
-            }
-            ExitCode::SUCCESS
+        // PER RUN WHERE THE CASE SAYS SO. One answer for every run is a stub
+        // that agrees with a gate reading the same page whichever run it asked
+        // about — and telling one run's saves from another's is the whole of
+        // what bounds an interval (R1207).
+        let named = run_id_in(&asked).map(|id| directory.join(format!("jobs.{id}.json")));
+        match named.filter(|path| path.exists()) {
+            Some(path) => path,
+            None => directory.join("jobs.json"),
         }
+    } else if asked.contains("/actions/runs/") {
+        directory.join("run.json")
+    } else {
+        directory.join("caches.json")
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
         Err(why) => {
             eprintln!("gh-stub: cannot read {}: {why}", path.display());
-            ExitCode::from(1)
+            return ExitCode::from(1);
         }
+    };
+    // AND THE PAGE IS AS DEEP AS IT WAS ASKED TO BE.
+    let bytes = match runs.then(|| per_page_in(&asked)).flatten() {
+        Some(rows) => match truncated(&bytes, rows) {
+            Ok(shorter) => shorter,
+            Err(why) => {
+                eprintln!("gh-stub: cannot page {}: {why}", path.display());
+                return ExitCode::from(1);
+            }
+        },
+        None => bytes,
+    };
+    if let Err(why) = std::io::stdout().write_all(&bytes) {
+        eprintln!("gh-stub: cannot hand over {}: {why}", path.display());
+        return ExitCode::from(1);
     }
+    ExitCode::SUCCESS
+}
+
+/// The run a jobs question is about — `…/actions/runs/<id>/jobs?…`.
+fn run_id_in(asked: &str) -> Option<&str> {
+    asked
+        .split("/actions/runs/")
+        .nth(1)?
+        .split('/')
+        .next()
+        .filter(|id| !id.is_empty() && id.chars().all(|digit| digit.is_ascii_digit()))
+}
+
+/// How many rows the caller asked for — `?per_page=100`, or `&per_page=100`.
+fn per_page_in(asked: &str) -> Option<usize> {
+    asked
+        .split("per_page=")
+        .nth(1)?
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// That answer with its `workflow_runs` cut to the page asked for.
+///
+/// `total_count` IS LEFT ALONE, because GitHub leaves it alone: it is the whole
+/// history's count and not the page's, which is exactly why the reader of this
+/// endpoint does not check one against the other.
+fn truncated(bytes: &[u8], rows: usize) -> Result<Vec<u8>, String> {
+    let mut answer: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|why| format!("not JSON: {why}"))?;
+    let Some(runs) = answer
+        .get_mut("workflow_runs")
+        .and_then(|it| it.as_array_mut())
+    else {
+        return Ok(bytes.to_vec());
+    };
+    runs.truncate(rows);
+    serde_json::to_vec(&answer).map_err(|why| format!("cannot write it back: {why}"))
 }

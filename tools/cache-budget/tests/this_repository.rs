@@ -736,7 +736,11 @@ fn every_declared_key_is_judged_over_its_own_archives_history() {
     let asked = windows_asked(
         &declared,
         &RangeStart::ParentOfHead("not a push — this suite is not a runner"),
-        |workflow, step| {
+        // NO FLOOR IN THIS CASE, because the resolver above answers for every
+        // key: what is asserted below is WHICH questions are asked, and the
+        // floor decides only how deep the walk that answers one of them goes.
+        |_| None,
+        |workflow, step, _| {
             asked_about.push((workflow.to_string(), step.to_string()));
             Ok(WindowSource::Ran(PriorRun {
                 id: 1,

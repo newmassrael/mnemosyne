@@ -192,17 +192,30 @@ pub fn run_started_in(run_id: &str, body: &str) -> Result<String, String> {
     Ok(started_at.to_string())
 }
 
-/// How deep into a workflow's run history this gate looks for the interval a key
-/// was last asked over.
+/// How many of a workflow's runs this gate asks GitHub for in one page.
 ///
-/// FIVE, AND THE SHALLOWNESS IS THE POINT. What is wanted is the NEWEST run that
-/// predates this one at another commit; the rows above it are the ones that have
-/// to be skipped — a sibling run of the same push, a re-run, a red streak — and
-/// five is deep enough for those without paging through a repository's whole
-/// history to answer a question about its last day. When none of the five
-/// qualifies the gate says so and narrows to the push range, which is the same
-/// shape [`RangeStart`] already takes for a checkout it cannot see into.
-const NEWEST_RUNS: usize = 5;
+/// A HUNDRED, WHICH IS THE ENDPOINT'S MAXIMUM, AND THE DEPTH IS NO LONGER A
+/// GUESS. This was FIVE until R1312, on the reasoning that the rows above the
+/// run being looked for are a sibling run of the same push, a re-run, or a short
+/// red streak. That is a claim about a repository's CADENCE, and this repository
+/// falsifies it: its concurrency group cancels the run in flight when the next
+/// push arrives, a cancelled run usually does not reach its post steps, and on
+/// 2026-09-02 FOURTEEN consecutive runs wrote no archive at all — the caches API
+/// dates nothing between `03:02:19Z` and `09:08:38Z`. The run that last wrote
+/// `Linux-cargo-validate-` was fifteen runs and fifteen commits back, and GitHub
+/// calls THAT one `cancelled` too: cancelled is not the same as having written
+/// nothing, which is why the floor below is read off the archives and never off
+/// a conclusion. The gate looked at five, found none, narrowed to the push
+/// range, and reported eight archives as unexplained rebuilds — while the
+/// workflow file that every one of those keys names in its own `hashFiles` had
+/// moved three commits earlier. A false red, and the reason it was false is
+/// this number.
+///
+/// WHAT STOPS THE WALK IS THE EVIDENCE AND NOT THIS NUMBER. A candidate's jobs
+/// are asked about only until the walk has gone past the moment this key's own
+/// archive was written — [`archive_floor`], read off the caches API — so a page
+/// this wide costs one more row in one answer, not a hundred calls.
+pub const RUNS_PER_PAGE: usize = 100;
 
 /// What this gate asks GitHub about the runs of ONE workflow.
 ///
@@ -222,7 +235,7 @@ const NEWEST_RUNS: usize = 5;
 pub fn workflow_runs_query(workflow: &str, branch: Option<&str>) -> Vec<String> {
     let file = workflow.rsplit('/').next().unwrap_or(workflow);
     let mut path =
-        format!("repos/{{owner}}/{{repo}}/actions/workflows/{file}/runs?per_page={NEWEST_RUNS}");
+        format!("repos/{{owner}}/{{repo}}/actions/workflows/{file}/runs?per_page={RUNS_PER_PAGE}");
     if let Some(branch) = branch.map(str::trim).filter(|branch| !branch.is_empty()) {
         path.push_str("&branch=");
         path.push_str(branch);
@@ -623,12 +636,12 @@ impl Row {
     /// head of the prefix. The one that was available to the job is whichever
     /// predates the run's start, which is the same comparison `Recreated` makes
     /// and the same reason it is made to the second.
+    /// THROUGH [`newest_predating`] SINCE R1312, which is the same rule
+    /// [`archive_floor`] bounds the run walk with. They are one question asked
+    /// at two moments — before there are rows, and after — and two spellings of
+    /// it could disagree about which archive a run could have restored.
     pub fn restorable_when(&self, started_at: &str) -> Option<&Held> {
-        self.held
-            .iter()
-            .chain(self.superseded.iter())
-            .filter(|generation| to_the_second(&generation.created_at) <= to_the_second(started_at))
-            .max_by(|left, right| left.created_at.cmp(&right.created_at))
+        newest_predating(self.held.iter().chain(self.superseded.iter()), started_at)
     }
 }
 
@@ -927,15 +940,43 @@ pub struct Run {
 }
 
 impl Run {
-    /// Did this key's hashed inputs move over the interval it was asked about?
+    /// Did this key's hashed inputs move over the interval it was asked about —
+    /// and was there an interval to ask over at all?
     ///
     /// A KEY NOBODY ASKED ABOUT DID NOT MOVE, which is the same reading the set
     /// this replaced gave: a key hashing nothing has nothing that could have
     /// invalidated it, and the report says as much in its own words.
-    pub fn moved(&self, prefix: &str) -> bool {
+    ///
+    /// `None` IS THE ANSWER R1312 ADDED, AND IT IS NOT `Some(false)`. "Nothing
+    /// matching these globs moved over the interval this key's archive could
+    /// have seen" and "that interval was never bounded" are different facts, and
+    /// this returned the first for both — which is how a substituted, narrower
+    /// interval turned `main` red on a rebuild that a commit just outside it
+    /// fully explained.
+    pub fn movement(&self, prefix: &str) -> Option<bool> {
+        let mine = || self.asked.iter().filter(|asked| asked.prefix == prefix);
+        // AN ANSWER THAT SAYS `MOVED` SETTLES IT, which is what the `any` this
+        // replaced meant: an excuse found is an excuse, whatever a second
+        // reading of the same prefix could not bound.
+        if mine().any(|asked| asked.moved == Some(true)) {
+            return Some(true);
+        }
+        if mine().any(|asked| asked.moved.is_none()) {
+            return None;
+        }
+        Some(false)
+    }
+
+    /// The interval this key could not be judged over, when there was one.
+    ///
+    /// SO THE REFUSAL CAN SAY WHAT WAS NOT REACHED. A gate that cannot judge and
+    /// a gate that judged and found nothing print the same silence otherwise,
+    /// and the whole of R1312 is that those two were being printed as one.
+    pub fn unbounded(&self, prefix: &str) -> Option<&Window> {
         self.asked
             .iter()
-            .any(|asked| asked.prefix == prefix && asked.moved)
+            .find(|asked| asked.prefix == prefix && asked.moved.is_none())
+            .map(|asked| &asked.over)
     }
 }
 
@@ -947,8 +988,10 @@ pub struct Asked {
     pub prefix: String,
     /// The interval, and where it came from.
     pub over: Window,
-    /// Whether anything matching the key's own globs moved over it.
-    pub moved: bool,
+    /// Whether anything matching the key's own globs moved over it — `None` when
+    /// there was no interval to put to git, which is not the same answer as
+    /// nothing having moved.
+    pub moved: Option<bool>,
 }
 
 /// The interval a key's "did its hashed inputs move" question is asked over.
@@ -994,14 +1037,43 @@ pub enum Window {
         /// Why the workflow's own last run was not used.
         why: String,
     },
+    /// NO INTERVAL AT ALL: this key HAS an archive an earlier run wrote, and the
+    /// run that wrote it was not reached.
+    ///
+    /// THE VARIANT R1312 ADDED, AND ITS ABSENCE IS THE WHOLE OF THAT ROUND. The
+    /// two above are intervals; a question this gate could not bound is not a
+    /// third interval and above all not a SHORTER one. Substituting the push
+    /// range here answers "nothing matching those globs moved" for a key whose
+    /// globs moved outside it — and that answer is a `Recreated` refusal, so the
+    /// gate refuses a repository doing exactly what it was asked to do.
+    ///
+    /// IT CARRIES THE EVIDENCE THAT THE INTERVAL EXISTS. The archive named here
+    /// is the generation this key's `restore-keys` fell back to: something wrote
+    /// it, at a moment this walk did not reach, and that moment is the start of
+    /// the interval nobody bounded. Where NO archive predates the run there is
+    /// no such moment and no verdict to reach either, and that case stays
+    /// [`Window::ThisPush`] rather than becoming a refusal.
+    Unbounded {
+        /// The archive whose writing bounds the interval — `Linux-cargo-validate-4495440…`.
+        generation: String,
+        /// When GitHub created it, verbatim.
+        created_at: String,
+        /// How far the walk got, and why it stopped short.
+        why: String,
+    },
 }
 
 impl Window {
-    /// The revision to diff from.
-    pub fn rev(&self) -> &str {
+    /// The revision to diff from — `None` when there is no interval to diff.
+    ///
+    /// AN `Option` SINCE R1312. It returned a revision unconditionally, which
+    /// meant every caller received an interval whether or not one had been
+    /// found, and the one that had not was silently the narrowest.
+    pub fn rev(&self) -> Option<&str> {
         match self {
-            Window::SinceThatArchiveWasSaved { sha, .. } => sha,
-            Window::ThisPush { start, .. } => start.rev(),
+            Window::SinceThatArchiveWasSaved { sha, .. } => Some(sha),
+            Window::ThisPush { start, .. } => Some(start.rev()),
+            Window::Unbounded { .. } => None,
         }
     }
 
@@ -1019,6 +1091,15 @@ impl Window {
                 &sha[..7.min(sha.len())]
             ),
             Window::ThisPush { start, why } => format!("{} — {why}", start.why()),
+            Window::Unbounded {
+                generation,
+                created_at,
+                why,
+            } => format!(
+                "over NO INTERVAL — `{generation}` was written {created_at} and the run \
+                 that wrote it was not reached, so what moved since then is unknown \
+                 rather than nothing: {why}"
+            ),
         }
     }
 }
@@ -1062,7 +1143,8 @@ pub enum WindowSource {
 pub fn windows_asked(
     declared: &[CacheDeclaration],
     push: &RangeStart,
-    mut last_save_of: impl FnMut(&str, &str) -> Result<WindowSource, String>,
+    floor_of: impl Fn(&str) -> Option<Held>,
+    mut last_save_of: impl FnMut(&str, &str, Option<&Held>) -> Result<WindowSource, String>,
     mut moved_since: impl FnMut(&str, &[String]) -> Result<bool, String>,
 ) -> Result<Vec<Asked>, String> {
     let mut out: Vec<Asked> = Vec::new();
@@ -1072,11 +1154,16 @@ pub fn windows_asked(
         if declaration.hashed.is_empty() || !seen.insert(declaration.prefix.as_str()) {
             continue;
         }
+        // WHAT THE INTERVAL WOULD START AT, ASKED BEFORE THE WALK RATHER THAN
+        // AFTER IT. It decides two things at once: how deep the walk has to go
+        // before it can honestly stop, and — when the walk comes back
+        // empty-handed — whether there was an interval to miss at all.
+        let floor = floor_of(&declaration.prefix);
         let at = (declaration.source.as_str(), declaration.step.as_str());
         let source = match source_of.get(&at) {
             Some(source) => source,
             None => {
-                let source = last_save_of(&declaration.source, &declaration.step)?;
+                let source = last_save_of(&declaration.source, &declaration.step, floor.as_ref())?;
                 source_of.entry(at).or_insert(source)
             }
         };
@@ -1087,12 +1174,29 @@ pub fn windows_asked(
                 sha: prior.sha.clone(),
                 at: prior.started_at.clone(),
             },
-            WindowSource::Unavailable(why) => Window::ThisPush {
-                start: push.clone(),
-                why: why.clone(),
+            // AND HERE IS WHERE R1312 SPLIT ONE ANSWER INTO TWO. A key with an
+            // earlier generation has a moment its archive was written; failing
+            // to reach that moment leaves the question UNBOUNDED, and the push
+            // range is not a smaller version of it. A key with no earlier
+            // generation has no such moment, nothing to fall back on, and no
+            // `Recreated` verdict to reach — for that one the push range is
+            // still the honest narrow answer it always was.
+            WindowSource::Unavailable(why) => match &floor {
+                Some(generation) => Window::Unbounded {
+                    generation: generation.key.clone(),
+                    created_at: generation.created_at.clone(),
+                    why: why.clone(),
+                },
+                None => Window::ThisPush {
+                    start: push.clone(),
+                    why: why.clone(),
+                },
             },
         };
-        let moved = moved_since(over.rev(), &declaration.hashed)?;
+        let moved = match over.rev() {
+            Some(rev) => Some(moved_since(rev, &declaration.hashed)?),
+            None => None,
+        };
         out.push(Asked {
             prefix: declaration.prefix.clone(),
             over,
@@ -1100,6 +1204,61 @@ pub fn windows_asked(
         });
     }
     Ok(out)
+}
+
+/// The archive this key's `restore-keys` could have fallen back to — the moment
+/// its archive was last written before this run.
+///
+/// THE EVIDENCE THAT BOUNDS THE WALK, and it is already in this gate's hands: the
+/// caches API says when every generation under a prefix was created, so how far
+/// back a run history has to be read is a MEASUREMENT rather than a constant
+/// somebody picked. R1312 exists because it was a constant.
+///
+/// THE SAME POPULATION AND THE SAME COMPARISON AS [`Row::restorable_when`],
+/// through the same resolver, because they are the same question asked at two
+/// moments: this one before there are rows to ask, that one after. Two spellings
+/// of it could disagree, and the disagreement would be a gate that bounds an
+/// interval against one archive and judges the rebuild against another.
+pub fn archive_floor<'a>(
+    prefix: &str,
+    declared: &[CacheDeclaration],
+    held: &'a [Held],
+    started_at: &str,
+) -> Option<&'a Held> {
+    let prefixes: Vec<String> = declared
+        .iter()
+        .map(|declaration| declaration.prefix.clone())
+        .collect();
+    newest_predating(
+        held.iter()
+            .filter(|cache| owner_of(&prefixes, &cache.key).is_some_and(|owner| owner == prefix)),
+        started_at,
+    )
+}
+
+/// The newest of these archives that already existed at `started_at`.
+///
+/// ONE RESOLVER FOR "WHAT COULD THIS RUN HAVE RESTORED", called with two
+/// populations. The tie goes to the archive, for the reason [`to_the_second`]
+/// gives: no job finishes and saves in its run's opening second.
+fn newest_predating<'a>(
+    generations: impl Iterator<Item = &'a Held>,
+    started_at: &str,
+) -> Option<&'a Held> {
+    generations
+        .filter(|generation| to_the_second(&generation.created_at) <= to_the_second(started_at))
+        .max_by(|left, right| left.created_at.cmp(&right.created_at))
+}
+
+/// Has the walk gone back past the moment this key's archive was written?
+///
+/// THE RUN THAT WROTE AN ARCHIVE STARTED BEFORE IT, because the save is a POST
+/// step. So a candidate that started at or before that moment is the last one
+/// worth buying an answer about: nothing older can be the run being looked for.
+/// This is what ends the walk — not a page size, and not a guess about how many
+/// runs in a row a repository can cancel.
+pub fn walked_past(candidate: &PriorRun, floor: &Held) -> bool {
+    to_the_second(&candidate.started_at) <= to_the_second(&floor.created_at)
 }
 
 /// The commit the "did the hashed inputs move" question is asked from.
@@ -1505,9 +1664,6 @@ impl Report {
                 if to_the_second(&held.created_at) <= to_the_second(&run.started_at) {
                     continue;
                 }
-                if run.moved(&row.prefix) {
-                    continue;
-                }
                 // AND SOMETHING HAD TO BE THERE TO RESTORE, which is the
                 // condition the sibling refusal above states outright and this
                 // one was missing. R1135 measured what that cost on run
@@ -1528,6 +1684,29 @@ impl Report {
                 // changes is only whether it stops a run.
                 if row.restorable_when(&run.started_at).is_none() {
                     continue;
+                }
+                // THE EXCUSE, AND THE THIRD ANSWER R1312 SEPARATED FROM IT. A
+                // key whose globs moved over the interval its archive could have
+                // seen is legitimately cold. A key whose globs did not move is
+                // the finding below. A key whose interval was never bounded is
+                // NEITHER, and printing it as the second is how this gate
+                // reported eight honest rebuilds as a defect and turned main red
+                // — the interval it substituted was three commits short of the
+                // one that explained them.
+                match run.movement(&row.prefix) {
+                    Some(true) => continue,
+                    None => {
+                        out.push(Refusal::Unreached(format!(
+                            "`{}` was rebuilt by this run and whether that was legitimate \
+                             is UNKNOWN rather than wrong — {}",
+                            row.prefix,
+                            run.unbounded(&row.prefix)
+                                .map(Window::why)
+                                .unwrap_or_else(|| "no interval was recorded for it".to_string())
+                        )));
+                        continue;
+                    }
+                    Some(false) => {}
                 }
                 out.push(Refusal::Recreated {
                     prefix: row.prefix.clone(),
@@ -1868,13 +2047,29 @@ pub fn render(report: &Report) -> String {
         // and a reader seeing "cannot be heard from here" needs to know what
         // "here" is without going to the runner for it.
         Some(run) => {
+            // AND HOW MANY WERE NOT ASKED AT ALL, in the same sentence as how
+            // many moved. A key whose interval was never bounded is not a key
+            // whose inputs held still, and a count that folds the two prints a
+            // gate that could not look as one that looked and found nothing.
+            let unbounded = run
+                .asked
+                .iter()
+                .filter(|asked| asked.moved.is_none())
+                .count();
             out.push_str(&format!(
                 "run of {} started {}, so a cache created after that is a job that \
-                 rebuilt; {} of {} key(s) had their hashed inputs moved\n",
+                 rebuilt; {} of {} key(s) had their hashed inputs moved{}\n",
                 run.workflow,
                 run.started_at,
-                run.asked.iter().filter(|asked| asked.moved).count(),
+                run.asked
+                    .iter()
+                    .filter(|asked| asked.moved == Some(true))
+                    .count(),
                 run.asked.len(),
+                match unbounded {
+                    0 => String::new(),
+                    count => format!(", and {count} of them could not be asked"),
+                }
             ));
             // AND OVER WHICH INTERVAL EACH ANSWERED, grouped by the interval
             // rather than listed per key. The intervals are per WORKFLOW, so a
@@ -1887,7 +2082,11 @@ pub fn render(report: &Report) -> String {
                 over.entry(asked.over.why()).or_default().push(format!(
                     "{}{}",
                     asked.prefix,
-                    if asked.moved { " MOVED" } else { "" }
+                    match asked.moved {
+                        Some(true) => " MOVED",
+                        Some(false) => "",
+                        None => " NOT ASKED",
+                    }
                 ));
             }
             for (interval, keys) in over {

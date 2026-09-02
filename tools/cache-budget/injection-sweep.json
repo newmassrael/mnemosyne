@@ -205,12 +205,12 @@
     },
     {
       "name": "a-dependency-bump-is-refused-like-any-other-cold-build",
-      "why": "a key hashing lockfiles that moved MUST be rebuilt, and refusing that makes every dependency change a red build — a gate that is red for a correct commit is one somebody switches off",
+      "why": "a key hashing lockfiles that moved MUST be rebuilt, and refusing that makes every dependency change a red build — a gate that is red for a correct commit is one somebody switches off. R1312 re-aimed the anchor when the excuse stopped being a `bool` and became three answers: moved, did not move, and never asked",
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "                if run.moved(&row.prefix) {",
-          "to": "                if false {"
+          "from": "                    Some(true) => continue,",
+          "to": "                    Some(true) => {}"
         }
       ],
       "expect_red": ["a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused"]
@@ -405,8 +405,8 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "            .filter(|generation| to_the_second(&generation.created_at) <= to_the_second(started_at))",
-          "to": "            .filter(|generation| !generation.key.is_empty() && !started_at.is_empty())"
+          "from": "        .filter(|generation| to_the_second(&generation.created_at) <= to_the_second(started_at))",
+          "to": "        .filter(|generation| !generation.key.is_empty() && !started_at.is_empty())"
         }
       ],
       "expect_red": [
@@ -420,11 +420,54 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "        self.held\n            .iter()\n            .chain(self.superseded.iter())",
-          "to": "        self.held.iter().chain([].iter())"
+          "from": "        newest_predating(self.held.iter().chain(self.superseded.iter()), started_at)",
+          "to": "        newest_predating(self.held.iter().chain([].iter()), started_at)"
         }
       ],
       "expect_red": ["the_generation_that_counts_is_the_one_that_predates_the_run"]
+    },
+    {
+      "name": "the-page-of-runs-is-five-again",
+      "why": "R1312 — this is the false red itself. The page was FIVE, on the reasoning that the rows above the run being looked for are a sibling run, a re-run or a short red streak; that is a claim about a repository's cadence and this one falsifies it, because a push cancels the run in flight and a cancelled run usually does not reach its post steps. Measured 2026-09-02: fourteen consecutive runs wrote no archive at all and the writer was fifteen rows back — itself a run GitHub calls cancelled — so the gate found no bound, substituted the push range, and refused eight archives whose own workflow file had moved three commits earlier. NOTHING COULD GO RED FOR IT until the fixture's `gh` began honouring `per_page`, which is why this injection is also that stub's non-vacuity proof: with the answer returned whole, shrinking this number changes nothing",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "pub const RUNS_PER_PAGE: usize = 100;",
+          "to": "pub const RUNS_PER_PAGE: usize = 5;"
+        }
+      ],
+      "expect_red": [
+        "a_streak_of_runs_that_wrote_nothing_does_not_put_the_interval_out_of_reach"
+      ]
+    },
+    {
+      "name": "an-interval-nobody-bounded-is-the-push-range",
+      "why": "R1312 — the DECISION half, where the sibling above is the DEPTH half. An interval this gate could not bound is not a shorter interval, and substituting the push range for it answers `nothing matching those globs moved` about a question nobody asked — which is a `Recreated` refusal, so the gate blames a repository for a rebuild it had every right to. With the collapse restored, a key with a generation behind it goes back to being refused rather than reported as unjudged",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            WindowSource::Unavailable(why) => match &floor {\n                Some(generation) => Window::Unbounded {\n                    generation: generation.key.clone(),\n                    created_at: generation.created_at.clone(),\n                    why: why.clone(),\n                },\n                None => Window::ThisPush {\n                    start: push.clone(),\n                    why: why.clone(),\n                },\n            },",
+          "to": "            WindowSource::Unavailable(why) => Window::ThisPush {\n                start: push.clone(),\n                why: why.clone(),\n            },"
+        }
+      ],
+      "expect_red": [
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval",
+        "the_walk_stops_at_the_archive_it_is_bounding_against"
+      ]
+    },
+    {
+      "name": "the-walk-runs-on-past-the-archive-it-bounds-against",
+      "why": "R1312 — the COST half. A page of a hundred is a hundred runs whose jobs can be asked about one call each, and what keeps that honest is the evidence rather than a small page: the run that WROTE an archive started before it, so every candidate older than that archive is a call that buys nothing. Take the stop away and the verdict does not move at all — which is exactly why the oracle is what `gh` was asked",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "                    if cache_budget::walked_past(prior, floor) {\n                        break;\n                    }",
+          "to": "                    if false {\n                        break;\n                    }"
+        }
+      ],
+      "expect_red": ["the_walk_stops_at_the_archive_it_is_bounding_against"]
     },
     {
       "name": "a-flags-value-is-the-tree-to-judge",

@@ -57,10 +57,20 @@ fn run_after(created: &str, invalidated: &[&str]) -> Run {
             .map(|key| Asked {
                 prefix: key.to_string(),
                 over: push_window(),
-                moved: true,
+                moved: Some(true),
             })
             .collect(),
     }
+}
+
+/// A key with NO generation older than the run — nothing to bound an interval
+/// against, and nothing a `restore-keys` could have served either.
+///
+/// The floor is what R1312 made `windows_asked` ask for, and most laws in this
+/// file are about something else; this is the answer that leaves their subject
+/// where it was. The laws that ARE about it hand over a generation instead.
+fn no_earlier_generation(_prefix: &str) -> Option<Held> {
+    None
 }
 
 /// The range these fixtures were judged over. Which one it is changes nothing
@@ -436,6 +446,14 @@ fn moved_only_since_that_workflow_ran(rev: &str, _globs: &[String]) -> Result<bo
 /// red, kept as the control: the only difference between them is which interval
 /// the key was asked about, so a repair that stopped asking would show up as this
 /// case passing for the wrong reason.
+///
+/// R1312 CHANGED WHAT THE SECOND ARM ASSERTS, AND THAT CHANGE IS ITS OWN FINDING.
+/// It used to expect a `Recreated` refusal — the gate REFUSING a repository
+/// because the interval it substituted was too narrow to hold the explanation.
+/// That is what a false red looks like from inside the suite, and this file
+/// asserted it as correct. What an unbounded interval owes is a refusal that says
+/// it COULD NOT LOOK, so the arm still refuses and the control still holds; what
+/// it no longer does is name a repository's honest rebuild as a defect.
 #[test]
 fn a_key_is_asked_about_the_interval_its_own_archive_could_have_seen() {
     let declared = [declaration("replay", FILTERED, REGISTRY)];
@@ -455,10 +473,15 @@ fn a_key_is_asked_about_the_interval_its_own_archive_could_have_seen() {
         ),
     ];
 
+    let floor = |prefix: &str| {
+        cache_budget::archive_floor(prefix, &declared, &storage, started_at).cloned()
+    };
+
     let over_its_own_history = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |_, _| {
+        floor,
+        |_, _, _| {
             Ok(WindowSource::Ran(PriorRun {
                 id: LAST_RUN_ID,
                 sha: LAST_RUN.to_string(),
@@ -480,10 +503,11 @@ fn a_key_is_asked_about_the_interval_its_own_archive_could_have_seen() {
          honest price of a dependency change and not a finding"
     );
 
-    let over_the_push_alone = windows_asked(
+    let unbounded = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |_, _| {
+        floor,
+        |_, _, _| {
             Ok(WindowSource::Unavailable(
                 "this fixture's control".to_string(),
             ))
@@ -494,17 +518,19 @@ fn a_key_is_asked_about_the_interval_its_own_archive_could_have_seen() {
     let judged = Run {
         workflow: WORKFLOW.to_string(),
         started_at: started_at.to_string(),
-        asked: over_the_push_alone,
+        asked: unbounded,
     };
+    let refused = conclude(LIMIT, &declared, &storage, Some(&judged));
     assert!(
         matches!(
-            conclude(LIMIT, &declared, &storage, Some(&judged))
-                .refusals()
-                .as_slice(),
-            [Refusal::Recreated { prefix, .. }] if prefix == FILTERED
+            refused.refusals().as_slice(),
+            [Refusal::Unreached(why)]
+                if why.contains(FILTERED) && why.contains("UNKNOWN rather than wrong")
         ),
-        "and asked about the push alone — where nothing matching those globs moved \
-         — the same repository is refused, which is what a red main looked like"
+        "and with no run found to bound the interval the same repository is still \
+         refused — but as a gate that could not look, never as a repository that \
+         rebuilt a cache for no reason: {:?}",
+        refused.refusals()
     );
 }
 
@@ -533,7 +559,8 @@ fn two_keys_in_one_workflow_are_asked_about_separately_and_each_once() {
     let out = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |workflow, step| {
+        no_earlier_generation,
+        |workflow, step, _| {
             asked_about.push((workflow.to_string(), step.to_string()));
             Ok(WindowSource::Ran(PriorRun {
                 id: LAST_RUN_ID,
@@ -572,7 +599,8 @@ fn a_key_that_hashes_nothing_is_asked_nothing() {
     let out = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |_, _| panic!("a key hashing nothing has no interval worth a network call"),
+        |_| panic!("a key hashing nothing has no archive worth reading a floor off"),
+        |_, _, _| panic!("a key hashing nothing has no interval worth a network call"),
         |_, _| panic!("and nothing to ask git about"),
     )
     .expect("both sides answered");
@@ -604,12 +632,12 @@ fn the_report_says_which_interval_each_key_answered_over() {
                 sha: LAST_RUN.to_string(),
                 at: LAST_RAN_AT.to_string(),
             },
-            moved: true,
+            moved: Some(true),
         },
         Asked {
             prefix: "Linux-two-".to_string(),
             over: push_window(),
-            moved: false,
+            moved: Some(false),
         },
     ];
     let run = Run {
@@ -1210,7 +1238,7 @@ fn the_run(invalidated: &[&str]) -> Run {
             .map(|key| Asked {
                 prefix: key.to_string(),
                 over: push_window(),
-                moved: true,
+                moved: Some(true),
             })
             .collect(),
     }

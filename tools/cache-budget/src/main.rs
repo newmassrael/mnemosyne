@@ -59,7 +59,7 @@ fn main() {
     // verdict and is TOLD that the other half was not evaluated — inventing a
     // run here would read every cache in the repository as freshly built.
     let run = match std::env::var("GITHUB_RUN_ID").ok() {
-        Some(id) => match run_window(&root, &id, &declared) {
+        Some(id) => match run_window(&root, &id, &declared, &held) {
             Ok(run) => Some(run),
             Err(why) => {
                 eprintln!("cache-budget: {}", Refusal::Unreached(why));
@@ -118,7 +118,12 @@ fn main() {
 /// reasoning wrong — it asked every key about the commits one push carried, which
 /// is not an interval a path-filtered workflow's key can be judged over — and
 /// nothing but a red `main` could report that, because nothing here had a reader.
-fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Result<Run, String> {
+fn run_window(
+    root: &Path,
+    run_id: &str,
+    declared: &[CacheDeclaration],
+    held: &[Held],
+) -> Result<Run, String> {
     let answer = gh(root, &cache_budget::run_query(run_id))?;
     let started_at = cache_budget::run_started_in(run_id, &answer)?;
 
@@ -159,7 +164,24 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
     let asked = cache_budget::windows_asked(
         declared,
         &push,
-        |workflow, step| {
+        // WHERE THE INTERVAL WOULD START, off the caches API this gate already
+        // read. It is the walk's terminator and the evidence that the interval
+        // exists at all, and both of those used to be somebody's constant.
+        |prefix| cache_budget::archive_floor(prefix, declared, held, &started_at).cloned(),
+        |workflow, step, floor| {
+            // NOTHING OLDER THAN THIS RUN UNDER THIS KEY IS NOTHING TO BOUND.
+            // The question is "what moved since this key's archive was last
+            // written", and where no archive predates the run there is no such
+            // moment — nor any verdict to reach, because `Recreated` requires a
+            // generation `restore-keys` could have served. Buying a hundred
+            // runs' job lists to bound an interval nothing will be judged over
+            // is the cost this returns early instead of paying.
+            let Some(floor) = floor else {
+                return Ok(cache_budget::WindowSource::Unavailable(format!(
+                    "no archive under this key predates this run, so there is no moment \
+                     `{step}` in `{workflow}` last wrote one to ask from"
+                )));
+            };
             let answer = match runs_of.get(workflow) {
                 Some(held) => held.clone(),
                 None => {
@@ -175,7 +197,9 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
             // NEWEST FIRST, AND THE FIRST ONE THAT ACTUALLY SAVED WINS. Asking
             // about a run that did not write this archive and stopping there
             // would bound the interval with a moment nothing was observed at.
+            let mut examined = 0usize;
             for prior in &candidates {
+                examined += 1;
                 let jobs = match jobs_of.get(&prior.id) {
                     Some(held) => held.clone(),
                     None => {
@@ -185,6 +209,14 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
                     }
                 };
                 if !cache_budget::saved_the_archive(prior, step, &jobs)? {
+                    // AND THE WALK STOPS WHERE THE EVIDENCE DOES. A run that
+                    // started before this archive was created cannot be the run
+                    // that wrote it, so everything older is a call that buys
+                    // nothing — and everything NEWER has to be asked, however
+                    // many of them a repository cancelled in a row.
+                    if cache_budget::walked_past(prior, floor) {
+                        break;
+                    }
                     continue;
                 }
                 // NAMED BUT NOT HELD, which is the shallow-clone case and the
@@ -202,9 +234,13 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
                 return Ok(cache_budget::WindowSource::Ran(prior.clone()));
             }
             Ok(cache_budget::WindowSource::Unavailable(format!(
-                "no run of `{workflow}` at another commit in the newest page of its runs \
-                 wrote the archive of `{step}` ({} candidate(s) asked)",
-                candidates.len()
+                "the newest {} runs of `{workflow}` hold {} at another commit before this \
+                 one, and the {examined} examined walking back towards `{}` (written {}) \
+                 include none that wrote the archive of `{step}`",
+                cache_budget::RUNS_PER_PAGE,
+                candidates.len(),
+                floor.key,
+                floor.created_at
             )))
         },
         |rev, globs| moved_since(root, rev, globs),

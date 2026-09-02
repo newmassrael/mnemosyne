@@ -1572,8 +1572,21 @@ jobs:
   # path-filtered: between two of its runs the lockfiles its key hashes moved
   # twice, its next run legitimately missed, and this gate — asking only about the
   # commits that push carried — called it a defect and turned main red on run
-  # 31695396997. The gate now asks GitHub when each declaring workflow last ran
-  # successfully at another commit, which is what `actions: read` below is for.
+  # 31695396997. The gate asks GitHub which run last WROTE that key's archive,
+  # which is what `actions: read` below is for — R1207, because a run's own
+  # conclusion is a fact about every job in it while an archive is written by one
+  # step of one job, and this repository routinely does both at once.
+  #
+  # R1312 — AND WHEN IT CANNOT FIND THAT RUN, IT SAYS SO INSTEAD OF ASKING A
+  # SMALLER QUESTION. `cancel-in-progress` above plus a round cadence shorter
+  # than a run means the archive-writing run is routinely far down the list —
+  # fifteen cancelled rows down, measured on 2026-09-02 — and the gate used to
+  # fall back to the push range and issue a verdict from it. That verdict was
+  # `SAVED BY THIS RUN … and nothing changed` for eight archives whose own
+  # `hashFiles` input, this file, had moved three commits earlier. An interval
+  # nobody bounded is now `Unreached` (exit 2, the gate could not look), never a
+  # finding about the repository, and how deep the run walk goes is decided by
+  # when the archive being bounded against was created rather than by a constant.
   cache-budget:
     name: every cache declared is one CI keeps
     needs:
