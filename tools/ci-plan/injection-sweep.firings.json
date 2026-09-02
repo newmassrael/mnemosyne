@@ -456,8 +456,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "            && !self.shadowed.contains(&name))",
-          "to": "            && !name.is_empty())"
+          "from": "            && !self.shadowed.contains(name)",
+          "to": "            && !name.is_empty()"
         }
       ],
       "expect_red": [
@@ -471,15 +471,17 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "            && !self.values.contains_key(&name)",
+          "from": "            && !self.values.contains_key(name)",
           "to": "            && !name.is_empty()"
         }
       ],
       "expect_red": [
-        "a_parameter_a_local_has_taken_over_is_not_followed_back"
+        "a_parameter_a_local_has_taken_over_is_not_followed_back",
+        "a_program_a_caller_names_is_named_by_its_parameter"
       ],
       "tests": [
-        "a_parameter_a_local_has_taken_over_is_not_followed_back"
+        "a_parameter_a_local_has_taken_over_is_not_followed_back",
+        "a_program_a_caller_names_is_named_by_its_parameter"
       ]
     },
     "a-push-is-read-against-the-functions-top-level-not-the-bindings-depth": {

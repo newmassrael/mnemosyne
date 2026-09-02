@@ -2959,7 +2959,7 @@ fn every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs() {
 /// that starts reaching tomorrow is in neither list and FAILS — an unclassified
 /// member is a red and not a pass, which is the one property every exemption
 /// list in this repository has been caught without.
-const REACHES_A_MACHINE_AND_STILL_ASKS_ABOUT_THE_TREE: [(&str, &str); 3] = [
+const REACHES_A_MACHINE_AND_STILL_ASKS_ABOUT_THE_TREE: [(&str, &str); 5] = [
     (
         "tools/outside-reach/Cargo.toml",
         "it CLASSIFIES the paths a traced run touched, and the pushing user's \
@@ -2984,6 +2984,22 @@ const REACHES_A_MACHINE_AND_STILL_ASKS_ABOUT_THE_TREE: [(&str, &str); 3] = [
          and the answer is `none`, while a wrapper that cannot be run or will \
          not say what it was built from is a REFUSAL with the path in it, never \
          a census reported as taken",
+    ),
+    (
+        "tools/rustc-log/Cargo.toml",
+        "the program it runs is the first word of its own argv, because that is \
+         cargo's contract for a `RUSTC_WRAPPER` — `<wrapper> <rustc> <args…>`. \
+         Whichever machine runs the build hands it that machine's own compiler, \
+         which is exactly the thing this wrapper exists to time; a runner gets a \
+         runner's answer about the compilations a runner did",
+    ),
+    (
+        "tools/unreported-targets/Cargo.toml",
+        "the program is the first word of the COMMAND IT WAS ASKED ABOUT, handed \
+         in on its own argv — and when that word is `cargo` it goes through the \
+         one door instead, so the case that would matter to any other law is not \
+         even this branch. Nothing here names a machine: a runner asked about \
+         the same command re-issues the same command",
     ),
 ];
 
@@ -3010,7 +3026,32 @@ const REACHES_A_MACHINE_AND_STILL_ASKS_ABOUT_THE_TREE: [(&str, &str); 3] = [
 ///     name written in this doc comment is not a use of it;
 ///  2. it SPAWNS a program the environment names — [`ci_plan::rust::Program::
 ///     FromEnvironment`], resolved through the same one-hop `let` / `const` /
-///     `fn` walk that places every other spawn in this repository.
+///     `fn` walk that places every other spawn in this repository;
+///  3. it spawns a program this reader CANNOT NAME AT ALL
+///     ([`ci_plan::rust::Program::Unplaceable`]), where the walk has not cleared
+///     the crate of either of the first two and saying so is the only honest
+///     answer.
+///
+/// ROUTE 3 IS R1310, AND WHAT MADE IT AFFORDABLE WAS TELLING TWO SILENCES APART.
+/// Thirteen spawns in a crate's own `src/` had no program name, and putting all
+/// thirteen here would have been thirteen judgements to invent. Most were not a
+/// silence at all: they hand over a PARAMETER of the function they sit in, or an
+/// index or field of one, and a caller's word is decided at call sites this tree
+/// holds — so whatever machine-local reach they have, the CALLER's crate carries
+/// it and routes 1 and 2 see it there. `ci_plan::rust::Program::FromItsOwnArguments`
+/// is that fact, and it leaves route 3 holding the spawns nothing in this tree
+/// decides. Measured: thirteen became four, in four crates, two of them already
+/// classified.
+///
+/// AND WHERE THE ROW'S OWN PRESCRIPTION WENT, so nobody re-derives it. N277 said
+/// to close this by following the program one hop further, toward the callers,
+/// the way `follow_every_hole` follows an `.args(..)`. That reduces the pile and
+/// never empties it — a program taken from this process's own `argv` is nameable
+/// by nobody — so the count it drives can never reach zero, which is the shape a
+/// terminating condition must not have. Worse, it would have resolved the DOOR's
+/// own spawn back to cargo and revived the excuse R1266 measured and deleted.
+/// Making the residue a CLASSIFIED population terminates; making it smaller does
+/// not.
 ///
 /// ROUTE 2 IS R1308, AND THE DEBT IT PAYS IS THAT ROUTE 1 WAS THE WHOLE
 /// DERIVATION. `$HOME` is one spelling of "this machine decides where the
@@ -3127,31 +3168,46 @@ fn no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names() {
     // the syntax a second time is the whole reason that reader carries the
     // variable instead of a boolean.
     let spawns = ci_plan::rust::cargo_commands(&root);
+    // A CRATE'S OWN `src/`, the same boundary route 1 draws and for the same
+    // reason: a test fixture pointed at a variable is a test asking about
+    // itself, not a gate asking about a machine.
+    let in_its_own_source = |site: &ci_plan::rust::RustSpawn| -> Option<String> {
+        let manifest = owner(&site.source)?;
+        let dir = manifest
+            .strip_suffix("Cargo.toml")
+            .unwrap_or(manifest.as_str());
+        site.source
+            .starts_with(&format!("{dir}src/"))
+            .then(|| manifest.clone())
+    };
     let mut environment_named = 0_usize;
     for site in &spawns.from_the_environment {
         let ci_plan::rust::Program::FromEnvironment { variable, .. } = &site.program else {
             continue;
         };
-        let Some(manifest) = owner(&site.source) else {
+        let Some(manifest) = in_its_own_source(site) else {
             continue;
         };
-        let dir = manifest
-            .strip_suffix("Cargo.toml")
-            .unwrap_or(manifest.as_str());
-        // A CRATE'S OWN `src/`, the same boundary route 1 draws and for the same
-        // reason: a test fixture pointed at a variable is a test asking about
-        // itself, not a gate asking about a machine.
-        if !site.source.starts_with(&format!("{dir}src/")) {
-            continue;
-        }
         environment_named += 1;
-        reaches_a_machine
-            .entry(manifest.clone())
-            .or_default()
-            .push(format!(
-                "{} — the environment names it: ${variable}",
-                site.origin()
-            ));
+        reaches_a_machine.entry(manifest).or_default().push(format!(
+            "{} — the environment names it: ${variable}",
+            site.origin()
+        ));
+    }
+
+    // ROUTE 3 (R1310) — THE SPAWNS NOTHING IN THIS TREE NAMES. Not "reaches a
+    // machine" and not "does not": UNCLEARED, which is a red here for the same
+    // reason an unclassified member of either list is one.
+    let mut unnamed = 0_usize;
+    for site in &spawns.unplaceable {
+        let Some(manifest) = in_its_own_source(site) else {
+            continue;
+        };
+        unnamed += 1;
+        reaches_a_machine.entry(manifest).or_default().push(format!(
+            "{} — nothing here names its program",
+            site.origin()
+        ));
     }
 
     assert!(
@@ -3160,19 +3216,21 @@ fn no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names() {
          name, so this law holds over nothing — the empty answer that reads like \
          a clean one"
     );
-    // BOTH ROUTES' SIZES, not just the total. R1190's rule: a number that merges
+    // EVERY ROUTE'S SIZE, not just the total. R1190's rule: a number that merges
     // a route which found members with one that found none says the same thing
-    // for both, and route 2 arriving empty is exactly how a widening gets
+    // for both, and a route arriving empty is exactly how a widening gets
     // written and then quietly stops applying.
     assert!(
-        by_home > 0 && environment_named > 0,
-        "one of this law's two routes found nothing — HOME readers {by_home}, \
-         spawns the environment names {environment_named} — so the law is \
-         holding over one route while reading as though it held over both"
+        by_home > 0 && environment_named > 0 && unnamed > 0,
+        "one of this law's three routes found nothing — HOME readers {by_home}, \
+         spawns the environment names {environment_named}, spawns nothing here \
+         names {unnamed} — so the law is holding over some of them while reading \
+         as though it held over all"
     );
     println!(
-        "[venue] {} crate(s) reach a program only this machine names ({by_home} \
-         by reading HOME, {environment_named} spawn site(s) the environment names):\n  {}",
+        "[venue] {} crate(s) this walk has not cleared ({by_home} by reading \
+         HOME, {environment_named} spawn site(s) the environment names, {unnamed} \
+         it cannot name at all):\n  {}",
         reaches_a_machine.len(),
         reaches_a_machine
             .iter()
@@ -3207,9 +3265,10 @@ fn no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names() {
         .collect();
     assert!(
         unclassified.is_empty(),
-        "these crates reach a program only this machine can name, in their own \
-         source, and are in neither list — so nobody has said whether a hosted \
-         runner can ask what they ask:\n  {unclassified:?}\nPut each in \
+        "this walk has not cleared these crates of reaching a program only this \
+         machine can name, in their own source, and they are in neither list — \
+         so nobody has said whether a hosted runner can ask what they ask:\n  \
+         {unclassified:?}\nPut each in \
          CANNOT_LEAVE_THIS_MACHINE with the gate a hook issues for it, or in \
          REACHES_A_MACHINE_AND_STILL_ASKS_ABOUT_THE_TREE with why a runner's \
          answer is the same answer."

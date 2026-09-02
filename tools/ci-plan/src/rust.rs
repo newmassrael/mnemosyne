@@ -251,6 +251,28 @@ pub enum Program {
         /// The expression as written, for a report somebody has to act on.
         written: String,
     },
+    /// A program THE CALLER NAMES — the spawn hands over a parameter of the
+    /// function it sits in, or something projected out of one: `&argv[0]`,
+    /// `&binary.executable`, `path`.
+    ///
+    /// R1310, AND IT IS THE OPPOSITE FACT TO [`Program::Unplaceable`] RATHER
+    /// THAN A SOFTER SPELLING OF IT. "This reader cannot name it" leaves open
+    /// that the program is anything at all; "the caller names it" says the
+    /// decision is written at every call site, and every call site is in this
+    /// tree — so whatever machine-local reach such a spawn has, the CALLER's
+    /// crate carries it and the routes over callers see it there. Reading the
+    /// two as one sentence is what left thirteen spawns in a pile nobody could
+    /// ask a venue question about.
+    ///
+    /// A `let` OF THE SAME NAME MAKES IT SOMEBODY ELSE'S, which is the guard
+    /// [`Walk::parameter_named`] already draws for the words a site hands over,
+    /// asked here of the program instead.
+    FromItsOwnArguments {
+        /// The parameter the program is, or is projected out of.
+        parameter: String,
+        /// The expression as written, for a report somebody has to act on.
+        written: String,
+    },
     /// An expression this reader cannot name a program from, even after
     /// following it one hop. NOT a pass: a spawn whose program is unknown is a
     /// spawn that might be cargo.
@@ -500,6 +522,9 @@ impl RustSpawn {
             | Program::Named(how)
             | Program::Unplaceable(how) => how.clone(),
             Program::FromEnvironment { variable, written } => format!("{written} [${variable}]"),
+            Program::FromItsOwnArguments { parameter, written } => {
+                format!("{written} [the caller's {parameter}]")
+            }
         };
         for word in &self.words {
             out.push(' ');
@@ -715,6 +740,7 @@ impl RustSpawn {
             | Program::OurBinary(_)
             | Program::Named(_)
             | Program::FromEnvironment { .. }
+            | Program::FromItsOwnArguments { .. }
             | Program::Unplaceable(_) => return None,
         };
         Some(
@@ -922,6 +948,14 @@ pub struct RustSpawns {
     /// owns one, and a caller handed a number would have to walk the tree again
     /// to find out. R1308.
     pub from_the_environment: Vec<RustSpawn>,
+    /// Spawns whose program A CALLER names, each carrying the parameter.
+    ///
+    /// COUNTED APART FROM [`RustSpawns::unplaceable`] BECAUSE THEY ARE OPPOSITE
+    /// FACTS (R1310). These are decided at call sites this tree holds; those are
+    /// decided by nothing this reader can see. Merged, a venue law asking "which
+    /// crates has this walk failed to clear" got thirteen answers of which most
+    /// were not failures at all, and the two that were sat in the middle of them.
+    pub from_its_own_arguments: Vec<RustSpawn>,
     /// WHICH SITES declared each [`Declared`] arm, whatever became of their
     /// words — see [`Declared::arm`], keyed by [`RustSpawn::origin`].
     ///
@@ -1108,6 +1142,10 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
                 }
                 Program::FromEnvironment { .. } => {
                     found.from_the_environment.push(site);
+                    continue;
+                }
+                Program::FromItsOwnArguments { .. } => {
+                    found.from_its_own_arguments.push(site);
                     continue;
                 }
             };
@@ -2066,16 +2104,77 @@ impl<'a> Walk<'a> {
             return None;
         };
         let name = path.path.get_ident()?.to_string();
-        (self.parameters.contains(&name)
-            && !self.values.contains_key(&name)
-            && !self.shadowed.contains(&name))
-        .then_some(name)
+        self.still_the_parameter(&name).then_some(name)
+    }
+
+    /// Is this name still the PARAMETER the enclosing signature declared?
+    ///
+    /// ONE READER FOR ONE GUARD (R1310). A `let` of the same name, or a closure
+    /// or loop binding around it, makes the value somebody else's — and that is
+    /// now asked in two places, of the words a site hands over and of the
+    /// program it spawns. Two copies would be two answers free to disagree the
+    /// day a third way of taking a name over is added, which is exactly the
+    /// half-enforced invariant `CLAUDE.md` refuses. The two injections that
+    /// prove this guard is not decoration were re-anchored here with it.
+    fn still_the_parameter(&self, name: &str) -> bool {
+        self.parameters.iter().any(|parameter| parameter == name)
+            && !self.values.contains_key(name)
+            && !self.shadowed.contains(name)
     }
 
     /// What program an expression names, following it one hop when it names a
     /// value rather than a program.
     fn place(&self, expression: &syn::Expr) -> Program {
-        self.place_within(expression, &mut BTreeSet::new())
+        let found = self.place_within(expression, &mut BTreeSet::new());
+        // THE CALLER'S NAME IS AN ANSWER, AND IT IS ASKED LAST (R1310). Every
+        // other arm is a program this reader can name outright; this one says
+        // the name is written at the call sites instead, which is a different
+        // fact from not knowing. It is asked of the expression AT THE SPAWN —
+        // not of whatever the hop landed on — because a parameter is the
+        // enclosing signature's and means nothing one file over.
+        if let Program::Unplaceable(written) = &found {
+            if let Some(parameter) = self.names_a_parameter(expression) {
+                return Program::FromItsOwnArguments {
+                    parameter,
+                    written: written.clone(),
+                };
+            }
+        }
+        found
+    }
+
+    /// The parameter an expression IS, or is projected out of: `program`,
+    /// `&argv[0]`, `&binary.executable`.
+    ///
+    /// THE PROJECTIONS ARE THE POINT AND NOT A CONVENIENCE. Three of this
+    /// repository's spawns hand over an index or a field of a parameter, and a
+    /// reader that took only a bare name would file them beside the ones nothing
+    /// decides. What a projection cannot change is WHO decides: an element of a
+    /// list a caller passed is still the caller's word.
+    ///
+    /// THE SAME TWO GUARDS [`Walk::parameter_named`] CARRIES. A `let` of the
+    /// same name, or a closure or loop binding around it, makes the value
+    /// somebody else's, and the caller's word would then answer a question
+    /// nobody asked.
+    fn names_a_parameter(&self, expression: &syn::Expr) -> Option<String> {
+        let mut current = expression;
+        loop {
+            current = match current {
+                syn::Expr::Reference(inner) => &inner.expr,
+                syn::Expr::Paren(inner) => &inner.expr,
+                syn::Expr::Group(inner) => &inner.expr,
+                syn::Expr::Field(inner) => &inner.base,
+                syn::Expr::Index(inner) => &inner.expr,
+                syn::Expr::MethodCall(inner) => &inner.receiver,
+                syn::Expr::Try(inner) => &inner.expr,
+                syn::Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Deref(_)) => &unary.expr,
+                syn::Expr::Path(path) => {
+                    let name = path.path.get_ident()?.to_string();
+                    return self.still_the_parameter(&name).then_some(name);
+                }
+                _ => return None,
+            };
+        }
     }
 
     fn place_within(&self, expression: &syn::Expr, seen: &mut BTreeSet<String>) -> Program {

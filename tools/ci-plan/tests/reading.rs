@@ -2241,6 +2241,76 @@ fn a_program_named_by_a_parameter_is_not_resolved_through_a_function_of_the_same
         r#"fn spawn(program: String) { Command::new(program).arg("x"); }
            fn program() -> String { std::env::var("CARGO").unwrap() }"#,
     );
+    assert!(
+        !matches!(
+            site.program,
+            Program::Cargo(_) | Program::CargoBesideTheDoor(_)
+        ),
+        "the subject of this test, unchanged since R1310 gave the answer its own \
+         word: a bare name is a local or a parameter, and resolving it through a \
+         function of the same name reported the door as a second site: {site:#?}"
+    );
+    assert!(
+        matches!(&site.program, Program::FromItsOwnArguments { parameter, .. } if parameter == "program"),
+        "{site:#?}"
+    );
+}
+
+/// THE CALLER NAMING THE PROGRAM IS AN ANSWER, NOT A FAILURE TO READ (R1310).
+///
+/// Thirteen spawns in this repository's own `src/` had no program name, and a
+/// venue law asking "which crates has this walk failed to clear" got all
+/// thirteen. Most were not failures: they hand over a parameter of the function
+/// they sit in, so the name is written at call sites this tree holds — and if
+/// one of those callers reaches a machine, the CALLER's crate is what carries it.
+/// The three shapes below are the three this repository actually writes.
+#[test]
+fn a_program_a_caller_names_is_named_by_its_parameter() {
+    for (text, parameter) in [
+        (
+            r#"fn ask(program: &Path, at: &Path) { Command::new(program).arg("x"); }"#,
+            "program",
+        ),
+        (
+            r#"fn supervise(argv: &[String]) { Command::new(&argv[0]).arg("x"); }"#,
+            "argv",
+        ),
+        (
+            r#"fn list(binary: &TestBinary) { Command::new(&binary.executable).arg("x"); }"#,
+            "binary",
+        ),
+    ] {
+        let site = only(text);
+        assert_eq!(
+            match &site.program {
+                Program::FromItsOwnArguments { parameter, .. } => parameter.as_str(),
+                other => panic!("{text}\n{other:#?}"),
+            },
+            parameter,
+            "{text}"
+        );
+    }
+
+    // A `let` OF THE SAME NAME MAKES IT SOMEBODY ELSE'S, which is the guard the
+    // words a site hands over already carry. The value is now decided inside
+    // this function and no call site names it, so nothing here can say who does.
+    let site = only(
+        r#"fn ask(program: &Path) {
+               let program = std::fs::read_to_string("/tmp/x").unwrap();
+               Command::new(&program).arg("x");
+           }"#,
+    );
+    assert!(matches!(site.program, Program::Unplaceable(_)), "{site:#?}");
+
+    // AND A LOCAL NOTHING NAMES IS STILL UNPLACEABLE, which is what keeps the
+    // two apart: this is the pile route 3 of the venue law is about, and it must
+    // not quietly absorb the parameters.
+    let site = only(
+        r#"fn run() {
+               let named = std::fs::read_to_string("/etc/hostname").unwrap();
+               Command::new(named.trim()).arg("x");
+           }"#,
+    );
     assert!(matches!(site.program, Program::Unplaceable(_)), "{site:#?}");
 }
 

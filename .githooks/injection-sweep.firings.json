@@ -65,6 +65,21 @@
         "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
       ]
     },
+    "a-spawn-nothing-names-is-a-crate-nobody-classified": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "    let out = Command::new(\"gh\")\n",
+          "to": "    let named = std::fs::read_to_string(\"/etc/hostname\").unwrap_or_default();\n    let out = Command::new(named.trim())\n"
+        }
+      ],
+      "expect_red": [
+        "no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
+      ],
+      "tests": [
+        "git_hooks_smoke::no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"
+      ]
+    },
     "a-tree-gate-loses-the-hosted-step-that-took-it": {
       "edits": [
         {

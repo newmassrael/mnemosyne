@@ -388,6 +388,18 @@
       "expect_red": ["a_hosted_job_sets_the_variable_that_names_its_gates_program"]
     },
     {
+      "name": "a-spawn-nothing-names-is-a-crate-nobody-classified",
+      "why": "R1310 — THE THIRD ROUTE, AND THE ONE THAT MAKES THE OTHER TWO TERMINATE. Routes 1 and 2 ask whether a crate reaches a machine by `$HOME` or by a variable; a spawn whose program NOTHING in this tree names is neither answer, and before this route such a crate was invisible to the law entirely. This edit gives `cache-budget` one: the literal `gh` becomes a local read off a file at runtime, so no hop can name it, and the crate is in neither list. It compiles, it runs, and every other law in this sweep is content with it — which is the whole finding, because that is what the thirteen sites already in the tree looked like",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "    let out = Command::new(\"gh\")\n",
+          "to": "    let named = std::fs::read_to_string(\"/etc/hostname\").unwrap_or_default();\n    let out = Command::new(named.trim())\n"
+        }
+      ],
+      "expect_red": ["no_hosted_job_runs_a_gate_that_reaches_a_program_only_this_machine_names"]
+    },
+    {
       "name": "the-four-rs-gates-point-at-the-root-again",
       "why": "R1292 — the trigger and the target did not agree. Gates 5c/5d/5f/5g fire when ANY `.rs` is staged and walked the ROOT, while this repository has twenty-six workspace roots; a file staged under `tools/<crate>/` was gated by a tree it is not in, so four whole-workspace walks reported findings about files the commit never touched and none about the file it did. This puts that back: whatever workspace owns the file, the set collapses to the root. It is not hypothetical — R1291 shipped a test under `tools/injection-harness/` that spawns a binary reading `CARGO` without naming it, `named-environment` RAN on that commit over the root, and the hosted job found it one round later. RE-ANCHORED at R1293, which moved the walk into `lib/rs-workspaces.sh` so `pre-push` could ask it too — the SUBJECT outlived the line, and it now reaches five gates across two hooks rather than four in one, which is why its red set grew",
       "edits": [

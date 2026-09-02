@@ -906,16 +906,17 @@
     },
     {
       "name": "a-parameter-a-local-took-over-is-followed-back-anyway",
-      "why": "the name still reads like the parameter and is not it any more, so the call sites' literals would answer for words that never reach this spawn",
+      "why": "the name still reads like the parameter and is not it any more, so the call sites' literals would answer for words that never reach this spawn. R1310 GAVE THIS GUARD A SECOND READER and re-anchored this injection onto its new single home: `still_the_parameter` is now asked of the PROGRAM a site spawns as well as of the words it hands over, so the same edit reddens the law over each",
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "            && !self.values.contains_key(&name)",
+          "from": "            && !self.values.contains_key(name)",
           "to": "            && !name.is_empty()"
         }
       ],
       "expect_red": [
-        "a_parameter_a_local_has_taken_over_is_not_followed_back"
+        "a_parameter_a_local_has_taken_over_is_not_followed_back",
+        "a_program_a_caller_names_is_named_by_its_parameter"
       ]
     },
     {
@@ -924,8 +925,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
-          "from": "            && !self.shadowed.contains(&name))",
-          "to": "            && !name.is_empty())"
+          "from": "            && !self.shadowed.contains(name)",
+          "to": "            && !name.is_empty()"
         }
       ],
       "expect_red": [

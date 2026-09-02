@@ -139,12 +139,13 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
     );
     println!(
         "[one-door] {} carried, {} of this workspace's own binaries, {} other \
-         program(s) named, {} whose program the environment names, {} spawn(s) \
-         whose program this reader cannot name",
+         program(s) named, {} whose program the environment names, {} whose \
+         program a caller names, {} spawn(s) whose program this reader cannot name",
         found.carried.len(),
         found.our_binaries,
         found.other_programs,
         found.from_the_environment.len(),
+        found.from_its_own_arguments.len(),
         found.unplaceable.len()
     );
     for site in &found.carried {
@@ -236,10 +237,18 @@ fn every_cargo_command_a_rust_program_issues_comes_through_the_one_door() {
 /// excuse mattered came back with nothing red, which is how a dead exception in
 /// a gate announces itself — and the excuse was deleted rather than kept as a
 /// clause nothing exercises.
+///
+/// R1310 SAYS THE SAME THING IN THE WORD FOR IT. The reader now tells "I cannot
+/// name this" from "the CALLER names this", and the door is the second: its
+/// program is `named_cargo`'s own parameter, handed over by `issue::cargo` at
+/// every call site in this repository. The assertion moved buckets and did not
+/// change its subject — and it is a stronger sentence there, because
+/// `Unplaceable` is where a site with no explanation at all also lands.
 #[test]
 fn the_door_is_not_a_site_this_law_has_to_excuse() {
-    let door: Vec<_> = cargo_commands(&repository_root())
-        .unplaceable
+    let found = cargo_commands(&repository_root());
+    let door: Vec<_> = found
+        .from_its_own_arguments
         .into_iter()
         .filter(|site| site.source.ends_with("ci-plan/src/issue.rs"))
         .collect();
@@ -249,5 +258,14 @@ fn the_door_is_not_a_site_this_law_has_to_excuse() {
         "the door spawns exactly once, and the reader places that spawn by the \
          PARAMETER it is handed — a second one there, or none, means the door has \
          been rewritten and what this law excuses has changed with it: {door:#?}"
+    );
+    assert!(
+        !found
+            .unplaceable
+            .iter()
+            .any(|site| site.source.ends_with("ci-plan/src/issue.rs")),
+        "the door is back in the pile this reader can say nothing about, which is \
+         where it sat while `the caller names it` and `nobody names it` were one \
+         answer"
     );
 }
