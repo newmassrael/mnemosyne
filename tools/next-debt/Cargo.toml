@@ -1,0 +1,69 @@
+# next-debt — which open debt this round takes, as a program rather than a
+# sentence.
+#
+# WHY IT IS A PROGRAM AND NOT A NOTE, WHICH IS THE SAME ARGUMENT `open-debts`
+# MAKES ONE DIRECTORY OVER. The standing rules a run of this kind is given say
+# three things about ORDER: take from the critical line the instrument prints;
+# the count of rows nobody ranked only ever shrinks; and a row whose provenance
+# chain is deeper than the re-aiming cap is registered rather than repaid. All
+# three name an instrument. Measured on 2026-09-03, across `tools/`, `scripts/`,
+# `.githooks/` and `RULEBOOK.md`, nothing in this repository printed the words
+# `critical`, `unranked` or `deferred` about this ledger, and the ledger carried
+# a provenance mark on two rows out of two hundred and twenty.
+#
+# So the order of the work was PROSE, and prose written as a reason is a reason
+# nobody measures. The evidence is in the ledger's own history: the session
+# before this one replaced its `NEXT` and wrote down that it had chosen by
+# reading, because there was nothing to ask.
+#
+# WHAT IT DOES NOT DO, STATED SO THE DIVISION IS NOT INFERRED. It does not
+# resolve the names a retirement gives — no git, no atomic store. That question
+# has one asker in this repository and it is `open-debts`, whose exit code is the
+# arc's termination condition and which blocks on a name that does not resolve.
+# This program reads the ledger's retirements as written and says so on its own
+# summary line, so that a disagreement between the two counts has somewhere to be
+# read rather than being a mystery. The cost of asking is the reason there is a
+# division at all: the census pays about thirty-five seconds for ninety-one store
+# queries, which is a row in that ledger already, and a second program paying it
+# again every round would double a cost somebody has already written down.
+#
+# A SEPARATE in-repo workspace, the pattern of the other `tools/*`: its own
+# `[workspace]` so the root workspace's build gates never compile it.
+[workspace]
+
+[package]
+name = "next-debt"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "The steering the standing rules name: critical, the unranked ratchet, provenance depth and what that defers"
+
+[[bin]]
+name = "next-debt"
+path = "src/main.rs"
+
+[lib]
+name = "next_debt"
+path = "src/lib.rs"
+
+[dependencies]
+# THE ONE READER OF THE LEDGER'S REGISTRATION NOTATION. Where a registration
+# starts, where its body ends, which parenthetical classifies it and which rows
+# are still open are all questions this crate asks and does not answer: every one
+# of them has been got wrong here before, and each wrong answer was paid for in
+# `open-debts`'s own rules. A second walk over the same notation would be a
+# second set of those rules, free to drift from the first — which is the shape
+# this project's `CLAUDE.md` forbids by name.
+open-debts = { path = "../open-debts" }
+
+[dev-dependencies]
+# The exit codes are this program's whole interface, so they are asked of the
+# PROCESS, and a process needs two documents on a disk somewhere that is not this
+# checkout. Nothing here writes a file it then runs — that shape is refused by
+# name in this repository — so a throwaway directory is all a case needs.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

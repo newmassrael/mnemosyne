@@ -83,18 +83,34 @@ impl Registration {
         left.replace("자율", "").is_empty()
     }
 
+    /// The parenthetical this registration is classified by.
+    ///
+    /// A BULLET'S MARKER IS ITS PARENTHETICAL AND NOT ITS WHOLE ROW: the body of
+    /// a row may cite another branch in prose ("this belongs with the ② rows"),
+    /// and reading that as a classification would file the row under every
+    /// branch it mentions. For an inline registration the parenthetical IS the
+    /// body, which is what makes the two shapes one question here.
+    ///
+    /// PUBLIC BECAUSE A SECOND READER OF THIS REGION ARRIVED. The branch marker
+    /// was the only thing anyone read out of it, so the region was a private
+    /// step inside `is_autonomous`; the ledger now writes a row's RANK and its
+    /// provenance in the same parenthetical, and `next-debt` counts them. Two
+    /// crates deciding for themselves where a registration's classification
+    /// begins and ends is the two-readers-one-notation shape this repository
+    /// keeps paying for — the same six letters meaning two things one function
+    /// apart, which `RETIREMENT` below is named for.
+    #[must_use]
+    pub fn classification(&self) -> String {
+        match self.shape {
+            Shape::Inline => self.body.clone(),
+            Shape::Bullet => parenthetical_of(&self.body, &self.id).unwrap_or_default(),
+        }
+    }
+
     /// Whether this registration carries the autonomous marker.
     #[must_use]
     pub fn is_autonomous(&self) -> bool {
-        match self.shape {
-            Shape::Inline => self.body.contains(AUTONOMOUS),
-            // A BULLET'S MARKER IS ITS PARENTHETICAL AND NOT ITS WHOLE ROW: the
-            // body of a row may cite another branch in prose ("this belongs with
-            // the ② rows"), and reading that as a classification would file the
-            // row under every branch it mentions.
-            Shape::Bullet => parenthetical_of(&self.body, &self.id)
-                .is_some_and(|marked| marked.contains(AUTONOMOUS)),
-        }
+        self.classification().contains(AUTONOMOUS)
     }
 }
 

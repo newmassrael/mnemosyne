@@ -147,6 +147,37 @@ north-star order, pay-debt-now, no-half-finished, ~80% self-pace, ask/push at
 the end). This file does not restate it. Derive choices from stated values +
 memory, not from A/B/C menus.
 
+### Which debt a round takes — ask the instrument, do not choose
+
+The order is not a judgement a round makes by reading the ledger. It is printed:
+`tools/next-debt` stands next to `tools/open-debts` — the census answers *is the
+arc finished*, this one answers *what does it take next* — and it prints the
+critical rows to take from, the count of rows nobody has ranked, and what the cap
+below defers.
+
+```bash
+cargo run -q --locked --manifest-path tools/next-debt/Cargo.toml -- \
+    --ledger ~/.claude/projects/-home-coin-mnemosyne/memory/project_outstanding_debts.md \
+    --repo ~/mnemosyne
+# 0 = the steering is sound · 1 = the unranked ratchet's pin is out of true · 2 = NOT judged
+```
+
+Take from the critical line while it is not empty. The count of unranked rows is
+a RATCHET — it may fall and it may not rise — so a row opened without `critical`
+or `ordinary` beside its branch is the one thing here that reddens; the repair is
+to rank the row, never to raise the pin.
+
+- **RE-AIMING CAP = 1** — a row whose `@from` chain is deeper than this is
+  registered now and repaid later, so that debt created by repaying debt cannot
+  keep a round away from the rows that were already there. ONE and not two,
+  measured rather than picked: the deepest chain this ledger has ever held is one
+  hop, so a cap of two could not bind, and a rule that cannot bind is prose. At
+  one it defers nothing today and binds the first chain that would reach two.
+
+The notation both programs read — the rank word and the `@from` mark, both inside
+a row's own classification parenthetical — is pinned in the ledger, which is
+where the rows are. This file owns only the cap, because the cap is process.
+
 ## RESUME contract (the steering wheel)
 
 Every session ends by leaving the RESUME memory
