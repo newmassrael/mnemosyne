@@ -1349,8 +1349,11 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["append-changelog-entry --entry-id \"Round N\" --decision-file <path> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--record-census] [--sidecar <path>] [--json]"],
-        notes: &["   --record-census files what the workspace's [census] report says now, so a later round inherits data rather than this entry's sentences (Round 979)"],
+        usage: &["append-changelog-entry --entry-id \"Round N\" --decision-file <path> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--record-census] [--record-verification <record>]... [--sidecar <path>] [--json]"],
+        notes: &[
+            "   --record-census files what the workspace's [census] report says now, so a later round inherits data rather than this entry's sentences (Round 979)",
+            "   --record-verification files a verification wrapper's own record — the command it ran and the status it sealed — so this entry's claim about its suite is not a sentence (Round 1316). Repeatable; takes a path, never a status",
+        ],
         run: |c| atomic_cli::cmd_append_changelog_entry(&c.anchor()?, c.rest()),
     },
     Command {

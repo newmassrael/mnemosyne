@@ -152,6 +152,22 @@ locale = "en"
 Build content by calling `set_section_*` and `append_changelog_entry`
 tools — never by hand-editing the atomic store JSON.
 
+`append_changelog_entry` takes two optional arguments that turn a round's
+claims about itself into data rather than prose, and neither accepts a
+number or a verdict — both read one out of a file:
+
+- `record_census` (boolean, Round 979) — files what the workspace's
+  `[census] report` says right now, so a later round inherits data
+  instead of this entry's sentences.
+- `verification_records` (list of paths, Round 1316) — files the command
+  and the sealed exit status out of each verification wrapper record, so
+  "the suite was green" is the wrapper's answer and not the author's. A
+  record must open with a `# cmd:` header and close with a
+  `# verify: exit=<n>` trailer; one missing the trailer is refused,
+  because a killed run and a green one look identical up to that line.
+  Once a ledger's committed history files one, `validate_workspace`
+  fails an entry whose verification prose claims a run it does not file.
+
 ## Heading convention
 
 The parser recognizes two numbered forms for top-level sections:

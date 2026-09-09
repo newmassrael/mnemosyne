@@ -1172,6 +1172,36 @@ format and the field cannot drift apart. What the axes ARE is yours:
 the substrate holds the shape and never decides which questions your
 population should be counted by.
 
+### Filed verification runs (`--record-verification`, Round 1316)
+
+An entry's `verification_bullets` are prose, and a round that writes
+"the suite was green" there has made a claim nothing re-derives. Measured
+on this repository's own ledger: 380 of 1059 entries claim a run — a
+`verify.sh`, a `check-side-workspaces`, an `exit 0`, an `rc=0` — and
+before this round, 0 recorded one. One of those claims was false when it
+was written, and the ledger is append-only.
+
+`append-changelog-entry --record-verification <record>` files the run as
+data in `verification_runs` instead: the command, the wrapper's own exit
+status, and the record's name. It is **repeatable** — a round that runs a
+root suite and a separate-workspace gate files two — and it takes a
+**path**, never a status: everything filed is parsed out of the record,
+so there is no wire anywhere through which a verdict can be typed.
+
+The record is whatever your verification wrapper writes, as long as it
+opens with a `# cmd: <command>` header and closes with a
+`# verify: exit=<n>` trailer; `scripts/verify.sh` writes both. A record
+missing the trailer is **refused** rather than defaulted, because a
+killed run and a green one are identical up to that line.
+
+`validate-workspace` then reports, and fails on, an entry whose prose
+claims a run it does not file. It is a **ratchet, not a flag day**: it
+stands down until a ledger's committed history files a run, and each arm
+— what the working tree adds, and what the tip commit added — is judged
+against the history it was written on top of. A rule cannot bind a round
+that ran before it existed, and on an append-only ledger a gate that
+reached backwards would state a violation nobody can act on.
+
 ## What stays fixed
 
 The store entity types — Section / CrossRef / ChangelogEntry /

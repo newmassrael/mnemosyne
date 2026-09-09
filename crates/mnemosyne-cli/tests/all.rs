@@ -323,6 +323,9 @@ mod validate_verifies_linkage_smoke;
 #[path = "verification_axis_smoke.rs"]
 mod verification_axis_smoke;
 
+#[path = "verification_record_smoke.rs"]
+mod verification_record_smoke;
+
 #[path = "verify_wrapper_smoke.rs"]
 mod verify_wrapper_smoke;
 

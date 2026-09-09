@@ -410,6 +410,8 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("TypedObject", "Quantity.unit", Coverage::Detector, "UnitId (R839) - TypedUnit facet"),
     ("TypedObject", "Token.token", Coverage::WritePathOnly, "checked against the predicate's declared tokens; excluded from the facets"),
     ("Unit", "description", Coverage::NotARef, "authored prose"),
+    ("VerificationRun", "command", Coverage::NotARef, "the words a verification wrapper ran, copied out of the record it wrote (R1316); it names a command line, nothing in this store"),
+    ("VerificationRun", "log", Coverage::NotARef, "the file name of that record under a gitignored, budget-collected directory (R1316) — a pointer OUT of the store, and deliberately not resolvable: the record is expected to be collected long before the entry is"),
 ];
 
 #[test]

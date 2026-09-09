@@ -977,6 +977,22 @@ pub const GENERATIONS: &[Generation] = &[
         migrate: None,
         probe: Probe::NotBreaking,
     },
+    // v46→v47 adds `AtomicChangelogEntry.verification_runs` (Round 1316 — the
+    // command a round's verification wrapper ran and the status it sealed, so
+    // "the suite was green" is data rather than a sentence in the entry's own
+    // prose). Same declarative new-field-default pattern as v44→v45, and the
+    // same reasoning for having NO migration arm: back-filling it would mean
+    // writing a verdict under a round whose run nobody recorded, which is the
+    // defect the field exists to end. A pre-R1316 binary reading a v47 store
+    // hits the monotone `> CURRENT` guard rather than dropping the key on save.
+    Generation {
+        to: 47,
+        cost: Cost::Additive,
+        round: 1316,
+        what: "adds AtomicChangelogEntry.verification_runs",
+        migrate: None,
+        probe: Probe::NotBreaking,
+    },
 ];
 
 /// The store schema generation the current binary writes and validates against
@@ -1110,7 +1126,7 @@ mod tests {
         // and this says which number the ladder currently reaches, so a reader
         // comparing it with a store's `schema_version` is comparing two things
         // that were derived the same way.
-        assert_eq!(CURRENT_SCHEMA_VERSION, 46);
+        assert_eq!(CURRENT_SCHEMA_VERSION, 47);
     }
 
     #[test]
@@ -1125,19 +1141,24 @@ mod tests {
         let crossing = crossed_by(44);
         assert_eq!(
             crossing.iter().map(|g| g.to).collect::<Vec<_>>(),
-            vec![45, 46]
+            vec![45, 46, 47]
         );
         assert!(crossed_by(1).len() == GENERATIONS.len());
     }
 
-    /// THE ANSWER R1247 COULD NOT GIVE. A store at generation 23 is 23
+    /// THE ANSWER R1247 COULD NOT GIVE. A store at generation 23 is 24
     /// generations behind, and that number is an upper bound: what it actually
-    /// costs is four rungs out of twenty-three, and this is where a reader
+    /// costs is four rungs out of twenty-four, and this is where a reader
     /// learns which — and, since R1255, which of the two ways each one bites.
+    ///
+    /// BOTH NUMBERS MOVE WITH THE LADDER, and this sentence is a count stated
+    /// in prose beside the assertions that hold it — so a rung added without
+    /// touching it leaves the paragraph saying something the test below
+    /// disproves. The test is what makes that loud rather than silent.
     #[test]
     fn the_note_names_what_costs_something_and_counts_the_rest() {
         let note = crossing_note(23);
-        assert!(note.contains("crossing 23 generation(s)"), "{note}");
+        assert!(note.contains("crossing 24 generation(s)"), "{note}");
         // v29, v32 and v33 refuse to open; v24 OPENS and refuses the write,
         // which is the distinction a probe found rather than a paragraph.
         assert!(note.contains("3 that may refuse to open"), "{note}");

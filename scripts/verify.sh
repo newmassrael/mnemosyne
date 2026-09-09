@@ -34,6 +34,11 @@
 # (target/ is gitignored) and echoed to the caller as it arrives; the WRAPPED
 # command's real exit status is returned — `wait` on the process this script
 # started, never a pipeline's — so CI/callers still see a genuine non-zero.
+# That log opens with a `# cmd:` header and CLOSES with a `# verify: exit=<n>`
+# trailer, so the record states its own verdict and not only the command that
+# earned it: `mnemosyne-cli append-changelog-entry --record-verification <log>`
+# files exactly those two lines into the frozen ledger, which is how a round's
+# "the suite was green" stops being a sentence. See `seal_log` below.
 #
 # THE LOCK IS RE-ENTRANT ACROSS THE PROCESS TREE (R1196), and that is a
 # requirement rather than a convenience. `scripts/check-side-workspaces.sh` runs
@@ -245,6 +250,32 @@ echo "[verify] log: $log"
   echo
 } >>"$log"
 
+# THE VERDICT GOES INTO THE RECORD AND NOT ONLY TO THE CALLER (R1316).
+#
+# Until this round the last line of this script was printed to stdout alone, so
+# the file this script writes said what ran and never said how it came out. A
+# reader — or a program — holding one of these logs could recover the command
+# and the whole of its output, and had no way at all to recover the wrapper's
+# own answer about it. `append-changelog-entry --record-verification` is the
+# program that needed it: an entry files the run's verdict as data instead of
+# claiming it in a sentence, and it can only file what the record states.
+#
+# ONE DEFINITION, BOTH EXITS. There are two ways out of this script — the
+# freshness pass refusing, and the end — and a trailer written at only one of
+# them makes a log with no trailer mean two different things. It is also the
+# same bytes to the caller as before: the line this function prints on stdout is
+# the line that was there.
+#
+# THE TARGET COUNT IS DELIBERATELY NOT HERE. `unreported-targets` already turns
+# a run that covered less than it compiled into a non-zero status below, so an
+# `exit=0` from THIS wrapper already carries "every target it compiled reported
+# a result"; a count restated here would be a second spelling of that, in
+# another workspace's output format, free to drift from the gate that owns it.
+seal_log() {
+  printf '# verify: exit=%s\n' "$1" >>"$log"
+  echo "[verify] exit=$1 log=$log"
+}
+
 # NO ARTIFACT OF CODE THIS TREE HAS CHANGED SURVIVES INTO THE RUN THAT JUDGES IT
 # (R743's recovery half, reaching every workspace since R1257).
 #
@@ -274,7 +305,7 @@ if [[ "$fresh" == 1 ]]; then
     echo "[verify] the freshness pass did not run (exit $fresh_verdict); its own" \
       "message is above. The command below would be judged with whatever artifacts" \
       "this tree already had" >&2
-    echo "[verify] exit=2 log=$log"
+    seal_log 2
     exit 2
   fi
 fi
@@ -371,7 +402,7 @@ if [[ "$outermost" == 1 ]]; then
   fi
 fi
 
-echo "[verify] exit=$status log=$log"
+seal_log "$status"
 if [[ "$status" -ne 0 ]]; then
   echo "[verify] --- failure lines (full log retained at $log) ---"
   grep -nE "error\[|error:|panicked|test result: FAILED|FAILED| failed" "$log" | tail -40 || true

@@ -4528,6 +4528,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
     let mut carry_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
     let mut record_census = false;
+    let mut verification_records: Vec<String> = Vec::new();
     let mut json = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -4585,6 +4586,21 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
             // workspace's census report; a flag that took them would be a flag
             // through which a hand-typed population enters the frozen ledger.
             "--record-census" => record_census = true,
+            // Round 1316 — a PATH, never a status. The command and the verdict
+            // come out of the record the verification wrapper wrote, so this is
+            // a flag through which no hand-typed "the suite was green" can
+            // enter the frozen ledger.
+            //
+            // REPEATABLE, because the checklist a round follows verifies with
+            // more than one run — the root suite and the separate-workspace
+            // gate are two commands and two records — and a flag that took one
+            // would make an entry that filed the root run look like an entry
+            // that had run everything.
+            "--record-verification" => verification_records.push(
+                iter.next()
+                    .ok_or_else(|| anyhow!("--record-verification missing"))?
+                    .clone(),
+            ),
             "--json" => json = true,
             other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
@@ -4627,6 +4643,16 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
     } else {
         Vec::new()
     };
+    // Round 1316 — resolved through the one shared reader, so this wire and the
+    // MCP wire cannot file different runs from the same record.
+    let verification_runs = verification_records
+        .iter()
+        .map(|p| {
+            let path = cli_path(Some(p.as_str()))?
+                .ok_or_else(|| anyhow!("--record-verification needs a path"))?;
+            mnemosyne_ops::read_verification_run(path.as_ref()).map_err(|e| anyhow!("{}", e))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         append_changelog_entry(
@@ -4643,6 +4669,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                     .collect::<Vec<_>>(),
                 carry_forward_bullets: &carry_forward,
                 population_census: &population_census,
+                verification_runs: &verification_runs,
             },
             &entry_id_prefix,
         ),

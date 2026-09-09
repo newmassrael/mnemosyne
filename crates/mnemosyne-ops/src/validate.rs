@@ -90,6 +90,14 @@ pub struct ValidateWorkspaceReport {
     /// Round 983 — whether this workspace's entry ids are required to carry the
     /// number that dates every count in an entry's prose.
     pub entry_id_dating: EntryIdDating,
+    /// Round 1316 — entries this commit is ADDING whose verification bullets
+    /// claim a run that the entry does not file. Empty on any tree where the
+    /// answer cannot be known (see [`verification_records`]).
+    pub verification_unrecorded: Vec<String>,
+    /// Round 1316 — what that check was able to look at. Reported on every run,
+    /// because an empty `verification_unrecorded` is the same clean a workspace
+    /// gets when the check never ran.
+    pub verification_record_reach: VerificationRecordReach,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -508,12 +516,24 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
             census_stale.len()
         ));
     }
+    // Round 1316 — an entry this commit is ADDING that claims a run in prose
+    // must file that run as data.
+    let (verification_record_reach, verification_unrecorded) =
+        verification_records(workspace_root, &atomic_store)?;
+    if !verification_unrecorded.is_empty() {
+        failure_reasons.push(format!(
+            "{} uncommitted entry(ies) claim a verification run they do not file",
+            verification_unrecorded.len()
+        ));
+    }
     let failed = !failure_reasons.is_empty();
 
     Ok(ValidateWorkspaceReport {
         census_stale,
         census_reach,
         entry_id_dating,
+        verification_unrecorded,
+        verification_record_reach,
         orphan_actual,
         orphan_ledger: orphan_ledger_view,
         orphan_new,
@@ -589,6 +609,45 @@ pub enum CensusReach {
         out_of_reach: usize,
         /// Census rows compared against a report.
         rows_checked: usize,
+    },
+}
+
+/// WHAT THE VERIFICATION-RECORD CHECK COULD SEE (Round 1316).
+///
+/// Same three-part shape as [`CensusReach`], and for the same reason: an empty
+/// violation list is worth what the reach behind it is worth, and there are two
+/// ways of finding nothing here that are not "nothing is wrong".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VerificationRecordReach {
+    /// Neither arm's ledger had adopted the record yet, so nothing is judged.
+    /// See [`verification_records`] for why adoption is asked of the COMMITTED
+    /// history rather than of the tree in hand.
+    NotAdopted { claiming: usize, recording: usize },
+    /// Which entries this commit ADDS is unknowable — outside a repository, on
+    /// a branch with no `HEAD`, or with a committed store that will not parse —
+    /// so no entry is checked and none is reported as wrong.
+    Undecidable { reason: String },
+    /// The population the check read.
+    Measured {
+        /// Entries whose verification bullets claim a run, over the whole
+        /// ledger. Frozen history is in here and is never a violation.
+        claiming: usize,
+        /// Of those, the ones that file the run as data.
+        recording: usize,
+        /// Entries this commit is ADDING that were checked, because the store
+        /// at HEAD had already adopted the record.
+        uncommitted: usize,
+        /// Entries the TIP commit added that were checked, because the store at
+        /// HEAD~1 had already adopted it — the arm that needs no hook and runs
+        /// in CI.
+        landed_at_head: usize,
+        /// Entries within reach whose own arm had not adopted the record when
+        /// they landed. A rule cannot bind a round that ran before it existed.
+        not_yet_binding: usize,
+        /// Entries older than this check reaches: frozen, counted, not judged.
+        out_of_reach: usize,
     },
 }
 
@@ -767,6 +826,194 @@ fn census_contemporaneity(
         },
         stale,
     ))
+}
+
+/// The words a verification bullet uses when it CLAIMS a run happened
+/// (Round 1316).
+///
+/// ONE DEFINITION, because this predicate is both the measurement and the gate.
+/// The 380-of-1059 that opened this debt was counted with exactly these four
+/// spellings, and a gate built on a second list would be a gate about a
+/// different population than the one that justified building it.
+///
+/// It is deliberately about the SHAPE OF THE CLAIM and not about what ran: a
+/// bullet naming the wrapper, or a status it prints, is a bullet asserting that
+/// a command was executed and came out a particular way. Bullets that describe
+/// what was measured, read or reasoned claim no run and are not asked for a
+/// record — which is why this is four literals and not a judgement about
+/// meaning. It over-reaches on a bullet that merely mentions the wrapper by
+/// name; that direction is the safe one, because the repair is to file the
+/// record the bullet is talking about.
+pub fn claims_a_run(verification_bullets: &[String]) -> bool {
+    const CLAIMS: [&str; 4] = ["verify.sh", "check-side-workspaces", "exit 0", "rc=0"];
+    verification_bullets
+        .iter()
+        .any(|b| CLAIMS.iter().any(|c| b.contains(c)))
+}
+
+/// AN ENTRY THAT CLAIMS A RUN MUST FILE ONE (Round 1316).
+///
+/// The defect: a round's verification bullets say the suite was green, and
+/// nothing re-derives that. Measured on this repository's ledger on 2026-09-03,
+/// 380 of 1059 entries claim a run in prose and 0 record one — and Round 1313's
+/// entry is the instance where the claim was false when it was written, which
+/// no gate caught and which the append-only ledger cannot repair.
+///
+/// WHY THE QUESTION IS NARROW, exactly as [`census_contemporaneity`]'s is.
+/// "Does every entry that claims a run file one" fails on all 380 honest older
+/// entries, and retroactive repair is a frozen-ledger violation — so the
+/// question asked here is "does the entry this commit is ADDING file one",
+/// which is the only version with a right answer. Frozen history is COUNTED in
+/// the reach and never judged.
+///
+/// WHY IT STANDS DOWN UNTIL THE LEDGER HAS ADOPTED THE RECORD. A workspace that
+/// has never filed a verification run has not adopted the convention, and a gate
+/// that demanded one from it would fail a consumer for someone else's rule. The
+/// first entry to file one turns it on, and from then on it stays on: a ratchet
+/// rather than a flag day, which is also why the reach is printed and not only
+/// the violations.
+///
+/// AND ADOPTION IS ASKED OF THE COMMITTED HISTORY, PER ARM. This is the part
+/// that is not decoration. The store in hand is the one the adopting round is
+/// writing, so asking IT would turn the gate on for the very round that
+/// introduced the record — and, worse, for whatever the tip commit happened to
+/// contain, which is frozen and unrepairable. So each arm asks the history that
+/// existed when its entries were written: an UNCOMMITTED entry is bound if the
+/// store at HEAD already filed a run, and an entry the TIP COMMIT added is
+/// bound if the store at HEAD~1 already did. A rule cannot bind a round that
+/// ran before it existed, and the ledger is append-only, so a rule that reached
+/// backwards would state a violation nobody is able to fix.
+///
+/// REACH, stated rather than implied: in CI nothing is uncommitted, so that arm
+/// is empty there and the `landed_at_head` arm is what bites — the same
+/// two-armed shape as the census check, and for the same reason.
+fn verification_records(
+    workspace_root: &Path,
+    store: &mnemosyne_atomic::AtomicStore,
+) -> Result<(VerificationRecordReach, Vec<String>), OpError> {
+    let claiming: Vec<(&String, bool)> = store
+        .changelog_entries
+        .iter()
+        .filter(|(_, e)| claims_a_run(&e.verification_bullets))
+        .map(|(id, e)| (id, !e.verification_runs.is_empty()))
+        .collect();
+    let total_claiming = claiming.len();
+    let recording = claiming.iter().filter(|(_, r)| *r).count();
+    let not_adopted = |claiming: usize, recording: usize| {
+        Ok((
+            VerificationRecordReach::NotAdopted {
+                claiming,
+                recording,
+            },
+            Vec::new(),
+        ))
+    };
+    let undecidable = |why: &str| {
+        Ok((
+            VerificationRecordReach::Undecidable {
+                reason: why.to_string(),
+            },
+            Vec::new(),
+        ))
+    };
+    let sidecar = crate::resolve_sidecar(workspace_root, None)?;
+    let (Some(dir), Some(name)) = (sidecar.parent(), sidecar.file_name()) else {
+        return undecidable("the atomic sidecar has no parent directory to ask git from");
+    };
+    let Some(head) = git_store_view(dir, name, "HEAD") else {
+        return undecidable(
+            "git has no committed store at HEAD (outside a repository, or before the first commit)",
+        );
+    };
+    let previous: Option<StoreView> = git_store_view(dir, name, "HEAD~1");
+    let binds_the_tip = previous.as_ref().is_some_and(|p| p.adopted);
+    if !head.adopted && !binds_the_tip {
+        return not_adopted(total_claiming, recording);
+    }
+
+    let mut uncommitted = 0usize;
+    let mut landed_at_head = 0usize;
+    let mut not_yet_binding = 0usize;
+    let mut out_of_reach = 0usize;
+    let mut missing = Vec::new();
+    for (id, records) in claiming {
+        let at_head = head.ids.contains(id);
+        let landed_here = at_head && previous.as_ref().is_some_and(|p| !p.ids.contains(id));
+        if at_head && !landed_here {
+            out_of_reach += 1;
+            continue;
+        }
+        // Each arm against the history its entries were written on top of.
+        let bound = if landed_here {
+            binds_the_tip
+        } else {
+            head.adopted
+        };
+        if !bound {
+            not_yet_binding += 1;
+            continue;
+        }
+        if landed_here {
+            landed_at_head += 1;
+        } else {
+            uncommitted += 1;
+        }
+        if !records {
+            missing.push(format!(
+                "{id}: its verification bullets claim a run and it files none — \
+                 re-run the verification through the wrapper and append with \
+                 `--record-verification <record>`, so what this entry says about \
+                 its own suite is the wrapper's answer rather than the author's"
+            ));
+        }
+    }
+    Ok((
+        VerificationRecordReach::Measured {
+            claiming: total_claiming,
+            recording,
+            uncommitted,
+            landed_at_head,
+            not_yet_binding,
+            out_of_reach,
+        },
+        missing,
+    ))
+}
+
+/// A committed store as one revision left it: which entries it held, and
+/// whether any of them had adopted the verification record (Round 1316).
+struct StoreView {
+    ids: BTreeSet<String>,
+    adopted: bool,
+}
+
+/// [`StoreView`] for `rev`, or `None` when that revision has no readable store.
+fn git_store_view(dir: &Path, name: &std::ffi::OsStr, rev: &str) -> Option<StoreView> {
+    let out = std::process::Command::new("git")
+        .args(["show", &format!("{rev}:./{}", name.to_string_lossy())])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let store: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let entries = store.get("changelog_entries").and_then(|v| v.as_object());
+    Some(StoreView {
+        ids: entries
+            .map(|o| o.keys().cloned().collect())
+            .unwrap_or_default(),
+        // Read off the SERIALIZED shape rather than by deserializing the whole
+        // store: this runs on every validate, the file is megabytes, and the
+        // question is only whether the key is present and non-empty anywhere.
+        adopted: entries.is_some_and(|o| {
+            o.values().any(|e| {
+                e.get("verification_runs")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|a| !a.is_empty())
+            })
+        }),
+    })
 }
 
 /// The changelog entry ids a committed store holds at `rev`, or `None` when
@@ -1065,6 +1312,40 @@ impl ValidateWorkspaceReport {
                     format!("{dated} of {total} entry(ies) are dated by their own key"),
             }
         );
+        let _ = writeln!(
+            out,
+            "verification records: {} (Round 1316; an entry that claims a run in \
+             prose files it as data, checked on what this commit is adding and \
+             what the tip commit added — frozen history is counted, never judged)",
+            match &self.verification_record_reach {
+                VerificationRecordReach::NotAdopted {
+                    claiming,
+                    recording,
+                } => format!(
+                    "off — the committed ledger files no verification run yet, so \
+                     it has not adopted the record and nothing is judged \
+                     ({claiming} entry(ies) claim a run, {recording} file one)"
+                ),
+                VerificationRecordReach::Undecidable { reason } =>
+                    format!("UNDECIDABLE — {reason}, so no entry was checked"),
+                VerificationRecordReach::Measured {
+                    claiming,
+                    recording,
+                    uncommitted,
+                    landed_at_head,
+                    not_yet_binding,
+                    out_of_reach,
+                } => format!(
+                    "{claiming} entry(ies) claim a run, {recording} file one, \
+                     {uncommitted} uncommitted, {landed_at_head} landed at HEAD, \
+                     {not_yet_binding} written before their arm had adopted it, \
+                     {out_of_reach} older than this check walks"
+                ),
+            }
+        );
+        for u in &self.verification_unrecorded {
+            let _ = writeln!(out, "  {}", u);
+        }
         if self.failed {
             let _ = writeln!(out, "FAILED:");
             for r in &self.failure_reasons {

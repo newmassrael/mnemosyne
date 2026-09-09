@@ -1,0 +1,149 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1316's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-cli/sweeps/verification-record.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. A round claims in prose that it ran its suite, and",
+    "nothing re-derives the claim: measured on this ledger 2026-09-03, 380 of",
+    "1059 entries claim a run and 0 record one. R1313's entry is the instance",
+    "where the claim was FALSE when it was written — the root run had been",
+    "started before the file under test existed and the side gate had exited 1 —",
+    "and the ledger is append-only, so it is still there. R1316 makes the claim",
+    "data: the wrapper seals its own verdict into the record it writes, one",
+    "reader recovers it for both wires, and an entry that claims a run without",
+    "filing one fails validate-workspace.",
+    "",
+    "SO THE INJECTIONS ARE THE WAYS THAT GOES QUIET, and each one is a shape",
+    "this repository has already been bitten by. Two make the RECORD lie — no",
+    "verdict at all, and a verdict that is always green, which is the defect",
+    "wearing the fix. One makes the READER accept an unsealed record, which is",
+    "how a killed run becomes a green one. Three make the GATE stop biting: a",
+    "predicate that recognises no claim, a violation that never reaches the",
+    "failure list, and a reach that ignores adoption — the last of which does",
+    "not look like a weakening at all, because it makes the gate STRICTER while",
+    "turning every frozen entry written before the rule into a finding nobody",
+    "can act on.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy (R1205's carry, and the `writes` line in the declaration)."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "--",
+    "verification_record_smoke::",
+    "verify_wrapper_smoke::every_record_the_wrapper_writes_states_the_verdict_it_returned"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-wrapper-seals-no-verdict",
+      "why": "the state this repository was actually in until this round: the wrapper printed its verdict to the caller and the file it wrote said only what had been run. Every record is then unreadable, and an entry can go on claiming its suite in a sentence because there is nothing else to file",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  printf '# verify: exit=%s\\n' \"$1\" >>\"$log\"\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["every_record_the_wrapper_writes_states_the_verdict_it_returned"]
+    },
+    {
+      "name": "the-record-always-says-the-run-passed",
+      "why": "the defect wearing the fix, and the one that would be hardest to see: every record parses, every entry files a run, every verdict is green. A field whose value is always the one the round hoped for is exactly the sentence it replaced, with a schema around it",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  printf '# verify: exit=%s\\n' \"$1\" >>\"$log\"",
+          "to": "  printf '# verify: exit=0\\n' >>\"$log\""
+        }
+      ],
+      "expect_red": ["every_record_the_wrapper_writes_states_the_verdict_it_returned"]
+    },
+    {
+      "name": "an-unsealed-record-is-read-as-a-green-one",
+      "why": "a killed run and a passing one are identical up to the trailer, so a reader that defaults instead of refusing files a verdict nobody reached. This is the R1313 defect precisely — a claim about a run that did not finish — arriving through the field built to stop it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "        .next_back()\n        .map(str::trim)\n        .ok_or_else(|| {",
+          "to": "        .next_back()\n        .map(str::trim)\n        .or(Some(\"0\"))\n        .ok_or_else(|| {"
+        }
+      ],
+      "expect_red": ["a_record_whose_wrapper_never_finished_is_refused"]
+    },
+    {
+      "name": "the-gate-recognises-no-claim",
+      "why": "the population goes empty and the gate reports a clean tree for every round that ever claimed a suite in prose. `0 violations` out of a population of 0 is the same green a genuinely clean ledger prints, which is the shape this repository has been wrong about before",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "    const CLAIMS: [&str; 4] = [\"verify.sh\", \"check-side-workspaces\", \"exit 0\", \"rc=0\"];",
+          "to": "    const CLAIMS: [&str; 4] = [\"\\u{0}verify.sh\", \"\\u{0}check-side-workspaces\", \"\\u{0}exit 0\", \"\\u{0}rc=0\"];"
+        }
+      ],
+      "expect_red": [
+        "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "each_state_of_the_check_says_which_one_it_is"
+      ]
+    },
+    {
+      "name": "the-violation-never-reaches-the-verdict",
+      "why": "the finding is computed, printed, and then not counted — validate-workspace exits 0 while its own report names the entry. A gate whose findings do not reach its status is a gate the pre-commit hook does not have",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "    if !verification_unrecorded.is_empty() {\n        failure_reasons.push(format!(\n            \"{} uncommitted entry(ies) claim a verification run they do not file\",\n            verification_unrecorded.len()\n        ));\n    }",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit"
+      ]
+    },
+    {
+      "name": "the-gate-reaches-back-past-adoption",
+      "why": "the one that does not look like a weakening. Dropping the per-arm adoption test makes the gate STRICTER, and every entry written before the record existed becomes a violation of a rule that did not exist — on an append-only ledger, a finding nobody is able to act on. It would have fired on this repository's own tip commit the moment R1316 landed",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        let bound = if landed_here {\n            binds_the_tip\n        } else {\n            head.adopted\n        };",
+          "to": "        let bound = true;"
+        }
+      ],
+      "expect_red": ["adoption_does_not_reach_back_to_what_was_already_written"]
+    },
+    {
+      "name": "the-primitive-drops-what-the-wire-filed",
+      "why": "both wires parse the record correctly and the store keeps none of it, so an entry reads as one that filed nothing. The field's whole value is that what the wrapper answered is what a later round finds. NOT aimed at `adoption_does_not_reach_back_to_what_was_already_written`, and the first aim here WAS — wrongly, in a way worth recording: with the field dropped, no ledger ever files a run, so the gate stands down everywhere and that case stays green. What fails under this injection is the FILING, not the reach",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        verification_runs: verification_runs.to_vec(),",
+          "to": "        verification_runs: Vec::new(),"
+        }
+      ],
+      "expect_red": [
+        "record_verification_files_exactly_what_the_wrappers_record_says",
+        "record_verification_files_every_run_a_round_hands_it",
+        "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "each_state_of_the_check_says_which_one_it_is"
+      ]
+    }
+  ]
+}

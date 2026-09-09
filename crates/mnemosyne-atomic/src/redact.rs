@@ -547,6 +547,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["XYZ123 in carry".into()],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -651,6 +652,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &["c".into()],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )

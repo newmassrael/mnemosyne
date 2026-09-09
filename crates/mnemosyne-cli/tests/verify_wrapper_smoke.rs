@@ -600,6 +600,86 @@ fn a_freshness_pass_that_refuses_stops_the_verification_from_happening() {
     );
 }
 
+/// The path in the `[verify] exit=<n> log=<path>` line the wrapper ends on.
+///
+/// Resolved against the TREE, because the wrapper names the record relative to
+/// the directory it ran in and this process's own is somewhere else entirely.
+fn record_of(tree: &Tree, out: &Output) -> PathBuf {
+    let words = said(out);
+    let tail = words
+        .lines()
+        .rev()
+        .find_map(|l| l.split(" log=").nth(1))
+        .unwrap_or_else(|| panic!("the wrapper named no record on the way out:\n{words}"));
+    tree.dir.path().join(tail.trim())
+}
+
+/// THE RECORD STATES ITS OWN VERDICT, AND IT IS THE ONE THE WRAPPER RETURNED
+/// (Round 1316).
+///
+/// `append-changelog-entry --record-verification` files a round's verification
+/// out of this record, so an entry's claim about its own suite is only as good
+/// as the agreement between what this script writes and what that reader
+/// recovers. The two are different files in different languages, and this is
+/// the one place that holds them against each other — the READER is run here,
+/// on a record the REAL wrapper just wrote, so a marker renamed on either side
+/// turns this red rather than making every record silently unreadable.
+///
+/// BOTH WAYS OUT, because a trailer written at only one of them makes a record
+/// with no trailer mean two different things: a killed run, and a wrapper whose
+/// freshness pass refused.
+#[test]
+fn every_record_the_wrapper_writes_states_the_verdict_it_returned() {
+    for (what, tree, command, expected) in [
+        (
+            "a green run",
+            Tree::new(),
+            vec!["bash", "-c", "exit 0"],
+            0_i64,
+        ),
+        ("a red run", Tree::new(), vec!["bash", "-c", "exit 7"], 7),
+    ] {
+        let out = tree.run(None, &command);
+        let record = record_of(&tree, &out);
+        let filed = mnemosyne_ops::read_verification_run(&record).unwrap_or_else(|e| {
+            panic!("`{what}`: the record the wrapper wrote is unreadable: {e}")
+        });
+        assert_eq!(
+            filed.exit_code,
+            expected,
+            "`{what}`: the record states a verdict the wrapper did not return, so \
+             an entry filing it would claim a result nobody reached:\n{}",
+            said(&out)
+        );
+        assert!(
+            filed.command.contains("bash"),
+            "`{what}`: the record names no command a reader could re-run: {:?}",
+            filed.command
+        );
+        assert_eq!(
+            filed.log,
+            record
+                .file_name()
+                .expect("the record has a name")
+                .to_string_lossy(),
+            "`{what}`: what gets filed is not the record's own name"
+        );
+    }
+
+    // The freshness pass refusing is the OTHER way out of the script, and the
+    // one a reader would otherwise mistake for a killed run.
+    let tree = Tree::refusing_the_freshness_pass();
+    let out = tree.run_at_the_default(&["cargo", "test", "--workspace"]);
+    let filed = mnemosyne_ops::read_verification_run(&record_of(&tree, &out))
+        .expect("a wrapper that refused still sealed its record");
+    assert_eq!(
+        filed.exit_code,
+        2,
+        "the refusal exit is unsealed, so it reads as a run that was killed:\n{}",
+        said(&out)
+    );
+}
+
 #[test]
 fn no_fresh_asks_no_pass_at_all() {
     // THE FLAG STILL MEANS SOMETHING, and the workflows depend on it: a hosted

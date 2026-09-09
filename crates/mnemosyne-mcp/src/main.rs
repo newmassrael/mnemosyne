@@ -1254,6 +1254,14 @@ pub struct AppendChangelogEntryArgs {
     /// there is deliberately no way to supply them here.
     #[serde(default)]
     pub record_census: bool,
+    /// Paths to the records this round's verification wrapper wrote (Round
+    /// 1316), so the entry files what ran and how it came out as DATA instead
+    /// of claiming it in a verification bullet. The command and the status are
+    /// read out of each record — there is deliberately no way to supply them
+    /// here. A list, because a round's checklist verifies with more than one
+    /// run.
+    #[serde(default)]
+    pub verification_records: Vec<AgentPath>,
 }
 
 #[derive(Clone)]
@@ -3701,6 +3709,20 @@ impl MnemosyneServer {
         } else {
             Vec::new()
         };
+        // Round 1316 — the same reader the CLI calls, for the same reason: two
+        // wires into one field must enforce one invariant set, and the way both
+        // do it is by having no second parse of a record to diverge from. The
+        // paths are `AgentPath`, so the base they resolve against is the
+        // workspace and is stamped into the schema the agent reads, rather than
+        // being a `join` written here that no gate can see.
+        let mut verification_runs = Vec::new();
+        for record in &args.0.verification_records {
+            let path = record
+                .resolve(&self.workspace)
+                .map_err(|e| self.refused(ops::OpError::Other(e)))?;
+            verification_runs
+                .push(ops::read_verification_run(path.as_ref()).map_err(|e| self.refused(e))?);
+        }
         let outcome = self.run_mutate(|store, path| {
             atomic::append_changelog_entry(
                 store,
@@ -3716,6 +3738,7 @@ impl MnemosyneServer {
                         .collect::<Vec<_>>(),
                     carry_forward_bullets: &carry,
                     population_census: &population_census,
+                    verification_runs: &verification_runs,
                 },
                 &entry_id_prefix,
             )
@@ -4538,6 +4561,112 @@ mod tests {
         );
     }
 
+    /// THE SECOND WIRE INTO `verification_runs` IS EXERCISED, NOT INSPECTED
+    /// (Round 1316).
+    ///
+    /// The same shape as the census case above, for the same reason: a field in
+    /// the frozen ledger with two write paths, whose parity would otherwise rest
+    /// on having read both wires' source. A `verification_records` that never
+    /// deserialized would be silently empty forever, and the entry an agent
+    /// appended through MCP would file no run while its prose claimed one —
+    /// which is precisely the defect the field exists to close, reappearing
+    /// inside the fix.
+    ///
+    /// The oracle is the shared reader's own answer for the same record, so
+    /// this cannot pass by agreeing with a mistake spelled twice.
+    #[tokio::test]
+    async fn mcp_append_files_the_run_the_shared_reader_yields() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let ws = tmp.path();
+        std::fs::create_dir_all(ws.join("docs/.atomic")).expect("atomic dir");
+        std::fs::write(
+            ws.join("mnemosyne.toml"),
+            "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n",
+        )
+        .expect("config");
+        std::fs::write(
+            ws.join("docs/.atomic/workspace.atomic.json"),
+            format!(
+                "{{\"schema_version\":{},\"sections\":{{}},\"changelog_entries\":{{}}}}",
+                atomic::CURRENT_SCHEMA_VERSION
+            ),
+        )
+        .expect("store");
+        // A record in the shape the verification wrapper seals one, with the
+        // markers taken from the reader rather than spelled here.
+        std::fs::write(
+            ws.join("root.log"),
+            format!(
+                "{}cargo test --workspace --locked --no-fail-fast\n\n{}0\n",
+                ops::VERIFY_RECORD_COMMAND,
+                ops::VERIFY_RECORD_VERDICT,
+            ),
+        )
+        .expect("record");
+
+        // RELATIVE, deliberately: the base an agent's path resolves against is
+        // the workspace and not this process's working directory, and a `join`
+        // written by hand in the handler would make that untestable.
+        let args: AppendChangelogEntryArgs = serde_json::from_value(serde_json::json!({
+            "entry_id": "Round 1316",
+            "decision_summary": "a round that files its verification",
+            "changes_bullets": ["changed a thing"],
+            "verification_bullets": ["the root suite through scripts/verify.sh: exit 0"],
+            "verification_records": ["root.log"],
+        }))
+        .expect("the agent-facing shape must carry `verification_records`");
+        assert_eq!(
+            args.verification_records.len(),
+            1,
+            "the list deserialized empty"
+        );
+
+        let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
+        let result = answered(server.append_changelog_entry(Parameters(args)).await);
+        assert!(
+            result.is_error != Some(true),
+            "the MCP append failed: {:?}",
+            result.content
+        );
+
+        let store = atomic::AtomicStore::load(&ws.join("docs/.atomic/workspace.atomic.json"))
+            .expect("reload");
+        let filed = &store
+            .changelog_entries
+            .get("Round 1316")
+            .expect("the entry landed")
+            .verification_runs;
+        assert_eq!(
+            filed,
+            &vec![ops::read_verification_run(&ws.join("root.log")).expect("the CLI's own reader")],
+            "the MCP wire filed something other than what the shared reader \
+             yields, so the two write paths into this field disagree"
+        );
+
+        // Non-vacuity: without the argument the same wire files nothing, so the
+        // assertion above is about the argument and not the field's default.
+        let bare: AppendChangelogEntryArgs = serde_json::from_value(serde_json::json!({
+            "entry_id": "Round 1317",
+            "decision_summary": "a round that files none",
+            "changes_bullets": ["changed a thing"],
+            "verification_bullets": ["checked the thing"],
+        }))
+        .expect("args without the argument");
+        let result = answered(server.append_changelog_entry(Parameters(bare)).await);
+        assert!(result.is_error != Some(true), "the second append failed");
+        let store = atomic::AtomicStore::load(&ws.join("docs/.atomic/workspace.atomic.json"))
+            .expect("reload");
+        assert!(
+            store
+                .changelog_entries
+                .get("Round 1317")
+                .expect("the entry landed")
+                .verification_runs
+                .is_empty(),
+            "an append that never asked to file a run filed one anyway"
+        );
+    }
+
     /// A RELATIVE `against` NAMES A FILE IN THE WORKSPACE THE AGENT WAS HANDED.
     ///
     /// Round 1002 decided this for every path an agent sends, and Round 1001
@@ -4733,6 +4862,10 @@ mod tests {
     const EXERCISED_BESPOKE: &[(&str, &str)] = &[
         // mcp_append_records_the_census_the_shared_resolver_yields (R981)
         ("append_changelog_entry", "record_census"),
+        // mcp_append_files_the_run_the_shared_reader_yields (R1316) — needs a
+        // sealed wrapper record on disk, and its oracle is the shared reader
+        // rather than a needle.
+        ("append_changelog_entry", "verification_records"),
     ];
 
     /// Every (tool, optional argument) pair that NOTHING proves the handler

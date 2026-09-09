@@ -1,0 +1,129 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "an-unsealed-record-is-read-as-a-green-one": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "        .next_back()\n        .map(str::trim)\n        .ok_or_else(|| {",
+          "to": "        .next_back()\n        .map(str::trim)\n        .or(Some(\"0\"))\n        .ok_or_else(|| {"
+        }
+      ],
+      "expect_red": [
+        "a_record_whose_wrapper_never_finished_is_refused"
+      ],
+      "tests": [
+        "verification_record_smoke::a_record_whose_wrapper_never_finished_is_refused"
+      ]
+    },
+    "the-gate-reaches-back-past-adoption": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        let bound = if landed_here {\n            binds_the_tip\n        } else {\n            head.adopted\n        };",
+          "to": "        let bound = true;"
+        }
+      ],
+      "expect_red": [
+        "adoption_does_not_reach_back_to_what_was_already_written"
+      ],
+      "tests": [
+        "verification_record_smoke::adoption_does_not_reach_back_to_what_was_already_written"
+      ]
+    },
+    "the-gate-recognises-no-claim": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "    const CLAIMS: [&str; 4] = [\"verify.sh\", \"check-side-workspaces\", \"exit 0\", \"rc=0\"];",
+          "to": "    const CLAIMS: [&str; 4] = [\"\\u{0}verify.sh\", \"\\u{0}check-side-workspaces\", \"\\u{0}exit 0\", \"\\u{0}rc=0\"];"
+        }
+      ],
+      "expect_red": [
+        "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "each_state_of_the_check_says_which_one_it_is"
+      ],
+      "tests": [
+        "verification_record_smoke::an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "verification_record_smoke::an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "verification_record_smoke::each_state_of_the_check_says_which_one_it_is"
+      ]
+    },
+    "the-primitive-drops-what-the-wire-filed": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        verification_runs: verification_runs.to_vec(),",
+          "to": "        verification_runs: Vec::new(),"
+        }
+      ],
+      "expect_red": [
+        "record_verification_files_exactly_what_the_wrappers_record_says",
+        "record_verification_files_every_run_a_round_hands_it",
+        "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "each_state_of_the_check_says_which_one_it_is"
+      ],
+      "tests": [
+        "verification_record_smoke::an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "verification_record_smoke::an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "verification_record_smoke::each_state_of_the_check_says_which_one_it_is",
+        "verification_record_smoke::record_verification_files_every_run_a_round_hands_it",
+        "verification_record_smoke::record_verification_files_exactly_what_the_wrappers_record_says"
+      ]
+    },
+    "the-record-always-says-the-run-passed": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  printf '# verify: exit=%s\\n' \"$1\" >>\"$log\"",
+          "to": "  printf '# verify: exit=0\\n' >>\"$log\""
+        }
+      ],
+      "expect_red": [
+        "every_record_the_wrapper_writes_states_the_verdict_it_returned"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::every_record_the_wrapper_writes_states_the_verdict_it_returned"
+      ]
+    },
+    "the-violation-never-reaches-the-verdict": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "    if !verification_unrecorded.is_empty() {\n        failure_reasons.push(format!(\n            \"{} uncommitted entry(ies) claim a verification run they do not file\",\n            verification_unrecorded.len()\n        ));\n    }",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit"
+      ],
+      "tests": [
+        "verification_record_smoke::an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "verification_record_smoke::an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected"
+      ]
+    },
+    "the-wrapper-seals-no-verdict": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  printf '# verify: exit=%s\\n' \"$1\" >>\"$log\"\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "every_record_the_wrapper_writes_states_the_verdict_it_returned"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::every_record_the_wrapper_writes_states_the_verdict_it_returned"
+      ]
+    }
+  },
+  "forgotten": {}
+}

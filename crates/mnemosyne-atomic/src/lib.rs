@@ -624,6 +624,51 @@ pub struct PopulationCensus {
     pub right: u64,
 }
 
+/// One verification run an entry files as data, read out of the record the
+/// verification wrapper wrote (Round 1316).
+///
+/// WHY THE ENTRY CARRIES THIS AT ALL. The measured harm this closes is a round
+/// SAYING it ran the population. Measured on this repository's own ledger on
+/// 2026-09-03: of 1059 entries, 380 claim a run in their verification bullets —
+/// a `verify.sh`, a `check-side-workspaces`, an `exit 0`, an `rc=0` — and 0
+/// record one as data. The instance that proves it is not a formality is Round
+/// 1313, whose last verification bullet claims a green root suite and a green
+/// side gate "for the tree this commit carries", where at the moment that
+/// sentence was written the root run had been started before the file under
+/// test existed and the side gate had exited 1. The ledger is append-only, so
+/// the sentence is still there and still false; the next session repaired the
+/// world to match it, which is not a gate catching anything.
+///
+/// WHY NO FIELD HERE IS EVER TYPED BY A HAND. This is the [`PopulationCensus`]
+/// law applied to a second field: both wires take a PATH to a record and parse
+/// it through one shared reader, so neither wire accepts a command, a status or
+/// a log name of its own. A caller can choose WHICH run to file and nothing
+/// else about it.
+///
+/// WHY IT IS SELF-DESCRIBING RATHER THAN A BARE STATUS. `target/` is gitignored
+/// and the records under it are collected on a budget, so the log this names is
+/// expected to be gone long before the entry is. `0` on its own then means
+/// nothing at all — the Round 452 self-containment rule, which is why the
+/// command is carried beside the status rather than left to the file.
+///
+/// WHY THERE IS NO TARGET COUNT. The wrapper fails a run that covered less than
+/// it compiled, so `exit_code = 0` from it already carries "every test target
+/// this command compiled reported a result". A count restated here would be a
+/// second spelling of that, and one free to drift from the gate that owns it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct VerificationRun {
+    /// The command the wrapper ran, as its own record states it.
+    pub command: String,
+    /// The wrapper's verdict for that command. Not narrowed to zero: a round
+    /// that files a red run has filed the truth, and a field that could only
+    /// hold a green one would be a field that only ever agrees with the prose.
+    pub exit_code: i64,
+    /// The record's file name — what to ask for while it is still on disk, and
+    /// what the round's own log directory was called once it is not.
+    pub log: String,
+}
+
 /// ChangelogEntry atomic typed fields.
 ///
 /// Round 294 — schema_version 4 splits the body into two parallel layers:
@@ -668,6 +713,15 @@ pub struct AtomicChangelogEntry {
     /// one thing [`PopulationCensus`] exists to make impossible.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub population_census: Vec<PopulationCensus>,
+
+    /// Round 1316 — the verification runs this entry files as data rather than
+    /// claiming in a sentence. Audit half, and WITHOUT A PUBLISHABLE TWIN for
+    /// the same reason [`Self::population_census`] has none: the publishable
+    /// layer exists so prose can be redacted, there is no prose here, and a
+    /// mutable copy of a verdict would be a verdict an author could set — which
+    /// is the defect this field exists to remove.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verification_runs: Vec<VerificationRun>,
 
     /// Round 294 — publishable half. Mutable view layer; default = audit
     /// clone at append time. T2 jaccard does NOT compare these. R295
@@ -2328,6 +2382,52 @@ fn check_population_census(census: &[PopulationCensus]) -> Result<(), AtomicMuta
                 "population_census states axis `{}` twice — one entry is one \
   moment, so two counts for one axis cannot both be what it said (Round 979)",
                 c.axis
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Round 1316 — the invariants every write path to `verification_runs` shares.
+///
+/// At the PRIMITIVE for the reason [`check_population_census`] states: two
+/// writers with one invariant set each is a field with no invariants. This is
+/// the second field with two wires, and the wires differ more here than there —
+/// the CLI takes a repeated flag and the MCP tool takes a list — so the place
+/// where they cannot differ has to be below both.
+///
+/// The STATUS is unvalidated on purpose: any exit code is a legitimate verdict,
+/// including a non-zero one, and a check that admitted only zero would make the
+/// field agree with the round's prose by construction. What is checkable is
+/// that the run is identifiable — a command, a record name — and that one entry
+/// does not file the same record twice, which is a record read twice rather
+/// than two runs.
+fn check_verification_runs(runs: &[VerificationRun]) -> Result<(), AtomicMutateError> {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (i, r) in runs.iter().enumerate() {
+        for (field, value) in [("command", &r.command), ("log", &r.log)] {
+            if value.trim().is_empty() {
+                return Err(AtomicMutateError::Validation(format!(
+                    "verification_runs[{}].{} is blank — a status with no command \
+  and no record beside it is a number nothing can re-derive (Round 1316)",
+                    i, field
+                )));
+            }
+            if value.trim() != value {
+                return Err(AtomicMutateError::Validation(format!(
+                    "verification_runs[{}].{} has leading or trailing whitespace \
+  (`{}`) — the record name is how the run is found again, so a stray space makes \
+  a filed run resolve to nothing (Round 1316)",
+                    i, field, value
+                )));
+            }
+        }
+        if !seen.insert(r.log.as_str()) {
+            return Err(AtomicMutateError::Validation(format!(
+                "verification_runs files the record `{}` twice — that is one run \
+  read two times, not two runs, and it inflates what this entry claims to have \
+  covered (Round 1316)",
+                r.log
             )));
         }
     }
@@ -4434,6 +4534,10 @@ pub struct ChangelogEntryDraft<'a> {
     /// both wires derive it from the workspace's census report, so the only
     /// decision a caller makes is WHETHER to record it.
     pub population_census: &'a [PopulationCensus],
+    /// Round 1316 — the verification runs this entry files. Never authored:
+    /// both wires parse them out of the records the wrapper wrote, so the only
+    /// decision a caller makes is WHICH runs to file.
+    pub verification_runs: &'a [VerificationRun],
 }
 
 /// `append_changelog_entry` primitive — atomic-aware changelog append.
@@ -4461,6 +4565,7 @@ pub fn append_changelog_entry(
         impact_refs,
         carry_forward_bullets,
         population_census,
+        verification_runs,
     } = draft;
     if entry_id.trim().is_empty() {
         return Err(AtomicMutateError::Validation(
@@ -4522,6 +4627,7 @@ pub fn append_changelog_entry(
         carry_forward_bullets,
     )?;
     check_population_census(population_census)?;
+    check_verification_runs(verification_runs)?;
     // Round 294 — initialize publishable_* = audit_* clone. The two halves
     // diverge later via R295 publishable setters (paired with the R296
     // [[publishable_override_ledger]] gate). Default-equal at append time so
@@ -4533,6 +4639,7 @@ pub fn append_changelog_entry(
         impact_refs: impact_refs.to_vec(),
         carry_forward_bullets: carry_forward_bullets.to_vec(),
         population_census: population_census.to_vec(),
+        verification_runs: verification_runs.to_vec(),
         ..Default::default()
     };
     entry.clone_audit_into_publishable();
@@ -12142,6 +12249,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["carry 1".into()],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -12157,6 +12265,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -12887,6 +12996,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["appended carry".into()],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -12924,6 +13034,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -12974,6 +13085,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -13002,6 +13114,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -13030,6 +13143,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -13061,6 +13175,7 @@ mod tests {
                 impact_refs: &["".into()],
                 carry_forward_bullets: &[],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -13099,6 +13214,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
                 population_census: &[],
+                verification_runs: &[],
             },
             entry_id_prefix,
         )
@@ -15225,6 +15341,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &["carry".into()],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -15247,6 +15364,7 @@ mod tests {
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["audit carry".into()],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -15403,6 +15521,7 @@ mod tests {
                 impact_refs: &["1".into()],
                 carry_forward_bullets: &["cf".into()],
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -15448,6 +15567,7 @@ mod tests {
                     .collect::<Vec<_>>(),
                 carry_forward_bullets: &bullets,
                 population_census: &[],
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -15508,6 +15628,7 @@ mod tests {
                 impact_refs: &[],
                 carry_forward_bullets: &[],
                 population_census: census,
+                verification_runs: &[],
             },
             "Round ",
         )
@@ -15640,6 +15761,159 @@ mod tests {
             !raw.contains("population_census"),
             "an entry that recorded no census still writes the key, so every \
              pre-Round-979 store would re-serialize differently: {raw}"
+        );
+    }
+
+    // ============ Round 1316 verification runs ============
+
+    /// Append an entry whose only interesting field is the runs it files, into
+    /// a throwaway store, and hand back both the outcome and the store so a
+    /// caller can read what landed.
+    fn append_runs_into(
+        store: &mut AtomicStore,
+        path: &Path,
+        runs: &[VerificationRun],
+    ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+        let bullets = vec!["b".to_string()];
+        append_changelog_entry(
+            store,
+            path,
+            ChangelogEntryDraft {
+                entry_id: "Round 9316",
+                decision_summary: Some("a round that files its verification"),
+                changes_bullets: &bullets,
+                verification_bullets: &bullets,
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+                population_census: &[],
+                verification_runs: runs,
+            },
+            "Round ",
+        )
+    }
+
+    fn one_run() -> VerificationRun {
+        VerificationRun {
+            command: "cargo test --workspace --locked --no-fail-fast".to_string(),
+            exit_code: 0,
+            log: "20260909T000000Z-root-suite-1234.log".to_string(),
+        }
+    }
+
+    fn append_runs(runs: &[VerificationRun]) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_runs_into(&mut store, &path, runs)
+    }
+
+    /// A status with no command, or no record name, is a number nothing can
+    /// re-derive. The ledger is frozen, so "unreadable" is permanent — the
+    /// reject belongs at the write, the only moment it can be fixed.
+    #[test]
+    fn verification_runs_reject_a_row_nothing_could_re_derive() {
+        for (what, mutate) in [
+            (
+                "blank command",
+                Box::new(|r: &mut VerificationRun| r.command = "  ".to_string())
+                    as Box<dyn Fn(&mut VerificationRun)>,
+            ),
+            (
+                "blank log",
+                Box::new(|r: &mut VerificationRun| r.log = String::new()),
+            ),
+            (
+                "untrimmed command",
+                Box::new(|r: &mut VerificationRun| r.command = " cargo test ".to_string()),
+            ),
+            (
+                "untrimmed log",
+                Box::new(|r: &mut VerificationRun| r.log = "run.log ".to_string()),
+            ),
+        ] {
+            let mut row = one_run();
+            mutate(&mut row);
+            let err = append_runs(&[row])
+                .expect_err(&format!("`{what}` was accepted into the frozen ledger"));
+            match err {
+                AtomicMutateError::Validation(_) => {}
+                other => panic!("`{what}`: expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    /// One record read twice is one run, and filing it twice inflates what the
+    /// entry claims to have covered — which is the whole defect wearing the fix.
+    #[test]
+    fn verification_runs_reject_one_record_filed_twice() {
+        let mut second = one_run();
+        second.command = "scripts/check-side-workspaces.sh".to_string();
+        let err =
+            append_runs(&[one_run(), second]).expect_err("one record filed twice was accepted");
+        match err {
+            AtomicMutateError::Validation(m) => assert!(
+                m.contains("twice"),
+                "the message does not say what is wrong: {m}"
+            ),
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    /// A RED RUN IS DATA, NOT AN ERROR, and this is the assertion that keeps the
+    /// status unvalidated on purpose. A field that could hold only a zero would
+    /// be a field that agrees with the round's prose by construction — the exact
+    /// property this one exists to remove.
+    #[test]
+    fn verification_runs_accept_a_non_zero_status() {
+        let mut row = one_run();
+        row.exit_code = 101;
+        append_runs(&[row]).expect("a round that files a red run has filed the truth");
+    }
+
+    /// What the wire handed the primitive is what the store holds, and the
+    /// publishable half stays out of it: there is no prose here to redact, and a
+    /// mutable twin would be a verdict an author could set by hand.
+    #[test]
+    fn verification_runs_land_verbatim_and_have_no_publishable_twin() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let rows = vec![one_run()];
+        append_runs_into(&mut store, &path, &rows).expect("append");
+
+        let entry = store.changelog_entries.get("Round 9316").expect("entry");
+        assert_eq!(entry.verification_runs, rows);
+        assert!(
+            entry.publishable_matches_audit(),
+            "filing a verification run must not read as a publishable divergence"
+        );
+
+        let reloaded = AtomicStore::load(&path).expect("reload");
+        assert_eq!(
+            reloaded
+                .changelog_entries
+                .get("Round 9316")
+                .expect("entry survives the round trip")
+                .verification_runs,
+            rows,
+            "the filed runs did not survive serialization, so what a later round \
+             reads is not what the round wrote"
+        );
+    }
+
+    /// An entry that files nothing serializes exactly as it did before the field
+    /// existed — asserted rather than assumed, so no pre-Round-1316 store
+    /// re-serializes differently.
+    #[test]
+    fn an_entry_with_no_verification_run_carries_no_key() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_runs_into(&mut store, &path, &[]).expect("append");
+        let raw = std::fs::read_to_string(&path).expect("read back");
+        assert!(
+            !raw.contains("verification_runs"),
+            "an entry that filed no run still writes the key: {raw}"
         );
     }
 

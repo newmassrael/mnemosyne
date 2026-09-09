@@ -48,6 +48,7 @@ use std::path::{Path, PathBuf};
 
 use mnemosyne_atomic::{
     AtomicMutateError, AtomicMutateReceipt, AtomicStore, ContentExcerpt, PopulationCensus,
+    VerificationRun,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -326,6 +327,111 @@ pub fn workspace_population_census(
         )));
     }
     Ok(report.axes)
+}
+
+/// The `# cmd:` header a verification record opens with (Round 1316).
+///
+/// PUBLIC because it is half of an agreement between two files: the wrapper
+/// writes these bytes and this crate reads them, and the only thing standing
+/// between that and folklore is a test able to name both sides. A test that
+/// re-spelled the literal would agree with itself while the two files drifted.
+pub const VERIFY_RECORD_COMMAND: &str = "# cmd: ";
+/// The `# verify: exit=` trailer a verification record closes with (Round
+/// 1316). Public for the reason [`VERIFY_RECORD_COMMAND`] is.
+pub const VERIFY_RECORD_VERDICT: &str = "# verify: exit=";
+
+/// The verification run a wrapper's record states, for an append that asked to
+/// file it (Round 1316).
+///
+/// SINGLE RESOLUTION PATH, shared by the CLI and the MCP server, for the reason
+/// [`workspace_population_census`] states and `CLAUDE.md` names as an
+/// anti-pattern: two write paths into one field, each with its own idea of what
+/// the field may hold, is a field with no invariant at all. Both wires hand
+/// this function a PATH and take back a parsed run, so there is no second
+/// reading of a record to diverge from this one — and no wire through which a
+/// caller could supply a command or a status of their own.
+///
+/// WHAT IT REFUSES, and why each refusal is louder than a default. A record
+/// with no `# cmd:` header names no command; a record with no
+/// `# verify: exit=` trailer is one whose wrapper never reached its own end,
+/// which is exactly the shape of a run that was killed, and reading it as
+/// anything would file a verdict nobody reached. A status that is not a number
+/// is not a verdict. Every one of those would otherwise become an entry that
+/// claims a run in a FIELD instead of in a sentence — the same defect wearing
+/// the fix, which is the failure mode Round 979 named for its own field.
+///
+/// The BASENAME is what gets filed. The absolute path names a directory that is
+/// gitignored, collected on a budget, and different on every machine that ever
+/// re-runs this; the name is what survives into the ledger as something a
+/// reader can match against a log directory's listing.
+pub fn read_verification_run(path: &Path) -> Result<VerificationRun, OpError> {
+    let raw = std::fs::read_to_string(path).map_err(|e| {
+        OpError::Other(format!(
+            "read the verification record at {}: {} — the record is written by \
+             the verification wrapper, so a missing file means the run it would \
+             attest never happened here",
+            path.display(),
+            e
+        ))
+    })?;
+    let command = raw
+        .lines()
+        .find_map(|l| l.strip_prefix(VERIFY_RECORD_COMMAND))
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .ok_or_else(|| {
+            OpError::Other(format!(
+                "the verification record at {} states no `{}` header, so nothing \
+                 in it says WHICH command the verdict below is about — a status \
+                 with no command beside it is a number no later round can \
+                 re-derive",
+                path.display(),
+                VERIFY_RECORD_COMMAND.trim_end()
+            ))
+        })?
+        .to_string();
+    // The LAST trailer, not the first: a nested verification writes its own
+    // wrapper's stdout into the outer record, so an outer log can hold an inner
+    // run's sealed verdict in its middle. The one this file's own wrapper wrote
+    // is the one at the end.
+    let verdict = raw
+        .lines()
+        .filter_map(|l| l.strip_prefix(VERIFY_RECORD_VERDICT))
+        .next_back()
+        .map(str::trim)
+        .ok_or_else(|| {
+            OpError::Other(format!(
+                "the verification record at {} states no `{}<n>` trailer, so the \
+                 wrapper that wrote it never reached its own end — a killed run \
+                 and a green one look identical up to that line, and filing this \
+                 would record a verdict nobody reached",
+                path.display(),
+                VERIFY_RECORD_VERDICT
+            ))
+        })?;
+    let exit_code = verdict.parse::<i64>().map_err(|e| {
+        OpError::Other(format!(
+            "the verification record at {} states `{}{}`, which is not a status: {}",
+            path.display(),
+            VERIFY_RECORD_VERDICT,
+            verdict,
+            e
+        ))
+    })?;
+    let log = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            OpError::Other(format!(
+                "the verification record path {} has no file name to file",
+                path.display()
+            ))
+        })?;
+    Ok(VerificationRun {
+        command,
+        exit_code,
+        log,
+    })
 }
 
 /// Load the atomic store at the resolved sidecar path.
