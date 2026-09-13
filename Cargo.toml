@@ -125,6 +125,16 @@ syn = { version = "3", default-features = false, features = [
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
 
+# Round 1324 — read an adopter's XML documents AS XML for the inventory
+# attribute axis. The annotation there is an attribute the document's own XML
+# defines — named by namespace URI rather than by prefix, entity-decoded, and
+# absent from comments and CDATA — and Round 1323 read it as text between two
+# delimiters, which was a second grammar for it. `roxmltree` is what the
+# adopter's own parser reads the same attribute with, at this version, so the
+# two readers are one grammar. It is read-only, has no dependencies, and its
+# default `positions` feature is what turns an attribute back into a line.
+roxmltree = "0.20"
+
 # Round 292 — regex backend for `query_term` read primitive
 # (literal+regex search over atomic-store fields, replacing external grep).
 # Used by mnemosyne-validate::query::query_term; not pulled into runtime

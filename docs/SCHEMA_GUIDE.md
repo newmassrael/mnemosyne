@@ -271,19 +271,22 @@ you `informative`, it is older than R422 — the store will refuse it.
  same lifecycle (active / deprecated / reserved). A prefix may be
  registered in both axes if both citation shapes coexist; the
  scanner dedups so a matching cite surfaces once.
-- **`[plugins.set_equality_validator].inventory_markers`** — a third axis for
- annotations inside a document you do not rewrite. Each marker is a pair of
- delimiters, `inventory_markers = [{ open = "req=\"", close = "\"" }]`, and
- everything between `open` and the next `close` is a whitespace-separated
- list of inventory ids: `<state req="REQ-4.2.1 REQ-7"/>` cites both. Neither
- delimiter is part of an id and there is no tail character class — an id is
- what the store accepts as one (non-empty, no whitespace), so an id holding a
- colon or a `#` is read whole. The list may cross lines, and a marker whose
- `close` never follows is reported as `inventory_marker_unclosed` rather than
- read as citing nothing. An empty `open` or `close`, a line break in `open`,
- whitespace in `close`, and two markers with one `open` are refused when the
- config loads. Same lifecycle and severity as the other two axes; the orphan
- ledger suppresses its citations but not an unclosed marker, which names no id.
+- **`[plugins.set_equality_validator].inventory_attributes`** — a third axis for
+ annotations an XML document carries as attributes, in documents you do not
+ rewrite: `inventory_attributes = [{ namespace = "http://example/ext", name =
+ "req", extensions = ["scxml"] }]` parses every `.scxml` file in the read set
+ as XML and reads that attribute on every element as a whitespace-separated
+ list of inventory ids — `<state x:req="REQ-4.2.1 REQ-7"/>` cites both. The
+ attribute is named by namespace URI, never by prefix, so it is read under
+ whatever prefix a document binds; its value is the one XML defines (entities
+ decoded, either quote), and nothing inside a comment, a CDATA section, element
+ text or an undeclared file type is read. Omit `namespace` for an attribute in
+ no namespace. A declared document that does not parse is reported as
+ `inventory_document_unreadable` with the parser's reason (`parse_error`). A
+ prefixed or non-XML `name`, an empty or whitespace-holding `namespace`, and an
+ empty or malformed `extensions` list are refused when the config loads. Same
+ lifecycle and severity as the other two axes; the orphan ledger suppresses its
+ citations but not an unreadable document, which names no id.
 - **`[plugins.set_equality_validator].external_section_prefixes`** — single-token prefix
  list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
  of external-standard `§` skip (Round 277). Citation form:

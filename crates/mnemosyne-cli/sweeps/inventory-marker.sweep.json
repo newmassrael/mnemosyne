@@ -1,29 +1,31 @@
 {
   "_": [
-    "THE SWEEP THAT SAYS A MARKER IS A PAIR OF DELIMITERS AROUND A LIST — run it",
-    "from the repository root:",
+    "THE SWEEP THAT SAYS AN ANNOTATION ATTRIBUTE IS READ AS XML — run it from",
+    "the repository root:",
     "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-cli/sweeps/inventory-marker.sweep.json",
     "",
-    "WHAT THE CONTRACT IS. `inventory_markers = [{ open, close }]` declares the",
-    "delimiters an adopter writes around the inventory ids a document cites, and",
-    "everything between them is a whitespace-separated list of ids. Round 1322 read",
-    "a marker as a prefix followed by the section-path tail class, so it read the",
-    "first id of a list and never the rest, and cut an id at any character outside",
-    "that class; the adopter's own documents put two ids in one attribute on seven",
-    "of twenty-five annotated lines.",
+    "WHAT THE CONTRACT IS. `inventory_attributes` declares the XML attribute an",
+    "adopter annotates a document with — a namespace URI, a local name, and the",
+    "extensions whose documents carry it — and the axis parses such a document and",
+    "reads that attribute's value as a whitespace-separated list of inventory ids.",
+    "Round 1322 read it as a prefix plus a character class (the first id of a list",
+    "only); Round 1323 as text between two delimiters, a second grammar for what",
+    "the document's own XML already defines.",
     "",
-    "EIGHT INJECTIONS ON THE READER. A list that stops at its first id is the",
-    "Round 1322 defect; an id cut at a character class is its structural cause; an",
-    "unclosed marker dropped by the extractor or by the scan is the silence the new",
-    "axis exists to refuse; the one reader skipping the marker axis is how a caller",
-    "would miss it; and the longest-open, word-boundary and code-span rules each",
-    "have one test that asks them.",
+    "NINE INJECTIONS ON THE READER. Matching an attribute by local name alone is",
+    "the prefix-versus-namespace confusion; reading the raw text instead of the",
+    "parsed value is the entity that never decodes; dropping an unreadable document",
+    "in the extractor, in the scan, or dropping the parser's reason are the three",
+    "ways the silence this axis refuses could come back; skipping the attribute",
+    "axis in the one reader, or handing it the comment-stripped text, are how a",
+    "caller loses it; parsing a document of any extension reads examples as",
+    "citations; and an id that carries its attribute's line rather than its own",
+    "points a reader at the wrong line of a multi-line list.",
     "",
-    "SIX INJECTIONS ON THE DECLARATION. Each refusal in `InventoryMarker::new` and",
-    "`InventoryMarkers::new` is turned off alone, and the marker's own",
-    "`deny_unknown_fields` is removed; each must redden the config test that asks",
-    "it, through the constructor and through a TOML declaration.",
+    "THE DECLARATION'S OWN REFUSALS are swept next door, in",
+    "crates/mnemosyne-config/sweeps/inventory-attribute-declaration.sweep.json,",
+    "because they compile one crate rather than three.",
     "",
     "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
     "beside this file."
@@ -34,228 +36,167 @@
     "test",
     "--locked",
     "-p",
-    "mnemosyne-config",
-    "-p",
     "mnemosyne-validate",
     "-p",
     "mnemosyne-cli",
     "--no-fail-fast",
     "--",
-    "a_marker_reads_every_id_it_encloses",
-    "a_marker_reads_an_id_the_store_accepts_whole",
-    "a_marker_that_never_closes_is_returned_not_skipped",
-    "a_marker_open_follows_the_word_span_and_length_rules",
+    "an_attribute_is_read_by_its_namespace_not_its_prefix",
+    "an_attribute_value_is_read_as_xml_defines_it",
+    "a_document_that_does_not_parse_is_returned_not_skipped",
+    "an_attribute_is_read_only_in_its_declared_extensions",
+    "an_attribute_in_no_namespace_is_the_unprefixed_one",
     "inventory_citation_axes_read_every_declared_axis",
-    "inventory_marker_smoke::",
-    "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list",
-    "inventory_markers_refuse_two_that_open_alike",
-    "a_declared_inventory_marker_is_read_as_its_delimiters"
+    "every_citation_axis_publishes_what_it_read",
+    "every_axis_that_reads_something_publishes_it_through_the_binary",
+    "inventory_marker_smoke::"
   ],
   "red_set": "exhaustive",
   "logs": "../../../target/injection-logs",
   "min_free_mb": 8000,
   "injections": [
     {
-      "name": "a-list-stops-at-its-first-id",
-      "why": "the Round 1322 defect: the first id of a marker's list is read and every id after the first whitespace is not, so a deprecated or unregistered second id leaves the gate green",
+      "name": "an-attribute-is-matched-by-local-name-alone",
+      "why": "the prefix-versus-namespace confusion the axis exists to remove: any attribute spelled `req` is read, whatever namespace its prefix is bound to",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                    cites.insert((id_line, list[from..offset].to_string()));\n",
-          "to": "                    cites.insert((id_line, list[from..offset].to_string()));\n                    break;\n"
+          "from": "                .any(|a| a.name() == found.name() && a.namespace() == found.namespace());\n",
+          "to": "                .any(|a| a.name() == found.name());\n"
         }
       ],
       "expect_red": [
-        "a_marker_reads_every_id_it_encloses",
-        "a_marker_reads_an_id_the_store_accepts_whole",
-        "a_marker_open_follows_the_word_span_and_length_rules",
-        "inventory_citation_axes_read_every_declared_axis",
-        "a_marker_cites_every_id_it_encloses"
+        "an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "an_attribute_in_no_namespace_is_the_unprefixed_one",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
     {
-      "name": "an-id-ends-at-a-character-class",
-      "why": "the structural cause: the reader's alphabet is a borrowed character class instead of the store's id rule, so an id the store accepts is cut at a colon or a `#`",
+      "name": "a-value-is-read-as-raw-text",
+      "why": "the raw attribute text read instead of the value XML defines, so an id written through an entity never decodes — the residue Round 1323 stated and this round closed",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            if ch.is_whitespace() {\n",
-          "to": "            if !(ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '-' | '_')) {\n"
+          "from": "            for id in found.value().split_whitespace() {\n",
+          "to": "            for id in raw_value.split_whitespace() {\n"
         }
       ],
       "expect_red": [
-        "a_marker_reads_an_id_the_store_accepts_whole"
+        "an_attribute_value_is_read_as_xml_defines_it",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
     {
-      "name": "an-unclosed-marker-is-skipped-by-the-extractor",
-      "why": "a marker whose close never follows read as citing nothing — indistinguishable from a document that cites nothing",
+      "name": "an-unreadable-document-is-skipped-by-the-extractor",
+      "why": "a document that does not parse read as citing nothing — indistinguishable from a document that cites nothing",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            read.unclosed.push((line, marker.open().to_string()));\n",
-          "to": ""
+          "from": "                read.unreadable.push(UnreadableDocument {\n",
+          "to": "                drop(UnreadableDocument {\n"
         }
       ],
       "expect_red": [
-        "a_marker_that_never_closes_is_returned_not_skipped",
-        "a_marker_that_never_closes_is_reported"
+        "a_document_that_does_not_parse_is_returned_not_skipped",
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
     {
-      "name": "the-scan-drops-an-unclosed-marker",
-      "why": "the extractor returns the unclosed marker and the gate never turns it into a violation — the silence moved one layer up",
+      "name": "the-scan-drops-an-unreadable-document",
+      "why": "the extractor returns it and the gate never turns it into a violation — the same silence one layer up",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                for (line, open) in inventory_read.unclosed {\n",
-          "to": "                for (line, open) in Vec::<(usize, String)>::new() {\n"
+          "from": "                for unreadable in inventory_read.unreadable {\n",
+          "to": "                for unreadable in Vec::<UnreadableDocument>::new() {\n"
         }
       ],
       "expect_red": [
-        "a_marker_that_never_closes_is_reported"
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
     {
-      "name": "the-one-reader-skips-the-marker-axis",
+      "name": "the-parser-reason-is-dropped",
+      "why": "the violation says a document did not parse and not why, so a consumer re-parses the file to learn what the gate saw",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                            reason: unreadable.reason,\n",
+          "to": "                            reason: String::new(),\n"
+        }
+      ],
+      "expect_red": [
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
+      ]
+    },
+    {
+      "name": "the-one-reader-skips-the-attribute-axis",
       "why": "the shape a caller that did not take the one reader would have: the axis is declared, parsed and echoed, and no citation under it is ever read",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "        let mut read = extract_inventory_marker_citations(self.markers, content);\n",
+          "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
           "to": "        let mut read = InventoryCitations::default();\n"
         }
       ],
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
-        "a_marker_cites_every_id_it_encloses",
-        "a_marker_that_never_closes_is_reported"
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
     {
-      "name": "the-longer-open-is-not-preferred",
-      "why": "two opens beginning at one place resolved by declaration order, so the shorter open reads the longer marker's delimiter into its ids",
+      "name": "the-attribute-axis-reads-what-comment-stripping-left",
+      "why": "an XML parser handed the comment-stripped text, which is not a document — the reason the one reader takes both the raw file and the stripped text",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "    ordered.sort_by_key(|marker| std::cmp::Reverse(marker.open().len()));\n",
-          "to": ""
+          "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
+          "to": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, content);\n"
         }
       ],
       "expect_red": [
-        "a_marker_open_follows_the_word_span_and_length_rules"
+        "inventory_citation_axes_read_every_declared_axis"
       ]
     },
     {
-      "name": "an-open-may-continue-a-word",
-      "why": "an open beginning with a word character matched in the middle of a longer word, so `xreq=\"` cites as if it were `req=\"`",
+      "name": "a-document-of-any-extension-is-parsed",
+      "why": "every file in the read set parsed as XML, so a Markdown example becomes a citation and every source file becomes an unreadable document",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "    !open.starts_with(is_word) || !before.chars().next_back().is_some_and(is_word)\n",
-          "to": "    let _ = (before, open, is_word);\n    true\n"
+          "from": "    let declared: Vec<&InventoryAttribute> = attributes.iter().filter(|a| a.reads(file)).collect();\n",
+          "to": "    let declared: Vec<&InventoryAttribute> = attributes.iter().collect();\n"
         }
       ],
       "expect_red": [
-        "a_marker_open_follows_the_word_span_and_length_rules"
+        "an_attribute_is_read_only_in_its_declared_extensions",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
     {
-      "name": "an-example-in-a-code-span-is-read",
-      "why": "a marker quoted inside a backtick code span as an example is read as a citation",
+      "name": "an-id-carries-its-attributes-line-not-its-own",
+      "why": "every id of a multi-line list reported at the line the attribute opened on, which points a reader at a line the id is not on",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            '`' => {\n                in_backtick = !in_backtick;\n",
-          "to": "            '`' => {\n"
+          "from": "                let line = line_of(document.text_pos_at(value_range.start + at));\n",
+          "to": "                let line = line_of(document.text_pos_at(value_range.start));\n"
         }
       ],
       "expect_red": [
-        "a_marker_open_follows_the_word_span_and_length_rules"
-      ]
-    },
-    {
-      "name": "an-empty-open-is-accepted",
-      "why": "an empty open begins a citation at every character",
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if open.is_empty() {\n",
-          "to": "        if false && open.is_empty() {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ]
-    },
-    {
-      "name": "a-line-break-in-an-open-is-accepted",
-      "why": "an open across lines has no line to open on, and the code-span rule is per line",
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if open.contains(['\\n', '\\r']) {\n",
-          "to": "        if false && open.contains(['\\n', '\\r']) {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ]
-    },
-    {
-      "name": "an-empty-close-is-accepted",
-      "why": "an empty close ends every list before its first id, so the marker reads as citing nothing",
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if close.is_empty() {\n",
-          "to": "        if false && close.is_empty() {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ]
-    },
-    {
-      "name": "whitespace-in-a-close-is-accepted",
-      "why": "whitespace separates the ids a marker encloses, so a close holding it would also end the list at a separator",
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if close.contains(char::is_whitespace) {\n",
-          "to": "        if false && close.contains(char::is_whitespace) {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ]
-    },
-    {
-      "name": "two-markers-may-open-alike",
-      "why": "which close ends a citation would depend on declaration order",
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "            if !opens.insert(marker.open()) {\n",
-          "to": "            if false && !opens.insert(marker.open()) {\n"
-        }
-      ],
-      "expect_red": [
-        "inventory_markers_refuse_two_that_open_alike"
-      ]
-    },
-    {
-      "name": "a-key-a-marker-does-not-model-is-dropped",
-      "why": "a declared key such as a separator the marker does not model would be accepted and silently ignored",
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n",
-          "to": "        struct Declared {\n"
-        }
-      ],
-      "expect_red": [
-        "a_declared_inventory_marker_is_read_as_its_delimiters"
+        "an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     }
   ]

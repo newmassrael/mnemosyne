@@ -5,232 +5,241 @@
   ],
   "complete": true,
   "fired": {
-    "a-key-a-marker-does-not-model-is-dropped": {
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n",
-          "to": "        struct Declared {\n"
-        }
-      ],
-      "expect_red": [
-        "a_declared_inventory_marker_is_read_as_its_delimiters"
-      ],
-      "tests": [
-        "tests::a_declared_inventory_marker_is_read_as_its_delimiters"
-      ]
-    },
-    "a-line-break-in-an-open-is-accepted": {
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if open.contains(['\\n', '\\r']) {\n",
-          "to": "        if false && open.contains(['\\n', '\\r']) {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ],
-      "tests": [
-        "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ]
-    },
-    "a-list-stops-at-its-first-id": {
+    "a-document-of-any-extension-is-parsed": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                    cites.insert((id_line, list[from..offset].to_string()));\n",
-          "to": "                    cites.insert((id_line, list[from..offset].to_string()));\n                    break;\n"
+          "from": "    let declared: Vec<&InventoryAttribute> = attributes.iter().filter(|a| a.reads(file)).collect();\n",
+          "to": "    let declared: Vec<&InventoryAttribute> = attributes.iter().collect();\n"
         }
       ],
       "expect_red": [
-        "a_marker_reads_every_id_it_encloses",
-        "a_marker_reads_an_id_the_store_accepts_whole",
-        "a_marker_open_follows_the_word_span_and_length_rules",
-        "inventory_citation_axes_read_every_declared_axis",
-        "a_marker_cites_every_id_it_encloses"
+        "an_attribute_is_read_only_in_its_declared_extensions",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
-        "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules",
-        "code_refs::tests::a_marker_reads_an_id_the_store_accepts_whole",
-        "code_refs::tests::a_marker_reads_every_id_it_encloses",
-        "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
-        "inventory_marker_smoke::a_marker_cites_every_id_it_encloses"
+        "code_refs::tests::an_attribute_is_read_only_in_its_declared_extensions",
+        "code_refs::tests::every_citation_axis_publishes_what_it_read",
+        "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+        "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
-    "an-empty-close-is-accepted": {
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if close.is_empty() {\n",
-          "to": "        if false && close.is_empty() {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ],
-      "tests": [
-        "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ]
-    },
-    "an-empty-open-is-accepted": {
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if open.is_empty() {\n",
-          "to": "        if false && open.is_empty() {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ],
-      "tests": [
-        "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ]
-    },
-    "an-example-in-a-code-span-is-read": {
+    "a-value-is-read-as-raw-text": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            '`' => {\n                in_backtick = !in_backtick;\n",
-          "to": "            '`' => {\n"
+          "from": "            for id in found.value().split_whitespace() {\n",
+          "to": "            for id in raw_value.split_whitespace() {\n"
         }
       ],
       "expect_red": [
-        "a_marker_open_follows_the_word_span_and_length_rules"
+        "an_attribute_value_is_read_as_xml_defines_it",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ],
       "tests": [
-        "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules"
+        "code_refs::tests::an_attribute_value_is_read_as_xml_defines_it",
+        "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
-    "an-id-ends-at-a-character-class": {
+    "an-attribute-is-matched-by-local-name-alone": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            if ch.is_whitespace() {\n",
-          "to": "            if !(ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '-' | '_')) {\n"
+          "from": "                .any(|a| a.name() == found.name() && a.namespace() == found.namespace());\n",
+          "to": "                .any(|a| a.name() == found.name());\n"
         }
       ],
       "expect_red": [
-        "a_marker_reads_an_id_the_store_accepts_whole"
+        "an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "an_attribute_in_no_namespace_is_the_unprefixed_one",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ],
       "tests": [
-        "code_refs::tests::a_marker_reads_an_id_the_store_accepts_whole"
+        "code_refs::tests::an_attribute_in_no_namespace_is_the_unprefixed_one",
+        "code_refs::tests::an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
-    "an-open-may-continue-a-word": {
+    "an-id-carries-its-attributes-line-not-its-own": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "    !open.starts_with(is_word) || !before.chars().next_back().is_some_and(is_word)\n",
-          "to": "    let _ = (before, open, is_word);\n    true\n"
+          "from": "                let line = line_of(document.text_pos_at(value_range.start + at));\n",
+          "to": "                let line = line_of(document.text_pos_at(value_range.start));\n"
         }
       ],
       "expect_red": [
-        "a_marker_open_follows_the_word_span_and_length_rules"
+        "an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ],
       "tests": [
-        "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules"
+        "code_refs::tests::an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
-    "an-unclosed-marker-is-skipped-by-the-extractor": {
+    "an-unreadable-document-is-skipped-by-the-extractor": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            read.unclosed.push((line, marker.open().to_string()));\n",
-          "to": ""
+          "from": "                read.unreadable.push(UnreadableDocument {\n",
+          "to": "                drop(UnreadableDocument {\n"
         }
       ],
       "expect_red": [
-        "a_marker_that_never_closes_is_returned_not_skipped",
-        "a_marker_that_never_closes_is_reported"
+        "a_document_that_does_not_parse_is_returned_not_skipped",
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
-        "code_refs::tests::a_marker_that_never_closes_is_returned_not_skipped",
-        "inventory_marker_smoke::a_marker_that_never_closes_is_reported"
+        "code_refs::tests::a_document_that_does_not_parse_is_returned_not_skipped",
+        "code_refs::tests::every_citation_axis_publishes_what_it_read",
+        "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
+        "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
-    "the-longer-open-is-not-preferred": {
+    "the-attribute-axis-reads-what-comment-stripping-left": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "    ordered.sort_by_key(|marker| std::cmp::Reverse(marker.open().len()));\n",
-          "to": ""
+          "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
+          "to": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, content);\n"
         }
       ],
       "expect_red": [
-        "a_marker_open_follows_the_word_span_and_length_rules"
+        "inventory_citation_axes_read_every_declared_axis"
       ],
       "tests": [
-        "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules"
+        "code_refs::tests::inventory_citation_axes_read_every_declared_axis"
       ]
     },
-    "the-one-reader-skips-the-marker-axis": {
+    "the-one-reader-skips-the-attribute-axis": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "        let mut read = extract_inventory_marker_citations(self.markers, content);\n",
+          "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
           "to": "        let mut read = InventoryCitations::default();\n"
         }
       ],
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
-        "a_marker_cites_every_id_it_encloses",
-        "a_marker_that_never_closes_is_reported"
+        "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
+        "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
-        "inventory_marker_smoke::a_marker_cites_every_id_it_encloses",
-        "inventory_marker_smoke::a_marker_that_never_closes_is_reported"
+        "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
+        "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+        "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
-    "the-scan-drops-an-unclosed-marker": {
+    "the-parser-reason-is-dropped": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                for (line, open) in inventory_read.unclosed {\n",
-          "to": "                for (line, open) in Vec::<(usize, String)>::new() {\n"
+          "from": "                            reason: unreadable.reason,\n",
+          "to": "                            reason: String::new(),\n"
         }
       ],
       "expect_red": [
-        "a_marker_that_never_closes_is_reported"
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
-        "inventory_marker_smoke::a_marker_that_never_closes_is_reported"
+        "code_refs::tests::every_citation_axis_publishes_what_it_read",
+        "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
+        "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
-    "two-markers-may-open-alike": {
+    "the-scan-drops-an-unreadable-document": {
       "edits": [
         {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "            if !opens.insert(marker.open()) {\n",
-          "to": "            if false && !opens.insert(marker.open()) {\n"
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                for unreadable in inventory_read.unreadable {\n",
+          "to": "                for unreadable in Vec::<UnreadableDocument>::new() {\n"
         }
       ],
       "expect_red": [
-        "inventory_markers_refuse_two_that_open_alike"
+        "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "every_citation_axis_publishes_what_it_read",
+        "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
-        "tests::inventory_markers_refuse_two_that_open_alike"
-      ]
-    },
-    "whitespace-in-a-close-is-accepted": {
-      "edits": [
-        {
-          "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if close.contains(char::is_whitespace) {\n",
-          "to": "        if false && close.contains(char::is_whitespace) {\n"
-        }
-      ],
-      "expect_red": [
-        "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
-      ],
-      "tests": [
-        "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        "code_refs::tests::every_citation_axis_publishes_what_it_read",
+        "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
+        "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     }
   },
   "forgotten": {
+    "a-key-a-marker-does-not-model-is-dropped": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-config/src/lib.rs",
+            "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n",
+            "to": "        struct Declared {\n"
+          }
+        ],
+        "expect_red": [
+          "a_declared_inventory_marker_is_read_as_its_delimiters"
+        ],
+        "tests": [
+          "tests::a_declared_inventory_marker_is_read_as_its_delimiters"
+        ]
+      }
+    },
+    "a-line-break-in-an-open-is-accepted": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-config/src/lib.rs",
+            "from": "        if open.contains(['\\n', '\\r']) {\n",
+            "to": "        if false && open.contains(['\\n', '\\r']) {\n"
+          }
+        ],
+        "expect_red": [
+          "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        ],
+        "tests": [
+          "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        ]
+      }
+    },
+    "a-list-stops-at-its-first-id": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "                    cites.insert((id_line, list[from..offset].to_string()));\n",
+            "to": "                    cites.insert((id_line, list[from..offset].to_string()));\n                    break;\n"
+          }
+        ],
+        "expect_red": [
+          "a_marker_reads_every_id_it_encloses",
+          "a_marker_reads_an_id_the_store_accepts_whole",
+          "a_marker_open_follows_the_word_span_and_length_rules",
+          "inventory_citation_axes_read_every_declared_axis",
+          "a_marker_cites_every_id_it_encloses"
+        ],
+        "tests": [
+          "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules",
+          "code_refs::tests::a_marker_reads_an_id_the_store_accepts_whole",
+          "code_refs::tests::a_marker_reads_every_id_it_encloses",
+          "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+          "inventory_marker_smoke::a_marker_cites_every_id_it_encloses"
+        ]
+      }
+    },
     "a-marker-keeps-its-prefix-in-the-id": {
       "because": "R1323 replaced its subject rather than renaming it: it proved a marker's prefix was stripped from a prefix-plus-tail id, and a marker is now a delimiter pair whose enclosed list is split on whitespace, so no prefix is left to keep in an id. What has teeth in its place is a-list-stops-at-its-first-id, the defect R1322 shipped, and an-id-ends-at-a-character-class, its structural cause",
       "was": {
@@ -250,6 +259,210 @@
           "code_refs::tests::extract_inventory_marker_citations_strips_the_prefix",
           "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
           "inventory_marker_smoke::a_marker_prefix_cites_the_id_after_it"
+        ]
+      }
+    },
+    "an-empty-close-is-accepted": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-config/src/lib.rs",
+            "from": "        if close.is_empty() {\n",
+            "to": "        if false && close.is_empty() {\n"
+          }
+        ],
+        "expect_red": [
+          "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        ],
+        "tests": [
+          "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        ]
+      }
+    },
+    "an-empty-open-is-accepted": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-config/src/lib.rs",
+            "from": "        if open.is_empty() {\n",
+            "to": "        if false && open.is_empty() {\n"
+          }
+        ],
+        "expect_red": [
+          "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        ],
+        "tests": [
+          "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        ]
+      }
+    },
+    "an-example-in-a-code-span-is-read": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "            '`' => {\n                in_backtick = !in_backtick;\n",
+            "to": "            '`' => {\n"
+          }
+        ],
+        "expect_red": [
+          "a_marker_open_follows_the_word_span_and_length_rules"
+        ],
+        "tests": [
+          "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules"
+        ]
+      }
+    },
+    "an-id-ends-at-a-character-class": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "            if ch.is_whitespace() {\n",
+            "to": "            if !(ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '-' | '_')) {\n"
+          }
+        ],
+        "expect_red": [
+          "a_marker_reads_an_id_the_store_accepts_whole"
+        ],
+        "tests": [
+          "code_refs::tests::a_marker_reads_an_id_the_store_accepts_whole"
+        ]
+      }
+    },
+    "an-open-may-continue-a-word": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "    !open.starts_with(is_word) || !before.chars().next_back().is_some_and(is_word)\n",
+            "to": "    let _ = (before, open, is_word);\n    true\n"
+          }
+        ],
+        "expect_red": [
+          "a_marker_open_follows_the_word_span_and_length_rules"
+        ],
+        "tests": [
+          "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules"
+        ]
+      }
+    },
+    "an-unclosed-marker-is-skipped-by-the-extractor": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "            read.unclosed.push((line, marker.open().to_string()));\n",
+            "to": ""
+          }
+        ],
+        "expect_red": [
+          "a_marker_that_never_closes_is_returned_not_skipped",
+          "a_marker_that_never_closes_is_reported"
+        ],
+        "tests": [
+          "code_refs::tests::a_marker_that_never_closes_is_returned_not_skipped",
+          "inventory_marker_smoke::a_marker_that_never_closes_is_reported"
+        ]
+      }
+    },
+    "the-longer-open-is-not-preferred": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "    ordered.sort_by_key(|marker| std::cmp::Reverse(marker.open().len()));\n",
+            "to": ""
+          }
+        ],
+        "expect_red": [
+          "a_marker_open_follows_the_word_span_and_length_rules"
+        ],
+        "tests": [
+          "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules"
+        ]
+      }
+    },
+    "the-one-reader-skips-the-marker-axis": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "        let mut read = extract_inventory_marker_citations(self.markers, content);\n",
+            "to": "        let mut read = InventoryCitations::default();\n"
+          }
+        ],
+        "expect_red": [
+          "inventory_citation_axes_read_every_declared_axis",
+          "a_marker_cites_every_id_it_encloses",
+          "a_marker_that_never_closes_is_reported"
+        ],
+        "tests": [
+          "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+          "inventory_marker_smoke::a_marker_cites_every_id_it_encloses",
+          "inventory_marker_smoke::a_marker_that_never_closes_is_reported"
+        ]
+      }
+    },
+    "the-scan-drops-an-unclosed-marker": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "                for (line, open) in inventory_read.unclosed {\n",
+            "to": "                for (line, open) in Vec::<(usize, String)>::new() {\n"
+          }
+        ],
+        "expect_red": [
+          "a_marker_that_never_closes_is_reported"
+        ],
+        "tests": [
+          "inventory_marker_smoke::a_marker_that_never_closes_is_reported"
+        ]
+      }
+    },
+    "two-markers-may-open-alike": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-config/src/lib.rs",
+            "from": "            if !opens.insert(marker.open()) {\n",
+            "to": "            if false && !opens.insert(marker.open()) {\n"
+          }
+        ],
+        "expect_red": [
+          "inventory_markers_refuse_two_that_open_alike"
+        ],
+        "tests": [
+          "tests::inventory_markers_refuse_two_that_open_alike"
+        ]
+      }
+    },
+    "whitespace-in-a-close-is-accepted": {
+      "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-config/src/lib.rs",
+            "from": "        if close.contains(char::is_whitespace) {\n",
+            "to": "        if false && close.contains(char::is_whitespace) {\n"
+          }
+        ],
+        "expect_red": [
+          "an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
+        ],
+        "tests": [
+          "tests::an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list"
         ]
       }
     }

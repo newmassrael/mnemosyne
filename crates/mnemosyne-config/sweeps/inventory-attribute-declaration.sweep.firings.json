@@ -1,0 +1,160 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-dotted-extension-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "                || extension.contains(['.', '/', '\\\\'])\n",
+          "to": "                || false && extension.contains(['.', '/', '\\\\'])\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    "a-key-a-declaration-does-not-model-is-dropped": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n",
+          "to": "        struct Declared {\n"
+        }
+      ],
+      "expect_red": [
+        "a_declared_inventory_attribute_is_read_as_declared"
+      ],
+      "tests": [
+        "tests::a_declared_inventory_attribute_is_read_as_declared"
+      ]
+    },
+    "a-name-no-document-could-carry-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if !is_xml_local_name(&name) {\n",
+          "to": "        if false && !is_xml_local_name(&name) {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    "a-prefixed-name-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if name.contains(':') {\n",
+          "to": "        if false && name.contains(':') {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    "a-whitespace-extension-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "                || extension.contains(char::is_whitespace)\n",
+          "to": "                || false && extension.contains(char::is_whitespace)\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    "an-empty-extension-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "            if extension.is_empty()\n",
+          "to": "            if false && extension.is_empty()\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    "an-empty-extension-list-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if extensions.is_empty() {\n",
+          "to": "        if false && extensions.is_empty() {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    "an-empty-namespace-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "            if uri.is_empty() {\n",
+          "to": "            if false && uri.is_empty() {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    "an-extension-is-matched-case-sensitively": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "                    .any(|declared| declared.eq_ignore_ascii_case(extension))\n",
+          "to": "                    .any(|declared| declared == extension)\n"
+        }
+      ],
+      "expect_red": [
+        "a_declared_inventory_attribute_is_read_as_declared"
+      ],
+      "tests": [
+        "tests::a_declared_inventory_attribute_is_read_as_declared"
+      ]
+    },
+    "whitespace-in-a-namespace-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "            if uri.contains(char::is_whitespace) {\n",
+          "to": "            if false && uri.contains(char::is_whitespace) {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ],
+      "tests": [
+        "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    }
+  },
+  "forgotten": {}
+}

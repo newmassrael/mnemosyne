@@ -1,0 +1,182 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS AN ATTRIBUTE DECLARATION NO DOCUMENT COULD MATCH IS",
+    "REFUSED — run it from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-config/sweeps/inventory-attribute-declaration.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. `InventoryAttribute::new` is the one door into an",
+    "inventory attribute declaration — a TOML declaration deserializes through it —",
+    "so a declaration a caller builds and one a workspace declares are refused on",
+    "the same terms. Each refusal names a declaration that could never match a",
+    "document: a namespace that is empty or holds whitespace, a name that carries a",
+    "prefix or is not an XML local name, and an extension list that is empty or",
+    "holds something no file extension is. The reader's own guards are swept next",
+    "door, in crates/mnemosyne-cli/sweeps/inventory-marker.sweep.json.",
+    "",
+    "TEN INJECTIONS, ONE PER REFUSAL, plus the marker declaration's own",
+    "`deny_unknown_fields` and the case-insensitive extension match. Each must",
+    "redden the config test that asks it — through the constructor AND through a",
+    "TOML declaration, which is the pair that keeps the two paths one.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-config",
+    "--no-fail-fast",
+    "--",
+    "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+    "a_declared_inventory_attribute_is_read_as_declared"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "an-empty-namespace-is-accepted",
+      "why": "an empty URI names no namespace, so the declaration matches nothing and says nothing",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "            if uri.is_empty() {\n",
+          "to": "            if false && uri.is_empty() {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "whitespace-in-a-namespace-is-accepted",
+      "why": "no namespace URI holds whitespace, so such a declaration matches no attribute in any document",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "            if uri.contains(char::is_whitespace) {\n",
+          "to": "            if false && uri.contains(char::is_whitespace) {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "a-prefixed-name-is-accepted",
+      "why": "the Round 1322 and 1323 mistake in declaration form: a prefix is the document's own binding, so `sce:req` as a name matches nothing and reads as though the prefix were the identity",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if name.contains(':') {\n",
+          "to": "        if false && name.contains(':') {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "a-name-no-document-could-carry-is-accepted",
+      "why": "a name outside the XML local-name grammar is one no document can carry, so the axis reads nothing and reports it as clean",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if !is_xml_local_name(&name) {\n",
+          "to": "        if false && !is_xml_local_name(&name) {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "an-empty-extension-list-is-accepted",
+      "why": "an attribute declared for no extension reads no document — a declared axis that is structurally disabled",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if extensions.is_empty() {\n",
+          "to": "        if false && extensions.is_empty() {\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "an-empty-extension-is-accepted",
+      "why": "an empty extension matches no file, so it is a line in the config that does nothing",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "            if extension.is_empty()\n",
+          "to": "            if false && extension.is_empty()\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "a-dotted-extension-is-accepted",
+      "why": "`.scxml` is the obvious way to write an extension and matches nothing, since an extension is the text after the last dot",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "                || extension.contains(['.', '/', '\\\\'])\n",
+          "to": "                || false && extension.contains(['.', '/', '\\\\'])\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "a-whitespace-extension-is-accepted",
+      "why": "an extension holding whitespace matches no file either",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "                || extension.contains(char::is_whitespace)\n",
+          "to": "                || false && extension.contains(char::is_whitespace)\n"
+        }
+      ],
+      "expect_red": [
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+      ]
+    },
+    {
+      "name": "an-extension-is-matched-case-sensitively",
+      "why": "a document named `MODEL.SCXML` is the same kind of document as `model.scxml`, and a case-sensitive match reads one and not the other",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "                    .any(|declared| declared.eq_ignore_ascii_case(extension))\n",
+          "to": "                    .any(|declared| declared == extension)\n"
+        }
+      ],
+      "expect_red": [
+        "a_declared_inventory_attribute_is_read_as_declared"
+      ]
+    },
+    {
+      "name": "a-key-a-declaration-does-not-model-is-dropped",
+      "why": "a key such as a separator the declaration does not model would be accepted and silently ignored",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n",
+          "to": "        struct Declared {\n"
+        }
+      ],
+      "expect_red": [
+        "a_declared_inventory_attribute_is_read_as_declared"
+      ]
+    }
+  ]
+}

@@ -441,136 +441,175 @@ pub enum SymbolResolverConfig {
     },
 }
 
-/// One declared inventory citation marker: the delimiters an adopter writes
-/// around the inventory ids a document cites (Round 1323).
+/// One XML attribute that cites inventory ids (Round 1324): the attribute an
+/// adopter writes on the elements of a document it does not rewrite, named by
+/// its namespace URI and local name, and the file extensions whose documents
+/// are the XML that carries it.
 ///
-/// Built only through [`InventoryMarker::new`], which a TOML declaration goes
-/// through too, so a marker a test constructs and a marker a workspace declares
-/// are refused on the same terms.
+/// NAMED BY NAMESPACE, NEVER BY PREFIX, because a prefix is only a binding the
+/// document chooses: `s:req` under `xmlns:s="http://example/ext"` is the same
+/// attribute as `sce:req` under `xmlns:sce="http://example/ext"`, and an XML
+/// reader — the adopter's own among them — reads it that way. Built only
+/// through [`InventoryAttribute::new`], which a TOML declaration goes through
+/// too, so a declaration a caller builds and one a workspace declares are
+/// refused on the same terms.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct InventoryMarker {
-    open: String,
-    close: String,
+pub struct InventoryAttribute {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    namespace: Option<String>,
+    name: String,
+    extensions: Vec<String>,
 }
 
-impl InventoryMarker {
-    /// A marker that opens with `open` and closes with `close`.
+impl InventoryAttribute {
+    /// The attribute `name` in `namespace` (none when `None`), read in
+    /// documents whose extension is one of `extensions`.
     ///
     /// # Errors
     ///
-    /// Refused, with the reason, when `open` is empty (a citation would begin
-    /// at every character) or holds a line break (a marker opens on one line),
-    /// or when `close` is empty (every list would end before its first id) or
-    /// holds whitespace (whitespace separates the ids a marker encloses, so it
-    /// cannot also end them).
+    /// Refused, with the reason, whenever no document could ever match the
+    /// declaration: a `namespace` that is empty or holds whitespace (no
+    /// namespace URI is either — omit it for an attribute in no namespace), a
+    /// `name` that carries a prefix (the prefix is the document's binding, so
+    /// the URI is what names the attribute) or is not an XML local name, and an
+    /// `extensions` list that is empty or holds something no file extension is.
     pub fn new(
-        open: impl Into<String>,
-        close: impl Into<String>,
+        namespace: Option<String>,
+        name: impl Into<String>,
+        extensions: Vec<String>,
     ) -> std::result::Result<Self, String> {
-        let (open, close) = (open.into(), close.into());
-        if open.is_empty() {
-            return Err(
-                "an inventory marker's `open` must be non-empty — an empty open \
-                        begins a citation at every character"
-                    .to_string(),
-            );
+        let name = name.into();
+        if let Some(uri) = &namespace {
+            if uri.is_empty() {
+                return Err(format!(
+                    "the inventory attribute `{name}` has an empty `namespace` — an empty URI \
+                     names no namespace; omit `namespace` for an attribute in none"
+                ));
+            }
+            if uri.contains(char::is_whitespace) {
+                return Err(format!(
+                    "the inventory attribute `{name}` has `namespace = {uri:?}`, which holds \
+                     whitespace — no namespace URI does"
+                ));
+            }
         }
-        if open.contains(['\n', '\r']) {
+        if name.contains(':') {
             return Err(format!(
-                "the inventory marker `open = {open:?}` holds a line break — a marker opens on \
-                 one line"
+                "the inventory attribute `{name}` carries a prefix — a prefix is a binding the \
+                 document chooses, so declare the namespace URI in `namespace` and the local \
+                 name alone in `name`"
             ));
         }
-        if close.is_empty() {
+        if !is_xml_local_name(&name) {
             return Err(format!(
-                "the inventory marker opened by `{open}` has an empty `close` — every list it \
-                 encloses would end before its first id"
+                "the inventory attribute name {name:?} is not an XML local name, so no document \
+                 could carry it"
             ));
         }
-        if close.contains(char::is_whitespace) {
+        if extensions.is_empty() {
             return Err(format!(
-                "the inventory marker opened by `{open}` has `close = {close:?}`, which holds \
-                 whitespace — whitespace separates the ids a marker encloses, so it cannot also \
-                 end them"
+                "the inventory attribute `{name}` names no file extension, so it reads no \
+                 document"
             ));
         }
-        Ok(InventoryMarker { open, close })
+        for extension in &extensions {
+            if extension.is_empty()
+                || extension.contains(['.', '/', '\\'])
+                || extension.contains(char::is_whitespace)
+            {
+                return Err(format!(
+                    "the inventory attribute `{name}` has extension {extension:?} — an \
+                     extension is the text after a file name's last dot, like `scxml`, so no \
+                     file would match it"
+                ));
+            }
+        }
+        Ok(InventoryAttribute {
+            namespace,
+            name,
+            extensions,
+        })
     }
 
-    /// The text that begins a citation.
-    pub fn open(&self) -> &str {
-        &self.open
+    /// The namespace URI, or `None` for an attribute in no namespace.
+    pub fn namespace(&self) -> Option<&str> {
+        self.namespace.as_deref()
     }
 
-    /// The text that ends it.
-    pub fn close(&self) -> &str {
-        &self.close
+    /// The local name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The extensions whose documents carry the attribute.
+    pub fn extensions(&self) -> &[String] {
+        &self.extensions
+    }
+
+    /// Whether a document at `path` is one this attribute is read in: its
+    /// extension is one of [`Self::extensions`], compared without regard to
+    /// ASCII case.
+    pub fn reads(&self, path: &Path) -> bool {
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                self.extensions
+                    .iter()
+                    .any(|declared| declared.eq_ignore_ascii_case(extension))
+            })
+    }
+
+    /// The expanded name a report prints: `{namespace}name`, or the local name
+    /// alone for an attribute in no namespace.
+    pub fn expanded_name(&self) -> String {
+        match &self.namespace {
+            Some(uri) => format!("{{{uri}}}{}", self.name),
+            None => self.name.clone(),
+        }
     }
 }
 
-impl<'de> Deserialize<'de> for InventoryMarker {
+impl<'de> Deserialize<'de> for InventoryAttribute {
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Declared {
-            open: String,
-            close: String,
+            #[serde(default)]
+            namespace: Option<String>,
+            name: String,
+            extensions: Vec<String>,
         }
-        let Declared { open, close } = Declared::deserialize(deserializer)?;
-        InventoryMarker::new(open, close).map_err(serde::de::Error::custom)
+        let Declared {
+            namespace,
+            name,
+            extensions,
+        } = Declared::deserialize(deserializer)?;
+        InventoryAttribute::new(namespace, name, extensions).map_err(serde::de::Error::custom)
     }
 }
 
-/// The inventory citation markers a workspace declares, no two opening alike
-/// (Round 1323).
-///
-/// Two markers with one `open` would leave which `close` ends a citation to
-/// declaration order, so [`InventoryMarkers::new`] refuses them — and a TOML
-/// list goes through it too.
-#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
-#[serde(transparent)]
-pub struct InventoryMarkers(Vec<InventoryMarker>);
-
-impl InventoryMarkers {
-    /// The markers, as declared.
-    ///
-    /// # Errors
-    ///
-    /// Refused when two markers share an `open`.
-    pub fn new(markers: Vec<InventoryMarker>) -> std::result::Result<Self, String> {
-        let mut opens = std::collections::BTreeSet::new();
-        for marker in &markers {
-            if !opens.insert(marker.open()) {
-                return Err(format!(
-                    "two inventory markers open with `{}` — which `close` ends the citation \
-                     would depend on declaration order",
-                    marker.open()
-                ));
-            }
-        }
-        Ok(InventoryMarkers(markers))
+/// Whether `name` is an XML local name — an `NCName` (Namespaces in XML 1.0,
+/// production 4): no colon, a first character from `NameStartChar`, and the
+/// rest from `NameChar`. A declared name outside this grammar is one no
+/// document can carry, which is a declaration that silently reads nothing.
+fn is_xml_local_name(name: &str) -> bool {
+    fn starts(c: char) -> bool {
+        matches!(c,
+            'A'..='Z' | '_' | 'a'..='z'
+            | '\u{C0}'..='\u{D6}' | '\u{D8}'..='\u{F6}' | '\u{F8}'..='\u{2FF}'
+            | '\u{370}'..='\u{37D}' | '\u{37F}'..='\u{1FFF}' | '\u{200C}'..='\u{200D}'
+            | '\u{2070}'..='\u{218F}' | '\u{2C00}'..='\u{2FEF}' | '\u{3001}'..='\u{D7FF}'
+            | '\u{F900}'..='\u{FDCF}' | '\u{FDF0}'..='\u{FFFD}' | '\u{10000}'..='\u{EFFFF}')
     }
-
-    /// Every declared marker, in declaration order.
-    pub fn iter(&self) -> std::slice::Iter<'_, InventoryMarker> {
-        self.0.iter()
+    fn continues(c: char) -> bool {
+        starts(c)
+            || matches!(c,
+                '-' | '.' | '0'..='9' | '\u{B7}' | '\u{300}'..='\u{36F}' | '\u{203F}'..='\u{2040}')
     }
-
-    /// Whether no marker is declared, so the axis reads nothing.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-impl<'de> Deserialize<'de> for InventoryMarkers {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
-        let markers = Vec::<InventoryMarker>::deserialize(deserializer)?;
-        InventoryMarkers::new(markers).map_err(serde::de::Error::custom)
-    }
+    let mut chars = name.chars();
+    chars.next().is_some_and(starts) && chars.all(continues)
 }
 
 /// `[plugins.set_equality_validator]` — the citation-refs validator plugin
@@ -837,29 +876,28 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub inventory_path_prefixes: Vec<String>,
 
-    /// Inventory citation MARKERS — the delimiters an adopter writes around the
-    /// inventory ids a document cites (Round 1323).
+    /// Inventory citation ATTRIBUTES — the XML attributes whose values list the
+    /// inventory ids a document cites (Round 1324).
     ///
-    /// `inventory_markers = [{ open = "req=\"", close = "\"" }]` reads
-    /// `<state req="REQ-4.2.1 REQ-7"/>` as two citations, `REQ-4.2.1` and
-    /// `REQ-7`: everything between `open` and the next `close` is a
-    /// whitespace-separated list of ids, and neither delimiter is part of one.
-    /// There is no tail character class — an id is what the store accepts as
-    /// one (non-empty, no whitespace), so whitespace is exactly what separates
-    /// two. Round 1322 declared prefixes read with the section-path tail class
-    /// instead, which read the first id of a list and never the rest, and cut
-    /// an id at any character outside that class.
+    /// `inventory_attributes = [{ namespace = "http://example/ext", name =
+    /// "req", extensions = ["scxml"] }]` parses every `.scxml` file in the read
+    /// set as XML and reads the `req` attribute in that namespace on every
+    /// element — under whichever prefix the document binds it to — as a
+    /// whitespace-separated list of inventory ids. The value is the one XML
+    /// defines: entities decoded, either quote, and nothing read from a comment,
+    /// a CDATA section or element text. A declared document that does not parse
+    /// is reported as `inventory_document_unreadable` with the parser's reason,
+    /// never read as citing nothing.
     ///
-    /// The enclosed list may cross lines. A marker whose `close` never follows
-    /// is reported as `inventory_marker_unclosed` rather than read as citing
-    /// nothing. [`InventoryMarker::new`] refuses an empty `open` or `close`, a
-    /// line break in `open` and whitespace in `close`, and
-    /// [`InventoryMarkers::new`] refuses two markers with one `open`. Same
-    /// lifecycle and `severity_inventory` as the two other inventory axes, and
-    /// the orphan ledger suppresses its citations — not an unclosed marker,
-    /// which names no id. Empty = axis disabled.
+    /// Round 1323 read the same annotation as text between an `open` and a
+    /// `close` delimiter instead — a second grammar for an attribute the
+    /// document's own XML already defines: it could not decode an entity, missed
+    /// the attribute under another prefix, and read an example inside a comment
+    /// or a Markdown file as a citation. Same lifecycle and `severity_inventory`
+    /// as the two prefix axes, and the orphan ledger suppresses its citations —
+    /// not an unreadable document, which names no id. Empty = axis disabled.
     #[serde(default)]
-    pub inventory_markers: InventoryMarkers,
+    pub inventory_attributes: Vec<InventoryAttribute>,
 
     /// Section-ID namespace scope for this workspace's `§<id>` axis.
     ///
@@ -2731,25 +2769,67 @@ section_namespace = "scxml"
         assert_eq!(sev.section_namespace.as_deref(), Some("scxml"));
     }
 
-    /// Round 1323 — a marker's delimiters are refused on ONE set of terms,
-    /// whether a caller builds the marker or a workspace declares it, because
-    /// the declaration is read through the constructor.
+    /// Round 1324 — a declaration no document could match is refused on ONE
+    /// set of terms, whether a caller builds it or a workspace declares it,
+    /// because the declaration is read through the constructor.
     #[test]
-    fn an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list() {
-        for (open, close, reason) in [
-            ("", "\"", "must be non-empty"),
-            ("req=\n\"", "\"", "holds a line break"),
-            ("req=\"", "", "has an empty `close`"),
-            ("req=\"", "\" ", "which holds whitespace"),
+    fn an_inventory_attribute_refuses_a_declaration_no_document_could_match() {
+        let uri = Some("http://example/ext".to_string());
+        let scxml = vec!["scxml".to_string()];
+        for (namespace, name, extensions, reason) in [
+            (
+                Some(String::new()),
+                "req",
+                scxml.clone(),
+                "has an empty `namespace`",
+            ),
+            (
+                Some("http://example/ ext".to_string()),
+                "req",
+                scxml.clone(),
+                "which holds whitespace — no namespace URI does",
+            ),
+            (uri.clone(), "sce:req", scxml.clone(), "carries a prefix"),
+            (
+                uri.clone(),
+                "1req",
+                scxml.clone(),
+                "is not an XML local name",
+            ),
+            (uri.clone(), "", scxml.clone(), "is not an XML local name"),
+            (uri.clone(), "req", vec![], "names no file extension"),
+            (
+                uri.clone(),
+                "req",
+                vec![String::new()],
+                "is the text after a file name's last dot",
+            ),
+            (
+                uri.clone(),
+                "req",
+                vec![".scxml".to_string()],
+                "is the text after a file name's last dot",
+            ),
+            (
+                uri.clone(),
+                "req",
+                vec!["sc xml".to_string()],
+                "is the text after a file name's last dot",
+            ),
         ] {
-            let built = InventoryMarker::new(open, close)
-                .expect_err("the constructor refuses the delimiters");
+            let built = InventoryAttribute::new(namespace.clone(), name, extensions.clone())
+                .expect_err("the constructor refuses the declaration");
             assert!(built.contains(reason), "constructor: {built}");
+            let namespace_key = namespace
+                .as_ref()
+                .map(|uri| format!("namespace = {uri:?}, "))
+                .unwrap_or_default();
             let declared = parse_config(&format!(
                 "[workspace]\n\n[plugins.set_equality_validator]\n\
-                 inventory_markers = [{{ open = {open:?}, close = {close:?} }}]\n"
+                 inventory_attributes = [{{ {namespace_key}name = {name:?}, \
+                 extensions = {extensions:?} }}]\n"
             ))
-            .expect_err("the declaration refuses the delimiters");
+            .expect_err("the declaration refuses it");
             assert!(
                 format!("{declared:#}").contains(reason),
                 "declaration: {declared:#}"
@@ -2757,64 +2837,56 @@ section_namespace = "scxml"
         }
     }
 
-    /// Round 1323 — two markers with one `open` would leave the close to
-    /// declaration order; both paths refuse them.
+    /// Round 1324 — a declared attribute is read as its namespace, local name
+    /// and extensions; an attribute in no namespace omits `namespace`; and a
+    /// key a declaration does not model is refused rather than dropped.
     #[test]
-    fn inventory_markers_refuse_two_that_open_alike() {
-        let built = InventoryMarkers::new(vec![
-            InventoryMarker::new("req=\"", "\"").expect("a marker"),
-            InventoryMarker::new("req=\"", "'").expect("a marker"),
-        ])
-        .expect_err("the constructor refuses the pair");
-        assert!(
-            built.contains("two inventory markers open with"),
-            "constructor: {built}"
-        );
-        let declared = parse_config(
-            r#"
-[workspace]
-
-[plugins.set_equality_validator]
-inventory_markers = [{ open = "req=\"", close = "\"" }, { open = "req=\"", close = "'" }]
-"#,
-        )
-        .expect_err("the declaration refuses the pair");
-        assert!(
-            format!("{declared:#}").contains("two inventory markers open with"),
-            "declaration: {declared:#}"
-        );
-    }
-
-    /// Round 1323 — a declared marker is read as its two delimiters, and a key
-    /// a marker does not model is refused rather than dropped.
-    #[test]
-    fn a_declared_inventory_marker_is_read_as_its_delimiters() {
+    fn a_declared_inventory_attribute_is_read_as_declared() {
         let cfg = parse_config(
             r#"
 [workspace]
 
 [plugins.set_equality_validator]
-inventory_markers = [{ open = "sce:req=\"", close = "\"" }]
+inventory_attributes = [
+  { namespace = "http://example/ext", name = "req", extensions = ["scxml", "XML"] },
+  { name = "req", extensions = ["svg"] },
+]
 "#,
         )
-        .expect("a well-formed marker is accepted");
-        let markers = cfg
+        .expect("well-formed declarations are accepted");
+        let attributes = cfg
             .plugins
             .and_then(|p| p.set_equality_validator)
             .expect("set_equality_validator")
-            .inventory_markers;
-        let read: Vec<(&str, &str)> = markers.iter().map(|m| (m.open(), m.close())).collect();
-        assert_eq!(read, vec![("sce:req=\"", "\"")]);
+            .inventory_attributes;
+        let read: Vec<(Option<&str>, &str, String)> = attributes
+            .iter()
+            .map(|a| (a.namespace(), a.name(), a.expanded_name()))
+            .collect();
+        assert_eq!(
+            read,
+            vec![
+                (
+                    Some("http://example/ext"),
+                    "req",
+                    "{http://example/ext}req".to_string()
+                ),
+                (None, "req", "req".to_string()),
+            ]
+        );
+        assert!(attributes[0].reads(Path::new("doc/model.SCXML")));
+        assert!(attributes[0].reads(Path::new("doc/model.xml")));
+        assert!(!attributes[0].reads(Path::new("doc/README.md")));
 
         let unmodeled = parse_config(
             r#"
 [workspace]
 
 [plugins.set_equality_validator]
-inventory_markers = [{ open = "req=\"", close = "\"", separator = "," }]
+inventory_attributes = [{ name = "req", extensions = ["scxml"], separator = "," }]
 "#,
         )
-        .expect_err("a key a marker does not model is refused");
+        .expect_err("a key a declaration does not model is refused");
         assert!(
             format!("{unmodeled:#}").contains("separator"),
             "the refusal names the key: {unmodeled:#}"

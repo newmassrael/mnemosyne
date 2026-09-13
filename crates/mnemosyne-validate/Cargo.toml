@@ -18,6 +18,8 @@ serde_json.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 regex.workspace = true
+# Round 1324 — the inventory attribute axis parses a declared document as XML.
+roxmltree.workspace = true
 # Round 1223 — OPTIONAL, off by default, the shape Round 690 established for
 # core and atomic and Round 1222 extended to ops. Only the `schemars` feature —
 # enabled solely by mnemosyne-mcp — pulls it, so the reports this crate produces

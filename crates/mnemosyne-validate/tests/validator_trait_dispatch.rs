@@ -44,7 +44,7 @@ fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
             external_section_prefixes_bare: vec![],
             external_changelog_prefixes: vec![],
             inventory_path_prefixes: vec![],
-            inventory_markers: mnemosyne_config::InventoryMarkers::default(),
+            inventory_attributes: Vec::new(),
             section_namespace: None,
         },
         entry_id_prefix: "Round ".to_string(),

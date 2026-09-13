@@ -230,6 +230,49 @@ fn write_workspace(ws: &Path, resolver: &str, cpp_case: bool) {
     write_language_workspace(ws, resolver, &RUST, cpp_case);
 }
 
+/// THE TREE THAT PROVOKES EVERY AXIS CARRYING EVIDENCE: a drifted symbol (from
+/// `write_workspace`), a citation of a section that binds another file, a
+/// comment that restates a fact the store homes, and — Round 1324 — a declared
+/// XML document that does not parse.
+///
+/// WRITTEN ONCE, because two laws below walk it: the one that holds the
+/// binary's output against the declaration, and the one that holds it against
+/// the published contract. Each spelled this tree itself until Round 1324 added
+/// a fourth evidence axis and only one of them learned about it — the two
+/// copies are exactly the drift a shared fixture removes, and an evidence axis
+/// added tomorrow belongs here rather than in either law.
+fn tree_that_provokes_every_evidence_axis(ws: &Path) {
+    write_workspace(ws, RUST_RESOLVER, false);
+    // The prose axis is opt-in and the attribute axis reads only what is
+    // declared; these are the config lines that turn them on. Appended rather
+    // than rebuilt so the tree stays law 2's tree.
+    let toml = fs::read_to_string(ws.join("mnemosyne.toml")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        toml.replace(
+            "comment_only = true",
+            "comment_only = true\nseverity_prose_fact_assertion = \"reject\"\n\
+             inventory_attributes = [{ namespace = \"http://example/ext\", name = \"req\", \
+             extensions = [\"scxml\"] }]",
+        ),
+    )
+    .unwrap();
+    // Cites a section that binds `src/drift.rs` and not this file.
+    fs::write(ws.join("src/stray.rs"), "// §sec1 cited from nowhere\n").unwrap();
+    // Restates in prose a fact the store homes.
+    fs::write(
+        ws.join("src/restated.rs"),
+        "// supersede §sec1, which the store already records\n",
+    )
+    .unwrap();
+    // A declared XML document that does not parse.
+    fs::write(
+        ws.join("src/broken.scxml"),
+        "<scxml xmlns:x=\"http://example/ext\">\n<state x:req=\"REQ-1\">\n</scxml>\n",
+    )
+    .unwrap();
+}
+
 /// Write the two-site tree of `fx` into `ws`, with `resolver` as the only
 /// `[plugins]` content.
 fn write_language_workspace(ws: &Path, resolver: &str, fx: &LangFixture, cpp_case: bool) {
@@ -495,9 +538,10 @@ fn the_same_tree_with_a_resolver_judges_and_names_the_drift() {
 /// Law 2's walk holds over whatever violations its tree produces, and that tree
 /// produces one kind. The generalised claim — a citation carries exactly the
 /// evidence its axis declares — is only as wide as the population it is asked
-/// about, so this is the tree that provokes all three: a drifted symbol, a
-/// citation of a section that binds somebody else, and a comment that restates
-/// a fact instead of pointing at it.
+/// about, so this is the tree that provokes all of them: a drifted symbol, a
+/// citation of a section that binds somebody else, a comment that restates a
+/// fact instead of pointing at it, and (Round 1324) a declared XML document
+/// that does not parse.
 ///
 /// AND BOTH SURFACES, because a consumer reads one of them: `--json` for the
 /// wire and the plain run for the line a person sees. The R1045 defect was a
@@ -506,26 +550,7 @@ fn the_same_tree_with_a_resolver_judges_and_names_the_drift() {
 fn every_axis_that_reads_something_publishes_it_through_the_binary() {
     let tmp = TempDir::new().unwrap();
     let ws = tmp.path();
-    write_workspace(ws, RUST_RESOLVER, false);
-    // The prose axis is opt-in, and this is the one config line that turns it
-    // on. Appended rather than rebuilt so the tree stays law 2's tree.
-    let toml = fs::read_to_string(ws.join("mnemosyne.toml")).unwrap();
-    fs::write(
-        ws.join("mnemosyne.toml"),
-        toml.replace(
-            "comment_only = true",
-            "comment_only = true\nseverity_prose_fact_assertion = \"reject\"",
-        ),
-    )
-    .unwrap();
-    // Cites a section that binds `src/drift.rs` and not this file.
-    fs::write(ws.join("src/stray.rs"), "// §sec1 cited from nowhere\n").unwrap();
-    // Restates in prose a fact the store homes.
-    fs::write(
-        ws.join("src/restated.rs"),
-        "// supersede §sec1, which the store already records\n",
-    )
-    .unwrap();
+    tree_that_provokes_every_evidence_axis(ws);
 
     let (out, json) = validate(ws);
     let violations = json["violations"].as_array().expect("violations array");
@@ -569,6 +594,22 @@ fn every_axis_that_reads_something_publishes_it_through_the_binary() {
         (&serde_json::json!("alpha"), &serde_json::json!(["beta"])),
         "{}",
         drift[0]
+    );
+
+    // ---- inventory_document_unreadable names the parser's reason ----
+    let unreadable = of_kind("inventory_document_unreadable");
+    assert_eq!(
+        unreadable.len(),
+        1,
+        "one declared document that does not parse: {violations:?}"
+    );
+    assert!(
+        unreadable[0]["parse_error"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty()),
+        "a document the gate could not read must say why, or the consumer re-parses it \
+         to find out: {}",
+        unreadable[0]
     );
 
     // ---- and the equality holds over the whole population, derived ----
@@ -627,6 +668,7 @@ fn every_axis_that_reads_something_publishes_it_through_the_binary() {
         "the section binds `src/drift.rs`",
         "the prose asserts `supersede`",
         "code says `alpha`, store records `beta`",
+        "the document does not parse: ",
     ] {
         assert!(
             text.contains(needle),
@@ -1424,26 +1466,7 @@ fn the_published_axis_contract_is_the_one_a_real_scan_obeys() {
 
     // ---- THE ORACLE: a real scan, judged against what the report published ----
     let ws = TempDir::new().unwrap();
-    write_workspace(ws.path(), RUST_RESOLVER, false);
-    let toml = fs::read_to_string(ws.path().join("mnemosyne.toml")).unwrap();
-    fs::write(
-        ws.path().join("mnemosyne.toml"),
-        toml.replace(
-            "comment_only = true",
-            "comment_only = true\nseverity_prose_fact_assertion = \"reject\"",
-        ),
-    )
-    .unwrap();
-    fs::write(
-        ws.path().join("src/stray.rs"),
-        "// §sec1 cited from nowhere\n",
-    )
-    .unwrap();
-    fs::write(
-        ws.path().join("src/restated.rs"),
-        "// supersede §sec1, which the store already records\n",
-    )
-    .unwrap();
+    tree_that_provokes_every_evidence_axis(ws.path());
     let (_, scan) = validate(ws.path());
     let violations = scan["violations"].as_array().expect("violations array");
 

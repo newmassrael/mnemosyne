@@ -1,13 +1,13 @@
-//! An annotation inside a document cites every inventory id its marker
-//! encloses — through the real `validate-code-refs`.
+//! An XML document cites the inventory ids its declared annotation attribute
+//! lists — read AS XML, through the real `validate-code-refs`.
 //!
-//! Round 1322 read a marker as a prefix followed by the section-path tail
-//! class, so `req="REQ-4.2.1 REQ-7"` cited `REQ-4.2.1` and never `REQ-7`, while
-//! the adopter's own state-machine documents put two ids in one attribute on
-//! seven of twenty-five annotated lines. A marker is now a pair of delimiters
-//! and what it encloses is a list: a deprecated id second in its list is
-//! reported, an id on the line after its marker is reported on that line, and
-//! a marker that never closes is reported instead of read as citing nothing.
+//! Round 1322 read the adopter's annotation as a prefix followed by a character
+//! class and so read the first id of a list; Round 1323 read it as text between
+//! two delimiters, a second grammar for an attribute the document's own XML
+//! already defines. The axis now parses the document, so the attribute is found
+//! by its namespace under any prefix, its value is decoded as XML decodes it, a
+//! comment, another namespace and a Markdown example are not citations, and a
+//! document that does not parse is reported with the parser's reason.
 
 use serde_json::Value;
 use std::fs;
@@ -27,13 +27,14 @@ fn run(workspace: &Path, args: &[&str]) -> std::process::Output {
         .expect("cli exec")
 }
 
-/// The declaration every marker test here uses: an XML attribute `req="…"`.
-const REQ_ATTRIBUTE: &str = r#"inventory_markers = [{ open = "req=\"", close = "\"" }]"#;
+/// The declaration every attribute test here uses: `req` in
+/// `http://example/ext`, read in `.scxml` documents.
+const REQ_ATTRIBUTE: &str = r#"inventory_attributes = [{ namespace = "http://example/ext", name = "req", extensions = ["scxml"] }]"#;
 
-/// A workspace declaring `axis` over `doc/model.scxml`, whose text is
-/// `document`, with one active entry (`REQ-4.2.1`) and one deprecated entry
-/// (`REQ-7`) registered.
-fn workspace(axis: &str, document: &str) -> TempDir {
+/// A workspace declaring `axis`, with each `(name, text)` of `documents`
+/// written under `doc/`, and one active entry (`REQ-4.2.1`) and one deprecated
+/// entry (`REQ-7`) registered.
+fn workspace(axis: &str, documents: &[(&str, &str)]) -> TempDir {
     let ws = TempDir::new().expect("tempdir");
     fs::write(
         ws.path().join("mnemosyne.toml"),
@@ -70,13 +71,14 @@ fn workspace(axis: &str, document: &str) -> TempDir {
         );
     }
     fs::create_dir_all(ws.path().join("doc")).expect("doc dir");
-    fs::write(ws.path().join("doc/model.scxml"), document).expect("document");
+    for (name, text) in documents {
+        fs::write(ws.path().join("doc").join(name), text).expect("document");
+    }
     ws
 }
 
-/// Whether the gate passed, and every violation it reported as
-/// `(kind, entry_id, line)`, sorted.
-fn reported(workspace: &Path) -> (bool, Vec<(String, String, u64)>) {
+/// Whether the gate passed, and the JSON report it printed.
+fn report(workspace: &Path) -> (bool, Value) {
     let out = run(workspace, &["validate-code-refs", "--json"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     let report: Value = stdout
@@ -89,7 +91,12 @@ fn reported(workspace: &Path) -> (bool, Vec<(String, String, u64)>) {
                 String::from_utf8_lossy(&out.stderr)
             )
         });
-    let mut violations: Vec<(String, String, u64)> = report["violations"]
+    (out.status.success(), report)
+}
+
+/// Every violation in `report` as `(kind, entry_id, line)`, sorted.
+fn violations(report: &Value) -> Vec<(String, String, u64)> {
+    let mut found: Vec<(String, String, u64)> = report["violations"]
         .as_array()
         .expect("a violations array")
         .iter()
@@ -101,70 +108,101 @@ fn reported(workspace: &Path) -> (bool, Vec<(String, String, u64)>) {
             )
         })
         .collect();
-    violations.sort();
-    (out.status.success(), violations)
+    found.sort();
+    found
 }
 
+/// The deprecated id is written through a character reference under a prefix
+/// other than the adopter's, the missing id sits on the line after its
+/// attribute opens, and the same ids in another namespace, in a comment and in
+/// a Markdown example are not citations.
 #[test]
-fn a_marker_cites_every_id_it_encloses() {
+fn an_attribute_cites_every_id_its_value_lists_as_xml_reads_it() {
     let ws = workspace(
         REQ_ATTRIBUTE,
-        "<scxml>\n  <state id=\"idle\" req=\"REQ-4.2.1 REQ-7\"/>\n  \
-         <state id=\"new\" req=\"\n    REQ-999\"/>\n</scxml>\n",
+        &[
+            (
+                "model.scxml",
+                "<scxml xmlns:x=\"http://example/ext\">\n\
+                 <state id=\"idle\" x:req=\"REQ-4.2.1 REQ&#45;7\"/>\n\
+                 <state id=\"new\" x:req='\n\
+                 REQ-999'/>\n\
+                 <state xmlns:y=\"urn:other\" y:req=\"REQ-1000\"/>\n\
+                 <!-- <state x:req=\"REQ-1001\"/> -->\n\
+                 </scxml>\n",
+            ),
+            (
+                "README.md",
+                "A model annotates <state x:req=\"REQ-1002\"/>.\n",
+            ),
+        ],
     );
-    let (passed, violations) = reported(ws.path());
+    let (passed, report) = report(ws.path());
+    let found = violations(&report);
     assert!(
         !passed,
-        "a deprecated and a missing citation at reject severity fail the gate: {violations:?}"
+        "a deprecated and a missing citation at reject severity fail the gate: {found:?}"
     );
     assert_eq!(
-        violations,
+        found,
         vec![
             ("inventory_deprecated".to_string(), "REQ-7".to_string(), 2),
             ("inventory_missing".to_string(), "REQ-999".to_string(), 4),
         ],
-        "the deprecated id second in its list and the missing id on the line after its marker \
-         are reported where they stand, and the active id is not"
+        "the decoded id and the id on the line after its attribute are reported where \
+         they stand, and nothing another namespace, a comment or a Markdown file holds is"
     );
 }
 
-/// A marker whose close never follows is reported at the line it opened on —
-/// and the deprecated id inside it is not, because an unclosed list has no end
-/// and none of its ids is read.
+/// A declared document that does not parse is reported for the attribute it
+/// was to be read for, with the parser's reason — and the deprecated id inside
+/// it is not, because nothing in an unreadable document was read.
 #[test]
-fn a_marker_that_never_closes_is_reported() {
+fn a_document_that_does_not_parse_is_reported_with_the_reason() {
     let ws = workspace(
         REQ_ATTRIBUTE,
-        "<scxml>\n  <state id=\"idle\" req=\"REQ-7/>\n</scxml>\n",
+        &[(
+            "model.scxml",
+            "<scxml xmlns:x=\"http://example/ext\">\n<state x:req=\"REQ-7\">\n</scxml>\n",
+        )],
     );
-    let (passed, violations) = reported(ws.path());
+    let (passed, report) = report(ws.path());
+    let found = violations(&report);
     assert!(
         !passed,
-        "an unclosed marker at reject severity fails the gate: {violations:?}"
+        "an unreadable document at reject severity fails the gate: {found:?}"
     );
     assert_eq!(
-        violations,
-        vec![(
-            "inventory_marker_unclosed".to_string(),
-            "req=\"".to_string(),
-            2
-        )],
-        "the marker is reported where it opened, not read as citing nothing"
+        found
+            .iter()
+            .map(|(kind, entry, _)| (kind.as_str(), entry.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("inventory_document_unreadable", "{http://example/ext}req")],
+        "the document is reported for its attribute, not read as citing nothing"
+    );
+    assert!(
+        report["violations"][0]["parse_error"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty()),
+        "the report says why the document did not parse: {report}"
     );
 }
 
 /// CONTROL: the same annotation under the path axis keeps the attribute's
-/// syntax in the id, so even the active entry is reported — the shape a
-/// delimited marker exists for.
+/// syntax in the id, so even the active entry is reported — the shape the
+/// attribute axis exists for.
 #[test]
 fn the_same_annotation_under_the_path_axis_misses_the_active_entry() {
     let ws = workspace(
         r#"inventory_path_prefixes = ["req=\""]"#,
-        "<scxml>\n  <state id=\"idle\" req=\"REQ-4.2.1\"/>\n</scxml>\n",
+        &[(
+            "model.scxml",
+            "<scxml>\n<state id=\"idle\" req=\"REQ-4.2.1\"/>\n</scxml>\n",
+        )],
     );
-    let (_, violations) = reported(ws.path());
+    let (_, report) = report(ws.path());
     assert_eq!(
-        violations,
+        violations(&report),
         vec![(
             "inventory_missing".to_string(),
             "req=\"REQ-4.2.1".to_string(),

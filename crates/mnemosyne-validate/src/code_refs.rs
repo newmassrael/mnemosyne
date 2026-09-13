@@ -74,7 +74,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use mnemosyne_config::{
-    InventoryMarker, InventoryMarkers, OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig,
+    InventoryAttribute, OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig,
 };
 use mnemosyne_core::DecisionStatus;
 use serde::Serialize;
@@ -144,6 +144,11 @@ pub enum CitationEvidence {
     /// so a consumer reading a flagged line otherwise has to guess which of its
     /// words tripped it, in whichever of the list's two languages.
     AssertionVerb { verb: String },
+    /// [`ViolationKind::InventoryDocumentUnreadable`] — the XML parser's reason
+    /// a declared document did not parse, as the parser states it (Round 1324).
+    /// The attribute the document was to be read for is the entry id; without
+    /// the reason a consumer re-parses the file to learn what the gate saw.
+    ParseError { reason: String },
 }
 
 /// WHICH EVIDENCE, named without the value — the type [`AuditAxis::evidence`]
@@ -161,6 +166,8 @@ pub enum EvidenceShape {
     SectionBindings,
     /// [`CitationEvidence::AssertionVerb`].
     AssertionVerb,
+    /// [`CitationEvidence::ParseError`].
+    ParseError,
 }
 
 impl EvidenceShape {
@@ -181,6 +188,7 @@ impl EvidenceShape {
             Self::SymbolDrift => &["found", "expected"],
             Self::SectionBindings => &["bound_files"],
             Self::AssertionVerb => &["assertion_verb"],
+            Self::ParseError => &["parse_error"],
         }
     }
 
@@ -198,6 +206,7 @@ impl EvidenceShape {
             Self::SymbolDrift => "symbol_drift",
             Self::SectionBindings => "section_bindings",
             Self::AssertionVerb => "assertion_verb",
+            Self::ParseError => "parse_error",
         }
     }
 }
@@ -211,6 +220,7 @@ impl CitationEvidence {
             Self::SymbolDrift(_) => EvidenceShape::SymbolDrift,
             Self::SectionBindings { .. } => EvidenceShape::SectionBindings,
             Self::AssertionVerb { .. } => EvidenceShape::AssertionVerb,
+            Self::ParseError { .. } => EvidenceShape::ParseError,
         }
     }
 
@@ -648,7 +658,7 @@ audit_axes!(
     SymbolMismatch,
     InventoryMissing,
     InventoryDeprecated,
-    InventoryMarkerUnclosed,
+    InventoryDocumentUnreadable,
     ProseFactAssertion,
     BindingUnbacked,
     ImplementationMissing,
@@ -683,7 +693,7 @@ impl AuditAxis {
             Self::SymbolMismatch => "symbol_mismatch",
             Self::InventoryMissing => "inventory_missing",
             Self::InventoryDeprecated => "inventory_deprecated",
-            Self::InventoryMarkerUnclosed => "inventory_marker_unclosed",
+            Self::InventoryDocumentUnreadable => "inventory_document_unreadable",
             Self::ProseFactAssertion => "prose_fact_assertion",
             Self::BindingUnbacked => "binding_unbacked",
             Self::ImplementationMissing => "impl_missing",
@@ -704,7 +714,7 @@ impl AuditAxis {
             | Self::SymbolMismatch
             | Self::InventoryMissing
             | Self::InventoryDeprecated
-            | Self::InventoryMarkerUnclosed
+            | Self::InventoryDocumentUnreadable
             | Self::ProseFactAssertion => AuditSide::Citation,
             Self::BindingUnbacked
             | Self::ImplementationMissing
@@ -744,9 +754,9 @@ impl AuditAxis {
             | Self::SectionMissing
             | Self::InventoryMissing
             | Self::InventoryDeprecated => EvidenceShape::Nothing,
-            // The marker that opened and never closed is `citation.entry_id`,
-            // and a list with no end has no id in it to read.
-            Self::InventoryMarkerUnclosed => EvidenceShape::Nothing,
+            // The parser's reason is what this axis read at the document;
+            // without it a consumer re-parses the file to learn what the gate saw.
+            Self::InventoryDocumentUnreadable => EvidenceShape::ParseError,
             // Spec-side: not a citation variant at all.
             Self::BindingUnbacked
             | Self::ImplementationMissing
@@ -1040,7 +1050,9 @@ impl CodeRefViolation {
                 ViolationKind::CitationUnbound => AuditAxis::CitationUnbound,
                 ViolationKind::InventoryMissing => AuditAxis::InventoryMissing,
                 ViolationKind::InventoryDeprecated => AuditAxis::InventoryDeprecated,
-                ViolationKind::InventoryMarkerUnclosed => AuditAxis::InventoryMarkerUnclosed,
+                ViolationKind::InventoryDocumentUnreadable => {
+                    AuditAxis::InventoryDocumentUnreadable
+                }
                 ViolationKind::SymbolMismatch => AuditAxis::SymbolMismatch,
                 ViolationKind::ProseFactAssertion => AuditAxis::ProseFactAssertion,
             },
@@ -1077,7 +1089,7 @@ impl CodeRefViolation {
                 ViolationKind::Decay => DefectClass::Decay,
                 ViolationKind::InventoryMissing
                 | ViolationKind::InventoryDeprecated
-                | ViolationKind::InventoryMarkerUnclosed => DefectClass::Inventory,
+                | ViolationKind::InventoryDocumentUnreadable => DefectClass::Inventory,
                 ViolationKind::ProseFactAssertion => DefectClass::ProseFactAssertion,
             },
             CodeRefViolation::BindingUnbacked { .. } => DefectClass::Binding,
@@ -1139,6 +1151,9 @@ impl CodeRefViolation {
                     }
                     Some(CitationEvidence::AssertionVerb { verb }) => {
                         obj.insert("assertion_verb".into(), Value::String(verb.clone()));
+                    }
+                    Some(CitationEvidence::ParseError { reason }) => {
+                        obj.insert("parse_error".into(), Value::String(reason.clone()));
                     }
                     None => {}
                 }
@@ -1269,6 +1284,9 @@ impl std::fmt::Display for CodeRefViolation {
                     CitationEvidence::AssertionVerb { verb } => {
                         format!("the prose asserts `{verb}`")
                     }
+                    CitationEvidence::ParseError { reason } => {
+                        format!("the document does not parse: {reason}")
+                    }
                 };
                 write!(
                     f,
@@ -1377,7 +1395,7 @@ pub enum DefectClass {
     /// Cascade scan informational surface (Decay).
     Decay,
     /// Round 275 — Inventory axis violations (InventoryMissing,
-    /// InventoryDeprecated, and since Round 1323 InventoryMarkerUnclosed). Distinct from Hallucination because the
+    /// InventoryDeprecated, and since Round 1324 InventoryDocumentUnreadable). Distinct from Hallucination because the
     /// inventory genre has a different lifecycle vocabulary (Active /
     /// Deprecated / Reserved) and a separate severity knob
     /// (`severity_inventory`) for per-project tuning.
@@ -1435,14 +1453,14 @@ pub enum ViolationKind {
     /// `Reserved` status does not trigger this — Reserved is "set aside,
     /// cite permitted" by R275 design.
     InventoryDeprecated,
-    /// Round 1323 — an inventory citation MARKER opened and its close never
-    /// followed, so the list of ids it encloses has no end and none of them was
-    /// read. `entry_id` carries the open marker and `line` the line it opened
-    /// on. Reported rather than skipped, because a marker read as citing nothing
-    /// is indistinguishable from a document that cites nothing. Judged under
-    /// `severity_inventory`, and not suppressed by the orphan ledger, whose rows
-    /// name an id — an unclosed marker has none.
-    InventoryMarkerUnclosed,
+    /// Round 1324 — a document an inventory ATTRIBUTE is declared for did not
+    /// parse as XML, so none of its attributes was read. `entry_id` carries the
+    /// attribute's expanded name, `line` the line the parser stopped at, and the
+    /// evidence the parser's reason. Reported rather than skipped, because a
+    /// document read as citing nothing is indistinguishable from one that cites
+    /// nothing. Judged under `severity_inventory`, and not suppressed by the
+    /// orphan ledger, whose rows name an id — an unreadable document has none.
+    InventoryDocumentUnreadable,
     /// Round 306 — RFC-002 FR-3 symbol-level enforcement.
     ///
     /// At a `§<id>` citation site (`file`:`line` carrying the cite), the
@@ -2856,124 +2874,117 @@ pub fn extract_inventory_path_citations(
     extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::SectionPath)
 }
 
-/// Extract the inventory citations a declared MARKER encloses (Round 1323).
+/// Extract the inventory citations the declared XML ATTRIBUTES carry in one
+/// document (Round 1324).
 ///
-/// A marker is the pair of delimiters an adopter writes inside a document it
-/// does not rewrite — `req="REQ-4.2.1 REQ-7"` in an XML attribute — and what it
-/// encloses is a whitespace-separated LIST of inventory ids. There is no tail
-/// character class: an inventory id is what the store accepts as one, non-empty
-/// with no whitespace, so whitespace is exactly what separates two ids and
-/// every id the store can hold is read whole. Round 1322 read the marker's tail
-/// with the section-path class instead, which read the first id of a list and
-/// never the rest.
+/// A document whose extension no declared attribute names is not read at all.
+/// One that is, is parsed as XML — with `roxmltree`, the reader the adopter's
+/// own parser uses — and every element's attribute of a declared namespace URI
+/// and local name is read, under whatever prefix the document binds that
+/// namespace to. Its value is the one XML defines — entities decoded, either
+/// quote, nothing from a comment, a CDATA section or element text — and it is
+/// a whitespace-separated list of inventory ids: an id is what the store
+/// accepts as one, non-empty with no whitespace, so whitespace is exactly what
+/// separates two.
 ///
-/// The enclosed list may cross lines, as an XML attribute value may, and each
-/// id carries the line it starts on. A marker whose close never follows is
-/// returned in [`InventoryCitations::unclosed`] at the line it opened on and
-/// none of its ids is read — a list with no end cannot be delimited, and
-/// reading nothing there silently would look exactly like a document citing
-/// nothing. An empty marker cites nothing.
+/// Each id carries the line its text starts on, found by walking the
+/// attribute's raw value in order; an id the document spelled through a
+/// character reference carries the line where the text after the previous id
+/// begins. A document that does not parse is returned in
+/// [`InventoryCitations::unreadable`] once per declared attribute it was to be
+/// read for, with the parser's reason and the line it stopped at — none of its
+/// attributes was read, and reading nothing there silently would look exactly
+/// like a document citing nothing.
 ///
-/// The open follows the other axes' rules: an open that begins with a word
-/// character must not continue a word (`xreq="` is not `req="`), an open inside
-/// a backtick code span on its line is an example rather than a citation, and
-/// where two opens begin at one place the longer is read.
-pub fn extract_inventory_marker_citations(
-    markers: &InventoryMarkers,
-    content: &str,
+/// Round 1323 read the same annotation as text between two delimiters, which
+/// could not decode an entity, missed the attribute under another prefix, and
+/// read an example inside a comment as a citation.
+pub fn extract_inventory_attribute_citations(
+    attributes: &[InventoryAttribute],
+    file: &Path,
+    raw: &str,
 ) -> InventoryCitations {
     let mut read = InventoryCitations::default();
-    if markers.is_empty() {
+    let declared: Vec<&InventoryAttribute> = attributes.iter().filter(|a| a.reads(file)).collect();
+    if declared.is_empty() {
         return read;
     }
-    let mut ordered: Vec<&InventoryMarker> = markers.iter().collect();
-    ordered.sort_by_key(|marker| std::cmp::Reverse(marker.open().len()));
-
+    let document = match roxmltree::Document::parse(raw) {
+        Ok(document) => document,
+        Err(error) => {
+            for attribute in declared {
+                read.unreadable.push(UnreadableDocument {
+                    line: line_of(error.pos()),
+                    attribute: attribute.expanded_name(),
+                    reason: error.to_string(),
+                });
+            }
+            return read;
+        }
+    };
     let mut cites: BTreeSet<(usize, String)> = BTreeSet::new();
-    let mut line = 1usize;
-    let mut in_backtick = false;
-    let mut at = 0usize;
-    while let Some(c) = content[at..].chars().next() {
-        match c {
-            '\n' => {
-                line += 1;
-                in_backtick = false;
-                at += 1;
+    for element in document.descendants().filter(roxmltree::Node::is_element) {
+        for found in element.attributes() {
+            let is_declared = declared
+                .iter()
+                .any(|a| a.name() == found.name() && a.namespace() == found.namespace());
+            if !is_declared {
                 continue;
             }
-            '`' => {
-                in_backtick = !in_backtick;
-                at += 1;
-                continue;
-            }
-            _ => {}
-        }
-        let opened = if in_backtick {
-            None
-        } else {
-            ordered.iter().find(|marker| {
-                content[at..].starts_with(marker.open())
-                    && opens_on_a_word_boundary(&content[..at], marker.open())
-            })
-        };
-        let Some(marker) = opened else {
-            at += c.len_utf8();
-            continue;
-        };
-        let list_start = at + marker.open().len();
-        let Some(list_len) = content[list_start..].find(marker.close()) else {
-            read.unclosed.push((line, marker.open().to_string()));
-            at = list_start;
-            continue;
-        };
-        let list = &content[list_start..list_start + list_len];
-        let mut id_start: Option<(usize, usize)> = None;
-        for (offset, ch) in list.char_indices() {
-            if ch.is_whitespace() {
-                if let Some((from, id_line)) = id_start.take() {
-                    cites.insert((id_line, list[from..offset].to_string()));
-                }
-                if ch == '\n' {
-                    line += 1;
-                }
-            } else if id_start.is_none() {
-                id_start = Some((offset, line));
+            let value_range = found.range_value();
+            let raw_value = &raw[value_range.clone()];
+            let mut cursor = 0usize;
+            for id in found.value().split_whitespace() {
+                let at = match raw_value[cursor..].find(id) {
+                    Some(offset) => {
+                        cursor += offset + id.len();
+                        cursor - id.len()
+                    }
+                    None => raw_value.len() - raw_value[cursor..].trim_start().len(),
+                };
+                let line = line_of(document.text_pos_at(value_range.start + at));
+                cites.insert((line, id.to_string()));
             }
         }
-        if let Some((from, id_line)) = id_start {
-            cites.insert((id_line, list[from..].to_string()));
-        }
-        at = list_start + list_len + marker.close().len();
-        in_backtick = false;
     }
     read.cites = cites.into_iter().collect();
     read
 }
 
-/// Whether an open that begins right after `before` does not continue a word.
-/// Only an open that itself begins with a word character can continue one.
-fn opens_on_a_word_boundary(before: &str, open: &str) -> bool {
-    let is_word = |c: char| c.is_alphanumeric() || c == '_';
-    !open.starts_with(is_word) || !before.chars().next_back().is_some_and(is_word)
+/// A parser position's row as a report line.
+fn line_of(position: roxmltree::TextPos) -> usize {
+    usize::try_from(position.row).unwrap_or(usize::MAX)
 }
 
-/// What the inventory axes read in one text (Round 1323).
+/// A declared document the attribute axis could not read (Round 1324).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadableDocument {
+    /// The line the parser stopped at.
+    pub line: usize,
+    /// The expanded name of the attribute the document was to be read for.
+    pub attribute: String,
+    /// The parser's reason, as the parser states it.
+    pub reason: String,
+}
+
+/// What the inventory axes read in one file (Round 1324).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InventoryCitations {
     /// Every citation, as `(line, inventory id)`, sorted and deduplicated — a
     /// citation two axes both read surfaces once.
     pub cites: Vec<(usize, String)>,
-    /// Every marker whose close never follows, as `(line, open)`. Only the
-    /// marker axis can leave one.
-    pub unclosed: Vec<(usize, String)>,
+    /// Every declared document that did not parse, once per attribute it was
+    /// to be read for. Only the attribute axis can leave one.
+    pub unreadable: Vec<UnreadableDocument>,
 }
 
 /// The inventory citation axes a workspace declares, read as ONE thing.
 ///
-/// Two prefix lists and a marker list, three shapes, one lifecycle. Until Round
-/// 1322 the scan and the decay scan each chained the axes by hand and every
-/// caller threaded the lists as separate arguments, so an axis added to one
-/// reader was an axis another reader did not see. Both readers now take this.
+/// Two prefix lists and an attribute list, three shapes, one lifecycle. Until
+/// Round 1322 the scan and the decay scan each chained the axes by hand and
+/// every caller threaded the lists as separate arguments, so an axis added to
+/// one reader was an axis another reader did not see. Both readers now take
+/// this.
 #[derive(Debug, Clone, Copy)]
 pub struct InventoryCitationAxes<'a> {
     /// Opaque-id prefixes (`inventory_prefixes`); the prefix is part of the id.
@@ -2981,8 +2992,9 @@ pub struct InventoryCitationAxes<'a> {
     /// Section-path prefixes (`inventory_path_prefixes`); the prefix is part of
     /// the id.
     pub path: &'a [String],
-    /// Markers (`inventory_markers`); the ids are what each marker encloses.
-    pub markers: &'a InventoryMarkers,
+    /// XML attributes (`inventory_attributes`); a declared document is parsed
+    /// and the ids are what each attribute's value lists.
+    pub attributes: &'a [InventoryAttribute],
 }
 
 impl<'a> InventoryCitationAxes<'a> {
@@ -2991,19 +3003,21 @@ impl<'a> InventoryCitationAxes<'a> {
         InventoryCitationAxes {
             opaque: &config.inventory_prefixes,
             path: &config.inventory_path_prefixes,
-            markers: &config.inventory_markers,
+            attributes: &config.inventory_attributes,
         }
     }
 
     /// Whether no axis is declared, so there is nothing to read.
     pub fn is_empty(&self) -> bool {
-        self.opaque.is_empty() && self.path.is_empty() && self.markers.is_empty()
+        self.opaque.is_empty() && self.path.is_empty() && self.attributes.is_empty()
     }
 
-    /// Every inventory citation in `content` under any declared axis, and every
-    /// marker that opened there and never closed.
-    pub fn extract(&self, content: &str) -> InventoryCitations {
-        let mut read = extract_inventory_marker_citations(self.markers, content);
+    /// Every inventory citation in one file under any declared axis, and every
+    /// declared document there that did not parse. The prefix axes read
+    /// `content`, the text `comment_only` leaves; the attribute axis reads
+    /// `raw`, because an XML parser needs the whole document.
+    pub fn extract(&self, file: &Path, raw: &str, content: &str) -> InventoryCitations {
+        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);
         read.cites
             .extend(extract_inventory_citations(self.opaque, content));
         read.cites
@@ -4377,7 +4391,7 @@ impl SetEqualityValidator {
             | AuditAxis::SymbolMismatch
             | AuditAxis::InventoryMissing
             | AuditAxis::InventoryDeprecated
-            | AuditAxis::InventoryMarkerUnclosed
+            | AuditAxis::InventoryDocumentUnreadable
             | AuditAxis::BindingUnbacked
             | AuditAxis::ImplementationMissing => false,
         }
@@ -4720,7 +4734,7 @@ impl SetEqualityValidator {
             // InventoryCitation` suppresses both. Every declared inventory
             // axis — opaque id, section path, marker — is read as one, and a
             // citation two axes both read surfaces once.
-            let inventory_read = inventory_axes.extract(&content);
+            let inventory_read = inventory_axes.extract(&abs, &raw, &content);
             for (line, inventory_id) in inventory_read.cites {
                 let kind = match snapshot.inventory.get(&inventory_id).copied() {
                     None if verdicts.judges(AuditAxis::InventoryMissing) => {
@@ -4752,19 +4766,21 @@ impl SetEqualityValidator {
                     });
                 }
             }
-            // A marker whose close never follows (Round 1323): its list has no
-            // end, so none of its ids was read above, and that is reported
-            // rather than left looking like a document that cites nothing.
-            if verdicts.judges(AuditAxis::InventoryMarkerUnclosed) {
-                for (line, open) in inventory_read.unclosed {
+            // A declared document that does not parse (Round 1324): none of its
+            // attributes was read above, and that is reported with the parser's
+            // reason rather than left looking like a document that cites nothing.
+            if verdicts.judges(AuditAxis::InventoryDocumentUnreadable) {
+                for unreadable in inventory_read.unreadable {
                     violations.push(CodeRefViolation::Citation {
                         citation: Citation {
                             file: rel.clone(),
-                            line,
-                            entry_id: open,
+                            line: unreadable.line,
+                            entry_id: unreadable.attribute,
                         },
-                        kind: ViolationKind::InventoryMarkerUnclosed,
-                        evidence: None,
+                        kind: ViolationKind::InventoryDocumentUnreadable,
+                        evidence: Some(CitationEvidence::ParseError {
+                            reason: unreadable.reason,
+                        }),
                     });
                 }
             }
@@ -5335,16 +5351,18 @@ pub fn scan_inventory_decay(
             Ok(c) => c,
             Err(_) => continue,
         };
-        let content = if comment_only {
-            strip_to_comments(&raw, comment_syntax_for(&abs))
+        // `raw` outlives `content` because the attribute axis parses the whole
+        // document, which comment stripping would leave unparseable.
+        let content: std::borrow::Cow<'_, str> = if comment_only {
+            std::borrow::Cow::Owned(strip_to_comments(&raw, comment_syntax_for(&abs)))
         } else {
-            raw
+            std::borrow::Cow::Borrowed(&raw)
         };
         let rel = abs
             .strip_prefix(workspace_root)
             .map(|p| p.to_path_buf())
             .unwrap_or(abs.clone());
-        for (line, id) in axes.extract(&content).cites {
+        for (line, id) in axes.extract(&abs, &raw, &content).cites {
             if id == inventory_id {
                 hits.push(Citation {
                     file: rel.clone(),
@@ -5767,7 +5785,7 @@ mod tests {
                 external_section_prefixes_bare: external_section_prefixes_bare.to_vec(),
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: inventory_path_prefixes.to_vec(),
-                inventory_markers: InventoryMarkers::default(),
+                inventory_attributes: Vec::new(),
                 section_namespace: section_namespace.map(String::from),
             },
             entry_id_prefix: prefix.to_string(),
@@ -6237,7 +6255,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_markers: InventoryMarkers::default(),
+                inventory_attributes: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6325,6 +6343,12 @@ mod tests {
         .unwrap();
         // Cites an id the store does not hold — an axis that reads nothing.
         std::fs::write(src.join("hallucinated.rs"), "// §404 cite of nothing\n").unwrap();
+        // A declared XML document that does not parse — the parser's reason.
+        std::fs::write(
+            src.join("unreadable.scxml"),
+            "<scxml xmlns:x=\"http://example/ext\">\n<state x:req=\"REQ-1\">\n</scxml>\n",
+        )
+        .unwrap();
 
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");
         let store = build_store_with_impl(&store_path, "39", "src/drift.rs", Some("beta"));
@@ -6354,7 +6378,12 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_markers: InventoryMarkers::default(),
+                inventory_attributes: vec![InventoryAttribute::new(
+                    Some("http://example/ext".to_string()),
+                    "req",
+                    vec!["scxml".to_string()],
+                )
+                .expect("a declaration")],
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6427,6 +6456,30 @@ mod tests {
             );
         }
 
+        // ---- inventory_document_unreadable: the parser's reason ----
+        let unreadable = wire("inventory_document_unreadable");
+        assert_eq!(
+            unreadable.len(),
+            1,
+            "the fixture must reach the unreadable-document axis exactly once: {violations:?}"
+        );
+        let reason = unreadable[0]
+            .get("parse_error")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_else(|| {
+                panic!(
+                    "a document the gate could not read must say why: {}",
+                    unreadable[0]
+                )
+            });
+        assert!(!reason.is_empty(), "{}", unreadable[0]);
+        for line in lines("inventory_document_unreadable") {
+            assert!(
+                line.contains(reason),
+                "the human line must carry the reason too: {line}"
+            );
+        }
+
         // ---- symbol_mismatch: Round 1158's pair, unchanged ----
         let drift = wire("symbol_mismatch");
         assert_eq!(drift.len(), 1, "one drift: {violations:?}");
@@ -6441,7 +6494,13 @@ mod tests {
             "the fixture must reach an axis that reads NOTHING, or absence is \
              never exercised: {violations:?}"
         );
-        for key in ["found", "expected", "bound_files", "assertion_verb"] {
+        for key in [
+            "found",
+            "expected",
+            "bound_files",
+            "assertion_verb",
+            "parse_error",
+        ] {
             assert_eq!(
                 missing[0].get(key),
                 None,
@@ -6569,7 +6628,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_markers: InventoryMarkers::default(),
+                inventory_attributes: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6843,7 +6902,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_markers: InventoryMarkers::default(),
+                inventory_attributes: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -8495,102 +8554,138 @@ mod tests {
         );
     }
 
-    /// The marker the marker-axis tests declare: an XML attribute `req="…"`.
-    fn req_attribute() -> InventoryMarkers {
-        InventoryMarkers::new(vec![InventoryMarker::new("req=\"", "\"").expect("a marker")])
-            .expect("one marker")
+    /// The attribute the attribute-axis tests declare: `req` in
+    /// `http://example/ext`, read in `.scxml` documents.
+    fn req_attribute() -> Vec<InventoryAttribute> {
+        vec![InventoryAttribute::new(
+            Some("http://example/ext".to_string()),
+            "req",
+            vec!["scxml".to_string()],
+        )
+        .expect("a declaration")]
     }
 
-    /// Round 1323 — a MARKER encloses a LIST: every id between its delimiters
-    /// is read, on the line it starts, and neither delimiter is part of one. The
-    /// control is the same annotation under the path axis, which keeps the
-    /// attribute's syntax in the id.
+    /// Round 1324 — an attribute is read BY ITS NAMESPACE: under whichever
+    /// prefix a document binds it to, and never under the same prefix bound to
+    /// another namespace. Every id its value lists is read, on the line that
+    /// id's text starts.
     #[test]
-    fn a_marker_reads_every_id_it_encloses() {
-        let content = "<state id=\"idle\" req=\"REQ-4.2.1 REQ-7\"/>\n\
-                       <state req=\"REQ-8\n  REQ-9\"/> <state req=\"\"/>\n";
+    fn an_attribute_is_read_by_its_namespace_not_its_prefix() {
+        let document = "<scxml xmlns:s=\"http://example/ext\">\n\
+                        <state s:req=\"REQ-4.2.1 REQ-7\"/>\n\
+                        <state xmlns:sce=\"urn:other\" sce:req=\"NOT-READ\"/>\n\
+                        <state s:req=\"REQ-8\n  REQ-9\"/>\n\
+                        </scxml>\n";
         assert_eq!(
-            extract_inventory_marker_citations(&req_attribute(), content),
-            InventoryCitations {
-                cites: vec![
-                    (1, "REQ-4.2.1".to_string()),
-                    (1, "REQ-7".to_string()),
-                    (2, "REQ-8".to_string()),
-                    (3, "REQ-9".to_string()),
-                ],
-                unclosed: vec![],
-            }
-        );
-        let prefixes = vec!["req=\"".to_string()];
-        assert_eq!(
-            extract_inventory_path_citations(&prefixes, "<state req=\"REQ-4.2.1\"/>\n"),
-            vec![(1, "req=\"REQ-4.2.1".to_string())],
-            "control: the path axis keeps the prefix in the id"
-        );
-    }
-
-    /// Round 1323 — an id is what the STORE accepts as one, not a character
-    /// class: a colon and a `#` stay inside it.
-    #[test]
-    fn a_marker_reads_an_id_the_store_accepts_whole() {
-        assert_eq!(
-            extract_inventory_marker_citations(
+            extract_inventory_attribute_citations(
                 &req_attribute(),
-                "<state req=\"urn:req:9 REQ#10\"/>\n"
-            )
-            .cites,
-            vec![(1, "REQ#10".to_string()), (1, "urn:req:9".to_string())]
-        );
-    }
-
-    /// Round 1323 — a marker whose close never follows is returned at the line
-    /// it opened on, and none of its ids is read.
-    #[test]
-    fn a_marker_that_never_closes_is_returned_not_skipped() {
-        assert_eq!(
-            extract_inventory_marker_citations(
-                &req_attribute(),
-                "<scxml>\n<state req=\"REQ-7 REQ-8/>\n"
+                Path::new("doc/model.scxml"),
+                document
             ),
             InventoryCitations {
-                cites: vec![],
-                unclosed: vec![(2, "req=\"".to_string())],
+                cites: vec![
+                    (2, "REQ-4.2.1".to_string()),
+                    (2, "REQ-7".to_string()),
+                    (4, "REQ-8".to_string()),
+                    (5, "REQ-9".to_string()),
+                ],
+                unreadable: vec![],
             }
         );
     }
 
-    /// Round 1323 — the open follows the other axes' rules: it does not continue
-    /// a word, an example inside a code span is not a citation, and where two
-    /// opens begin at one place the longer is read.
+    /// Round 1324 — the value is the one XML defines: an entity is decoded,
+    /// either quote delimits it, and a comment, a CDATA section and element text
+    /// carry no attribute. An id the store accepts whole — a colon, a `#` — is
+    /// read whole, because the ids are split on whitespace and nothing else.
     #[test]
-    fn a_marker_open_follows_the_word_span_and_length_rules() {
-        let markers = InventoryMarkers::new(vec![
-            InventoryMarker::new("req=\"", "\"").expect("a marker"),
-            InventoryMarker::new("req=\"[", "]").expect("a marker"),
-        ])
-        .expect("two markers");
-        let content = "xreq=\"REQ-1\" `req=\"REQ-2\"` req=\"[REQ-3 REQ-4]\"\n";
+    fn an_attribute_value_is_read_as_xml_defines_it() {
+        let document = "<scxml xmlns:s=\"http://example/ext\">\n\
+                        <state s:req='A&amp;B urn:req:9 REQ#10'/>\n\
+                        <!-- <state s:req=\"IN-COMMENT\"/> -->\n\
+                        <script><![CDATA[ s:req=\"IN-CDATA\" ]]></script>\n\
+                        <log>s:req=\"IN-TEXT\"</log>\n\
+                        </scxml>\n";
         assert_eq!(
-            extract_inventory_marker_citations(&markers, content).cites,
-            vec![(1, "REQ-3".to_string()), (1, "REQ-4".to_string())]
+            extract_inventory_attribute_citations(&req_attribute(), Path::new("m.scxml"), document)
+                .cites,
+            vec![
+                (2, "A&B".to_string()),
+                (2, "REQ#10".to_string()),
+                (2, "urn:req:9".to_string()),
+            ]
+        );
+    }
+
+    /// Round 1324 — a declared document that does not parse is returned with the
+    /// parser's reason, and none of its attributes is read.
+    #[test]
+    fn a_document_that_does_not_parse_is_returned_not_skipped() {
+        let read = extract_inventory_attribute_citations(
+            &req_attribute(),
+            Path::new("m.scxml"),
+            "<scxml xmlns:s=\"http://example/ext\">\n<state s:req=\"REQ-7\">\n</scxml>\n",
+        );
+        assert!(read.cites.is_empty(), "{read:?}");
+        assert_eq!(read.unreadable.len(), 1, "{read:?}");
+        assert_eq!(read.unreadable[0].attribute, "{http://example/ext}req");
+        assert!(
+            !read.unreadable[0].reason.is_empty() && read.unreadable[0].line >= 2,
+            "{read:?}"
+        );
+    }
+
+    /// Round 1324 — only a document with a declared extension is parsed: the
+    /// same annotation in a Markdown file is an example, and a file that is not
+    /// XML at all is not reported as unreadable either.
+    #[test]
+    fn an_attribute_is_read_only_in_its_declared_extensions() {
+        assert_eq!(
+            extract_inventory_attribute_citations(
+                &req_attribute(),
+                Path::new("doc/README.md"),
+                "An annotation reads <state s:req=\"REQ-7\"/> in a model.\n"
+            ),
+            InventoryCitations::default()
+        );
+    }
+
+    /// Round 1324 — an attribute declared in no namespace is the unprefixed one,
+    /// and a namespaced attribute of the same local name is not it.
+    #[test]
+    fn an_attribute_in_no_namespace_is_the_unprefixed_one() {
+        let unprefixed = vec![
+            InventoryAttribute::new(None, "req", vec!["svg".to_string()]).expect("a declaration"),
+        ];
+        assert_eq!(
+            extract_inventory_attribute_citations(
+                &unprefixed,
+                Path::new("a.svg"),
+                "<svg xmlns:s=\"http://example/ext\">\n<g req=\"REQ-1\" s:req=\"REQ-2\"/>\n</svg>\n"
+            )
+            .cites,
+            vec![(2, "REQ-1".to_string())]
         );
     }
 
     /// Round 1322 — every declared axis is read by ONE reader, in one order;
-    /// Round 1323 made the marker axis a list of delimiter pairs.
+    /// Round 1324 made the third an XML attribute, which reads the whole
+    /// document while the prefix axes read what `comment_only` left.
     #[test]
     fn inventory_citation_axes_read_every_declared_axis() {
         let opaque = vec!["ARP_".to_string()];
         let path = vec!["W3C SCXML ".to_string()];
-        let markers = req_attribute();
+        let attributes = req_attribute();
         let axes = InventoryCitationAxes {
             opaque: &opaque,
             path: &path,
-            markers: &markers,
+            attributes: &attributes,
         };
-        let content = "// ARP_07 beside W3C SCXML 3.13\n<state req=\"REQ-4.2.1 REQ-7\"/>\n";
+        let raw = "<!-- ARP_07 beside W3C SCXML 3.13 -->\n\
+                   <scxml xmlns:s=\"http://example/ext\">\
+                   <state s:req=\"REQ-4.2.1 REQ-7\"/></scxml>\n";
         assert_eq!(
-            axes.extract(content).cites,
+            axes.extract(Path::new("m.scxml"), raw, raw).cites,
             vec![
                 (1, "ARP_07".to_string()),
                 (1, "W3C SCXML 3.13".to_string()),
@@ -8598,11 +8693,16 @@ mod tests {
                 (2, "REQ-7".to_string()),
             ]
         );
+        assert_eq!(
+            axes.extract(Path::new("m.scxml"), raw, "").cites,
+            vec![(2, "REQ-4.2.1".to_string()), (2, "REQ-7".to_string())],
+            "the attribute axis reads the document, not what comment stripping left"
+        );
         assert!(!axes.is_empty());
         assert!(InventoryCitationAxes {
             opaque: &[],
             path: &[],
-            markers: &InventoryMarkers::default(),
+            attributes: &[],
         }
         .is_empty());
     }
@@ -9740,7 +9840,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &prefixes,
                 path: &[],
-                markers: &InventoryMarkers::default(),
+                attributes: &[],
             },
             true,
         )
@@ -9763,7 +9863,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &[],
                 path: &[],
-                markers: &InventoryMarkers::default(),
+                attributes: &[],
             },
             true,
         )
@@ -9789,7 +9889,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &prefixes,
                 path: &[],
-                markers: &InventoryMarkers::default(),
+                attributes: &[],
             },
             true,
         )
@@ -10848,10 +10948,12 @@ mod tests {
                 citation: Citation {
                     file: PathBuf::from("a.scxml"),
                     line: 1,
-                    entry_id: "req=\"".into(),
+                    entry_id: "{http://example/ext}req".into(),
                 },
-                kind: ViolationKind::InventoryMarkerUnclosed,
-                evidence: None,
+                kind: ViolationKind::InventoryDocumentUnreadable,
+                evidence: Some(CitationEvidence::ParseError {
+                    reason: "unexpected end of stream".into(),
+                }),
             },
             CodeRefViolation::Citation {
                 citation: Citation {
