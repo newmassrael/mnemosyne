@@ -43,7 +43,8 @@
     "--no-fail-fast",
     "--",
     "one_gate_run::",
-    "validate_code_refs_path_scope::"
+    "validate_code_refs_path_scope::",
+    "propose_implementations_smoke::"
   ],
   "red_set": "exhaustive",
   "logs": "../../../target/injection-logs",
@@ -132,6 +133,20 @@
       ],
       "expect_red": [
         "one_gate_run::the_verdict_is_produced_in_one_place"
+      ]
+    },
+    {
+      "name": "a-reading-of-an-unconfigured-workspace-is-an-empty-answer",
+      "why": "THE OTHER HALF OF THE GATE, and the same distinction one question over: `propose-implementations` exists to propose bindings, so proposing NONE because nobody configured the gate reads exactly like proposing none because the tree is fully bound. Round 1336 moved the reading into an op that answers `None` for an unconfigured workspace; collapsing that into an empty list is how the distinction Round 1141 paid for gets lost in a move",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/citations.rs",
+          "from": "    Ok(Some(read(&validator, &attribution, &snapshot)?))\n",
+          "to": "    let _ = read;\n    let _ = (&validator, &attribution, &snapshot);\n    Ok(None)\n"
+        }
+      ],
+      "expect_red": [
+        "propose_implementations_smoke::a_cited_section_with_no_binding_is_proposed_with_its_symbol"
       ]
     },
     {

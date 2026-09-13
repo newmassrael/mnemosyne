@@ -30,8 +30,9 @@ use mnemosyne_atomic::AtomicStore;
 use mnemosyne_config::{LoadedConfig, Severity};
 use mnemosyne_validate::code_refs::{
     numbering_origin_coverage, vcs_ignored_among, AuditAxis, AxisVerdicts, CitationAttribution,
-    CitationReaderCoverage, CodeRefViolation, NumberingOriginAxis, NumberingOriginReport,
-    PathScope, PathScopeCoverage, SetEqualityValidator, SymbolAxisCoverage, VcsIgnoreAxis,
+    CitationReaderCoverage, CitationSite, CodeRefViolation, NumberingOriginAxis,
+    NumberingOriginReport, PathScope, PathScopeCoverage, ProposedImplementation,
+    SetEqualityValidator, SymbolAxisCoverage, VcsIgnoreAxis,
 };
 
 use crate::OpError;
@@ -374,4 +375,102 @@ pub fn scan_citations(request: CitationScanRequest) -> Result<CitationScan, OpEr
         id_citations,
         resolved,
     })))
+}
+
+/// What a READING of the citation graph needs from a workspace.
+///
+/// The gate has two questions and only one of them is a verdict. `scan_citations`
+/// answers "is anything wrong here"; these answer "WHERE are the citations" —
+/// the same distinction the port arc turned on (Rounds 1328-1332), one level up.
+/// A reading takes no severities, no scope and no filter, because none of those
+/// change where a citation IS.
+pub struct CitationReadRequest<'a> {
+    /// The workspace whose `mnemosyne.toml` was loaded.
+    pub loaded: &'a LoadedConfig,
+    /// The `Round NNN` prefix citations are read under.
+    pub entry_id_prefix: String,
+    /// The symbol resolvers this build ships, by language.
+    pub symbol_resolvers: BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>>,
+}
+
+/// Build the validator a reading needs and hand it, its attribution and the
+/// store's snapshot to `read`.
+///
+/// THE ONE ASSEMBLY FOR A READING, for the reason `scan_citations` exists for a
+/// verdict: two call sites writing this sequence are two answers waiting to
+/// disagree about which store was read and under which prefix. It is private
+/// because a caller wanting a different reading should add a verb here rather
+/// than take the parts away and combine them elsewhere.
+///
+/// `Ok(None)` means the workspace never configured the gate — the same variant
+/// `scan_citations` returns, and for the same reason: "nobody asked for this"
+/// and "asked for it and it is clean" must not read alike.
+fn with_reading<T>(
+    request: CitationReadRequest,
+    read: impl FnOnce(
+        &SetEqualityValidator,
+        &CitationAttribution,
+        &mnemosyne_core::AtomicSnapshot,
+    ) -> std::io::Result<T>,
+) -> Result<Option<T>, OpError> {
+    let CitationReadRequest {
+        loaded,
+        entry_id_prefix,
+        symbol_resolvers,
+    } = request;
+    let Some(cfg) = loaded
+        .config
+        .plugins
+        .as_ref()
+        .and_then(|p| p.set_equality_validator.as_ref())
+    else {
+        return Ok(None);
+    };
+    let root = loaded.workspace_root.clone();
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map_or_else(|| root.clone(), Path::to_path_buf);
+    let atomic_path = crate::cascade::resolve_sidecar(&anchor, None)?;
+    let store = AtomicStore::load(&atomic_path).map_err(|e| {
+        OpError::Other(format!("atomic store load: {}: {e}", atomic_path.display()))
+    })?;
+    let validator = SetEqualityValidator {
+        config: cfg.clone(),
+        entry_id_prefix,
+        orphan_ledger: loaded.config.orphan_ledger.clone(),
+        symbol_resolvers,
+        filter_id: None,
+        path_scope: None,
+    };
+    let attribution = CitationAttribution::new(&root, cfg, NumberingOriginAxis::derive(&root));
+    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+    Ok(Some(read(&validator, &attribution, &snapshot)?))
+}
+
+/// Which files cite each section, and where.
+///
+/// # Errors
+///
+/// A sidecar that cannot be resolved or loaded, or a walk that fails.
+pub fn citation_index(
+    request: CitationReadRequest,
+) -> Result<Option<BTreeMap<String, Vec<CitationSite>>>, OpError> {
+    with_reading(request, |validator, attribution, snapshot| {
+        validator.citation_index(attribution, snapshot)
+    })
+}
+
+/// Which sections a file already cites strongly enough to propose an
+/// implementation binding for.
+///
+/// # Errors
+///
+/// A sidecar that cannot be resolved or loaded, or a walk that fails.
+pub fn propose_implementations(
+    request: CitationReadRequest,
+) -> Result<Option<Vec<ProposedImplementation>>, OpError> {
+    with_reading(request, |validator, attribution, snapshot| {
+        validator.propose_implementations(attribution, snapshot)
+    })
 }

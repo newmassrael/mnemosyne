@@ -6256,30 +6256,16 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
 
     // Reverse citation index (citation density). Optional: requires the
     // set-equality validator plugin; absent => empty index, the rest projects.
-    let citation_index = match loaded
-        .config
-        .plugins
-        .as_ref()
-        .and_then(|p| p.set_equality_validator.as_ref())
-    {
-        Some(cfg) => {
-            let validator = SetEqualityValidator {
-                config: cfg.clone(),
-                entry_id_prefix: cli_schema()?.entry_id_prefix.clone(),
-                orphan_ledger: loaded.config.orphan_ledger.clone(),
-                symbol_resolvers: mnemosyne_backends::resolver_map(&loaded.config)?,
-                filter_id: None,
-                path_scope: None,
-            };
-            let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
-                &root,
-                cfg,
-                mnemosyne_validate::code_refs::NumberingOriginAxis::derive(&root),
-            );
-            validator.citation_index(&attribution, &snapshot)?
-        }
-        None => std::collections::BTreeMap::new(),
-    };
+    // Round 1336 — through `mnemosyne_ops` rather than assembled here: a reading
+    // of the citation graph is the gate's other question, and two sites building
+    // the validator for it are two answers waiting to disagree about which store
+    // was read.
+    let citation_index = mnemosyne_ops::citation_index(mnemosyne_ops::CitationReadRequest {
+        loaded,
+        entry_id_prefix: cli_schema()?.entry_id_prefix.clone(),
+        symbol_resolvers: mnemosyne_backends::resolver_map(&loaded.config)?,
+    })?
+    .unwrap_or_default();
 
     // Project per-section rows in BTreeMap (section-id sorted) order.
     let mut sections_json: Vec<serde_json::Value> = Vec::with_capacity(store.sections.len());
@@ -6441,44 +6427,20 @@ fn cmd_propose_implementations(args: &[String]) -> Result<()> {
     let section_filter = section_filter.map(|s| s.trim_start_matches('§').to_string());
 
     let loaded = workspace_config()?;
-    let cfg = match loaded
-        .config
-        .plugins
-        .as_ref()
-        .and_then(|p| p.set_equality_validator.as_ref())
-    {
-        Some(c) => c,
-        None => bail!("[plugins.set_equality_validator] not configured in mnemosyne.toml"),
+    // Round 1336 — the reading goes through `mnemosyne_ops`, which answers
+    // `None` for a workspace that never configured the gate. This command
+    // refuses that case rather than projecting an empty list: it exists to
+    // propose bindings, and proposing none because nobody configured the gate
+    // reads exactly like proposing none because the tree is fully bound.
+    let Some(mut proposals) =
+        mnemosyne_ops::propose_implementations(mnemosyne_ops::CitationReadRequest {
+            loaded,
+            entry_id_prefix: cli_schema()?.entry_id_prefix.clone(),
+            symbol_resolvers: mnemosyne_backends::resolver_map(&loaded.config)?,
+        })?
+    else {
+        bail!("[plugins.set_equality_validator] not configured in mnemosyne.toml");
     };
-
-    let prefix = cli_schema()?.entry_id_prefix.clone();
-    let root = loaded.workspace_root.clone();
-    // Sidecar resolution discovers config from the anchor (the toml's dir),
-    // not the resolved root, so a subdir-rooted ledger finds its [atomic].
-    let anchor = loaded
-        .config_path
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| root.clone());
-    let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
-    let store = AtomicStore::load(&atomic_path)
-        .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
-    let symbol_resolvers = mnemosyne_backends::resolver_map(&loaded.config)?;
-    let validator = SetEqualityValidator {
-        config: cfg.clone(),
-        entry_id_prefix: prefix,
-        orphan_ledger: loaded.config.orphan_ledger.clone(),
-        symbol_resolvers,
-        filter_id: None,
-        path_scope: None,
-    };
-    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
-    let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
-        &root,
-        cfg,
-        mnemosyne_validate::code_refs::NumberingOriginAxis::derive(&root),
-    );
-    let mut proposals = validator.propose_implementations(&attribution, &snapshot)?;
     if let Some(ref sec) = section_filter {
         proposals.retain(|p| p.section_id == *sec);
     }

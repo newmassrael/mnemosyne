@@ -41,11 +41,13 @@
 //!
 //! # What is NOT claimed
 //!
-//! Not every construction is a gate run. One of the two declared below builds a
-//! validator — twice — to read the citation INDEX, where citations are, and
-//! never asks for a verdict. The distinction is the one the port arc turned on
-//! (Rounds 1328-1332): reading is one question and judging is another, and only
-//! the second has to be produced once.
+//! Not every construction is a gate run, and the list below says which is which.
+//! The gate has TWO questions — where citations are, and whether they are valid
+//! — and the distinction is the one the port arc turned on (Rounds 1328-1332).
+//! Round 1333 held only the verdict to one place and named the CLI's two reading
+//! sites as legitimate; Round 1336 gave the reading its own assembly too, and
+//! this list is one row shorter for it. A list that only ever grows is a list
+//! nobody is using to decide anything.
 //!
 //! The gate's OWN crate is not on the list and must not be: with declarations no
 //! longer mistaken for constructions it builds none outside its tests, so a row
@@ -74,21 +76,16 @@ fn gate_sites() -> TypeSites {
 /// Every production site that builds a `SetEqualityValidator`, with what it
 /// builds one FOR. A new row is not a failure to route around — it is a place to
 /// say which of the two questions the site is asking.
-const DECLARED_CONSTRUCTIONS: &[(&str, &str)] = &[
-    (
-        "crates/mnemosyne-ops/src/citations.rs",
-        "THE VERDICT. `scan_citations` is the one place a citation-gate run is \
-         produced, so every surface asking `what is wrong with this tree` reads \
-         one answer.",
-    ),
-    (
-        "crates/mnemosyne-cli/src/main.rs",
-        "THE INDEX, twice — `report-spec-map` (citation density) and \
-         `propose-implementations` (which sections a file already cites). \
-         Neither asks for a verdict: they want WHERE citations are, which is the \
-         reading half of the port arc's distinction.",
-    ),
-];
+const DECLARED_CONSTRUCTIONS: &[(&str, &str)] = &[(
+    "crates/mnemosyne-ops/src/citations.rs",
+    "BOTH QUESTIONS, one assembly each. `scan_citations` produces the VERDICT, \
+     so every surface asking `what is wrong with this tree` reads one answer; \
+     `with_reading` serves the READING that `citation_index` and \
+     `propose_implementations` are, which is where citations ARE rather than \
+     whether they are valid. Round 1333 declared the CLI here too, for two \
+     reading sites it assembled itself; Round 1336 folded them, and the list is \
+     shorter by exactly that.",
+)];
 
 #[test]
 fn every_production_build_of_the_citation_gate_is_one_this_law_names() {

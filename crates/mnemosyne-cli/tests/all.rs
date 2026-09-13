@@ -212,6 +212,9 @@ mod one_gate_run;
 #[path = "parameter_economy_smoke.rs"]
 mod parameter_economy_smoke;
 
+#[path = "propose_implementations_smoke.rs"]
+mod propose_implementations_smoke;
+
 #[path = "path_scope_arguments.rs"]
 mod path_scope_arguments;
 
