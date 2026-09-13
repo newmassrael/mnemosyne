@@ -278,6 +278,38 @@ fn an_element_declaration_reads_the_annotation_the_attribute_reader_cannot() {
     );
 }
 
+/// Round 1331 — A PROGRAM THE WORKSPACE DECLARES IS THE READER, end to end: the
+/// gate runs it over a document no built-in reader can read, takes the ids it
+/// names, and judges them against the store. This is the arc's point made
+/// literal — an adopter's own parser can be what reads their documents.
+#[test]
+fn a_declared_program_is_the_reader_through_the_binary() {
+    let ws = workspace(
+        r#"citation_readers = [{ name = "fixture", transport = "cli", command = ["sh", "-c", "printf '{\"cites\":[{\"line\":2,\"id\":\"REQ-7\"}]}'"], extensions = ["scxml"] }]"#,
+        &[(
+            "model.scxml",
+            "a document in no format this gate knows\nREQ-7 is cited on this line\n",
+        )],
+    );
+    let (passed, report) = report(ws.path());
+    let found = violations(&report);
+    assert!(
+        !passed,
+        "the program named a deprecated id, and reject severity fails the gate: {found:?}"
+    );
+    assert_eq!(
+        found,
+        vec![("inventory_deprecated".to_string(), "REQ-7".to_string(), 2)],
+        "the ids are the program's and the verdict is the gate's: {report}"
+    );
+    let axis = &report["inventory_reader_axis"][0];
+    assert_eq!(
+        (axis["reader"].as_str(), axis["citations"].as_u64()),
+        (Some("program fixture"), Some(1)),
+        "and the reach report names the program that read it: {report}"
+    );
+}
+
 /// CONTROL: the same annotation under the path axis keeps the attribute's
 /// syntax in the id, so even the active entry is reported — the shape the
 /// attribute axis exists for.

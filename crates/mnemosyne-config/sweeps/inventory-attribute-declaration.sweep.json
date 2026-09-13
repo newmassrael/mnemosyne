@@ -5,19 +5,25 @@
     "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
     "        crates/mnemosyne-config/sweeps/inventory-attribute-declaration.sweep.json",
     "",
-    "WHAT THE CONTRACT IS. `InventoryAttribute::new` is the one door into an",
-    "inventory attribute declaration — a TOML declaration deserializes through it —",
-    "so a declaration a caller builds and one a workspace declares are refused on",
-    "the same terms. Each refusal names a declaration that could never match a",
-    "document: a namespace that is empty or holds whitespace, a name that carries a",
-    "prefix or is not an XML local name, and an extension list that is empty or",
-    "holds something no file extension is. The reader's own guards are swept next",
-    "door, in crates/mnemosyne-cli/sweeps/inventory-marker.sweep.json.",
+    "WHAT THE CONTRACT IS. `InventoryXmlName::new` and",
+    "`CitationReaderDeclaration::new` are the one door each into a declaration — a",
+    "TOML declaration deserializes through it — so a declaration a caller builds",
+    "and one a workspace declares are refused on the same terms. Each refusal",
+    "names a declaration that could never match a document: a namespace that is",
+    "empty or holds whitespace, a name that carries a prefix or is not an XML local",
+    "name, an extension list that is empty or holds something no file extension is,",
+    "and for a reader, no command to run or no time to run in. The reader's own",
+    "guards are swept next door, in",
+    "crates/mnemosyne-cli/sweeps/inventory-marker.sweep.json.",
     "",
-    "TEN INJECTIONS, ONE PER REFUSAL, plus the marker declaration's own",
-    "`deny_unknown_fields` and the case-insensitive extension match. Each must",
-    "redden the config test that asks it — through the constructor AND through a",
-    "TOML declaration, which is the pair that keeps the two paths one.",
+    "ONE INJECTION PER REFUSAL, plus each declaration's own `deny_unknown_fields`",
+    "and the case-insensitive extension match. Each must redden the config test",
+    "that asks it — through the constructor AND through a TOML declaration, which",
+    "is the pair that keeps the two paths one.",
+    "",
+    "THE EXTENSION RULE IS SHARED (Round 1331), so the four injections aimed at",
+    "`check_extensions` must redden BOTH declarations' tests. An injection there",
+    "that reddens only one is a second write path growing back.",
     "",
     "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
     "beside this file."
@@ -32,7 +38,9 @@
     "--no-fail-fast",
     "--",
     "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
-    "a_declared_inventory_attribute_is_read_as_declared"
+    "a_declared_inventory_attribute_is_read_as_declared",
+    "a_citation_reader_refuses_a_declaration_that_could_not_run",
+    "a_declared_citation_reader_is_read_as_declared"
   ],
   "red_set": "exhaustive",
   "logs": "../../../target/injection-logs",
@@ -96,16 +104,17 @@
     },
     {
       "name": "an-empty-extension-list-is-accepted",
-      "why": "an attribute declared for no extension reads no document — a declared axis that is structurally disabled",
+      "why": "a declaration naming no extension reads no document — a declared axis that is structurally disabled; shared by both declarations since Round 1331, so it must redden both",
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if extensions.is_empty() {\n",
-          "to": "        if false && extensions.is_empty() {\n"
+          "from": "    if extensions.is_empty() {\n",
+          "to": "    if false && extensions.is_empty() {\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ]
     },
     {
@@ -114,12 +123,13 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "            if extension.is_empty()\n",
-          "to": "            if false && extension.is_empty()\n"
+          "from": "        if extension.is_empty()\n",
+          "to": "        if false && extension.is_empty()\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ]
     },
     {
@@ -128,12 +138,13 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "                || extension.contains(['.', '/', '\\\\'])\n",
-          "to": "                || false && extension.contains(['.', '/', '\\\\'])\n"
+          "from": "            || extension.contains(['.', '/', '\\\\'])\n",
+          "to": "            || false && extension.contains(['.', '/', '\\\\'])\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ]
     },
     {
@@ -142,12 +153,13 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "                || extension.contains(char::is_whitespace)\n",
-          "to": "                || false && extension.contains(char::is_whitespace)\n"
+          "from": "            || extension.contains(char::is_whitespace)\n",
+          "to": "            || false && extension.contains(char::is_whitespace)\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ]
     },
     {
@@ -170,12 +182,68 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n",
-          "to": "        struct Declared {\n"
+          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n            #[serde(default)]\n            namespace: Option<String>,\n",
+          "to": "        struct Declared {\n            #[serde(default)]\n            namespace: Option<String>,\n"
         }
       ],
       "expect_red": [
         "a_declared_inventory_attribute_is_read_as_declared"
+      ]
+    },
+    {
+      "name": "a-key-a-reader-does-not-model-is-dropped",
+      "why": "strictness is per type, so the reader declaration has its own write path for it — a key such as a working directory would be accepted and silently ignored, which is a reader running somewhere nobody declared",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n            name: String,\n            transport: CitationReaderTransport,\n",
+          "to": "        struct Declared {\n            name: String,\n            transport: CitationReaderTransport,\n"
+        }
+      ],
+      "expect_red": [
+        "a_declared_citation_reader_is_read_as_declared"
+      ]
+    },
+    {
+      "name": "a-reader-with-no-command-is-accepted",
+      "why": "a declared reader with an empty argv, or one whose first word is empty, is a program the gate would try to spawn and cannot name",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if command.is_empty() || command[0].is_empty() {\n",
+          "to": "        if false && (command.is_empty() || command[0].is_empty()) {\n"
+        }
+      ],
+      "expect_red": [
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ]
+    },
+    {
+      "name": "a-reader-may-be-given-no-time",
+      "why": "`timeout_ms = 0` is a deadline no program finishes inside, so every document it is declared for would be unreadable — a declared axis that is structurally disabled, one round after the same shape was refused for extensions",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if timeout_ms == 0 {\n",
+          "to": "        if false && timeout_ms == 0 {\n"
+        }
+      ],
+      "expect_red": [
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ]
+    },
+    {
+      "name": "a-reader-name-may-be-empty-or-spaced",
+      "why": "the name is what the reach report's row and this reader's violations are called, so an empty or whitespace-holding one is a row nobody can act on",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if name.is_empty() || name.contains(char::is_whitespace) {\n            return Err(format!(\n                \"a citation reader's `name` must be a non-empty word",
+          "to": "        if false && (name.is_empty() || name.contains(char::is_whitespace)) {\n            return Err(format!(\n                \"a citation reader's `name` must be a non-empty word"
+        }
+      ],
+      "expect_red": [
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ]
     }
   ]

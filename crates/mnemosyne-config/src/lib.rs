@@ -511,24 +511,7 @@ impl InventoryXmlName {
                  could carry it"
             ));
         }
-        if extensions.is_empty() {
-            return Err(format!(
-                "the inventory attribute `{name}` names no file extension, so it reads no \
-                 document"
-            ));
-        }
-        for extension in &extensions {
-            if extension.is_empty()
-                || extension.contains(['.', '/', '\\'])
-                || extension.contains(char::is_whitespace)
-            {
-                return Err(format!(
-                    "the inventory attribute `{name}` has extension {extension:?} — an \
-                     extension is the text after a file name's last dot, like `scxml`, so no \
-                     file would match it"
-                ));
-            }
-        }
+        check_extensions(&format!("the inventory attribute `{name}`"), &extensions)?;
         Ok(InventoryXmlName {
             namespace,
             name,
@@ -593,6 +576,188 @@ impl<'de> Deserialize<'de> for InventoryXmlName {
         } = Declared::deserialize(deserializer)?;
         InventoryXmlName::new(namespace, name, extensions).map_err(serde::de::Error::custom)
     }
+}
+
+/// HOW A DECLARED CITATION READER IS REACHED (Round 1331).
+///
+/// One variant today, and a tagged one so that adding another is additive
+/// rather than a rewrite of every declaration — the shape
+/// `[plugins.symbol_resolver.<lang>]` already uses for the symbol port.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CitationReaderTransport {
+    /// A program this workspace names, run once per document: the gate passes
+    /// the document's path as the last argument and its text on stdin, and reads
+    /// one JSON object from stdout.
+    Cli,
+}
+
+/// A citation reader a workspace declares as a PROGRAM OF ITS OWN (Round 1331).
+///
+/// THE POINT OF THE PORT, FINALLY LITERAL. Rounds 1322 to 1324 each built a
+/// grammar for an adopter's documents inside this gate and each was wrong until
+/// the document's own format replaced it. A declaration here lets the adopter's
+/// OWN parser be the reader — the program that already defines that grammar —
+/// so a format nobody here implements stops being a round of ours.
+///
+/// WHAT IT COSTS, STATED: the gate runs a program the workspace names. It is
+/// never inferred and never a shell string — `command` is an argv, run as
+/// given — and a reader that cannot be run, exits non-zero, prints something
+/// that is not the answer, or outstays `timeout_ms` leaves the document
+/// reported as unreadable with that as the reason. The verdict stays this side
+/// of the port either way: the program answers WHERE citations are and the gate
+/// decides whether they are missing or deprecated.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CitationReaderDeclaration {
+    name: String,
+    transport: CitationReaderTransport,
+    command: Vec<String>,
+    extensions: Vec<String>,
+    timeout_ms: u64,
+}
+
+/// How long a declared program may take over one document before the gate stops
+/// waiting (Round 1331). A reader that hangs would hang every run that reads a
+/// document it is declared for, and a gate that can hang is a gate people turn
+/// off.
+pub const DEFAULT_READER_TIMEOUT_MS: u64 = 5_000;
+
+impl CitationReaderDeclaration {
+    /// A reader named `name`, reached by `transport`, run as `command` over
+    /// documents with one of `extensions`.
+    ///
+    /// # Errors
+    ///
+    /// Refused, with the reason, when the declaration could never read
+    /// anything: an empty or whitespace-holding `name` (it is what the report
+    /// and a violation call this reader), an empty `command` or one whose first
+    /// word is empty, a `timeout_ms` of zero (no program finishes in no time),
+    /// or an extension no file could carry.
+    pub fn new(
+        name: impl Into<String>,
+        transport: CitationReaderTransport,
+        command: Vec<String>,
+        extensions: Vec<String>,
+        timeout_ms: u64,
+    ) -> std::result::Result<Self, String> {
+        let name = name.into();
+        if name.is_empty() || name.contains(char::is_whitespace) {
+            return Err(format!(
+                "a citation reader's `name` must be a non-empty word — {name:?} is what its \
+                 report row and its violations would be called"
+            ));
+        }
+        if command.is_empty() || command[0].is_empty() {
+            return Err(format!(
+                "the citation reader `{name}` has no `command` to run — an argv whose first \
+                 word is the program, given as it is and never through a shell"
+            ));
+        }
+        if timeout_ms == 0 {
+            return Err(format!(
+                "the citation reader `{name}` has `timeout_ms = 0`, which no program finishes \
+                 inside"
+            ));
+        }
+        check_extensions(&format!("the citation reader `{name}`"), &extensions)?;
+        Ok(CitationReaderDeclaration {
+            name,
+            transport,
+            command,
+            extensions,
+            timeout_ms,
+        })
+    }
+
+    /// What the report and its violations call this reader.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// How it is reached.
+    pub fn transport(&self) -> CitationReaderTransport {
+        self.transport
+    }
+
+    /// The argv, run as given.
+    pub fn command(&self) -> &[String] {
+        &self.command
+    }
+
+    /// The extensions whose documents it reads.
+    pub fn extensions(&self) -> &[String] {
+        &self.extensions
+    }
+
+    /// How long it may take over one document.
+    pub fn timeout_ms(&self) -> u64 {
+        self.timeout_ms
+    }
+}
+
+impl<'de> Deserialize<'de> for CitationReaderDeclaration {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Declared {
+            name: String,
+            transport: CitationReaderTransport,
+            command: Vec<String>,
+            extensions: Vec<String>,
+            #[serde(default = "default_reader_timeout_ms")]
+            timeout_ms: u64,
+        }
+        let Declared {
+            name,
+            transport,
+            command,
+            extensions,
+            timeout_ms,
+        } = Declared::deserialize(deserializer)?;
+        CitationReaderDeclaration::new(name, transport, command, extensions, timeout_ms)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+fn default_reader_timeout_ms() -> u64 {
+    DEFAULT_READER_TIMEOUT_MS
+}
+
+/// THE ONE RULE FOR A DECLARED FILE EXTENSION (Round 1331), shared by every
+/// declaration that names one: a declaration naming NO extension reads no
+/// document at all, and an extension is the text after a file name's last dot,
+/// so an empty one, one carrying a dot or a path separator, and one holding
+/// whitespace all name a file that cannot exist. Two declarations checking this
+/// apart would be one invariant with two write paths, which is the shape this
+/// repository forbids itself — the empty-LIST half was inline in both until the
+/// declaration sweep's anchor matched twice and said so.
+///
+/// `declared_by` is the phrase the message opens with, so each caller's refusal
+/// names what the reader is looking at.
+///
+/// # Errors
+///
+/// The extension that cannot match, with the reason.
+fn check_extensions(declared_by: &str, extensions: &[String]) -> std::result::Result<(), String> {
+    if extensions.is_empty() {
+        return Err(format!(
+            "{declared_by} names no file extension, so it reads no document"
+        ));
+    }
+    for extension in extensions {
+        if extension.is_empty()
+            || extension.contains(['.', '/', '\\'])
+            || extension.contains(char::is_whitespace)
+        {
+            return Err(format!(
+                "{declared_by} has extension {extension:?} — an extension is the text after a \
+                 file name's last dot, like `scxml`, so no file would match it"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Whether `name` is an XML local name — an `NCName` (Namespaces in XML 1.0,
@@ -928,6 +1093,29 @@ pub struct SetEqualityValidatorConfig {
     /// no such reader.
     #[serde(default)]
     pub inventory_elements: Vec<InventoryXmlName>,
+
+    /// Citation readers this workspace declares as PROGRAMS OF ITS OWN
+    /// (Round 1331).
+    ///
+    /// `citation_readers = [{ name = "sce", transport = "cli", command =
+    /// ["sce-build", "cite-sites"], extensions = ["scxml"] }]` runs that program
+    /// once per declared document, passing the document's path as the last
+    /// argument and its text on stdin, and reads one JSON object from stdout:
+    /// `{"cites": [{"line": 12, "id": "REQ-1"}]}`. Nothing else crosses — the
+    /// program says WHERE the citations are and this gate decides whether they
+    /// are missing or deprecated, which is the line Rounds 481-488 drew.
+    ///
+    /// A reader that cannot be run, exits non-zero, prints something that is
+    /// not that object, or outstays `timeout_ms` (default 5000) leaves the
+    /// document reported as `inventory_document_unreadable` with that as the
+    /// reason. The command is an argv run as given, never a shell string.
+    ///
+    /// IT IS WHAT THE PORT WAS FOR. The built-in readers above cover the
+    /// annotation shapes this repository implements; this one covers the rest,
+    /// by letting the parser that already defines an adopter's grammar be the
+    /// reader instead of a fourth round of ours guessing at it.
+    #[serde(default)]
+    pub citation_readers: Vec<CitationReaderDeclaration>,
 
     /// Section-ID namespace scope for this workspace's `§<id>` axis.
     ///
@@ -2922,6 +3110,146 @@ inventory_attributes = [{ name = "req", extensions = ["scxml"], separator = "," 
             "the refusal names the key: {unmodeled:#}"
         );
     }
+
+    /// Round 1331 — THE PARITY THIS REPOSITORY REQUIRES OF A SHARED INVARIANT:
+    /// `check_extensions` is one rule with two callers, so the reader
+    /// declaration must refuse every extension the attribute declaration
+    /// refuses, on the same terms, plus the three that are its own. Until this
+    /// test existed the reader half of that rule was enforced and unproven —
+    /// the declaration sweep found it by matching its anchor twice.
+    #[test]
+    fn a_citation_reader_refuses_a_declaration_that_could_not_run() {
+        let argv = vec!["cites".to_string()];
+        let scxml = vec!["scxml".to_string()];
+        for (name, command, extensions, timeout_ms, reason) in [
+            (
+                "",
+                argv.clone(),
+                scxml.clone(),
+                5_000,
+                "must be a non-empty",
+            ),
+            (
+                "a reader",
+                argv.clone(),
+                scxml.clone(),
+                5_000,
+                "must be a non-empty",
+            ),
+            ("cites", vec![], scxml.clone(), 5_000, "has no `command`"),
+            (
+                "cites",
+                vec![String::new()],
+                scxml.clone(),
+                5_000,
+                "has no `command`",
+            ),
+            (
+                "cites",
+                argv.clone(),
+                scxml.clone(),
+                0,
+                "which no program finishes inside",
+            ),
+            (
+                "cites",
+                argv.clone(),
+                vec![],
+                5_000,
+                "names no file extension",
+            ),
+            (
+                "cites",
+                argv.clone(),
+                vec![String::new()],
+                5_000,
+                "is the text after a file name's last dot",
+            ),
+            (
+                "cites",
+                argv.clone(),
+                vec![".scxml".to_string()],
+                5_000,
+                "is the text after a file name's last dot",
+            ),
+            (
+                "cites",
+                argv.clone(),
+                vec!["sc xml".to_string()],
+                5_000,
+                "is the text after a file name's last dot",
+            ),
+        ] {
+            let built = CitationReaderDeclaration::new(
+                name,
+                CitationReaderTransport::Cli,
+                command.clone(),
+                extensions.clone(),
+                timeout_ms,
+            )
+            .expect_err("the constructor refuses the declaration");
+            assert!(built.contains(reason), "constructor: {built}");
+            let declared = parse_config(&format!(
+                "[workspace]\n\n[plugins.set_equality_validator]\n\
+                 citation_readers = [{{ name = {name:?}, transport = \"cli\", \
+                 command = {command:?}, extensions = {extensions:?}, \
+                 timeout_ms = {timeout_ms} }}]\n"
+            ))
+            .expect_err("the declaration refuses it");
+            assert!(
+                format!("{declared:#}").contains(reason),
+                "declaration: {declared:#}"
+            );
+        }
+    }
+
+    /// Round 1331 — a declared reader is read as its name, transport, argv and
+    /// extensions; `timeout_ms` defaults rather than being required; and a key
+    /// the declaration does not model is refused rather than dropped.
+    #[test]
+    fn a_declared_citation_reader_is_read_as_declared() {
+        let cfg = parse_config(
+            r#"
+[workspace]
+
+[plugins.set_equality_validator]
+citation_readers = [
+  { name = "sce", transport = "cli", command = ["./tools/cites", "--json"], extensions = ["scxml"] },
+]
+"#,
+        )
+        .expect("a well-formed declaration is accepted");
+        let readers = cfg
+            .plugins
+            .and_then(|p| p.set_equality_validator)
+            .expect("set_equality_validator")
+            .citation_readers;
+        assert_eq!(readers.len(), 1);
+        assert_eq!(readers[0].name(), "sce");
+        assert_eq!(readers[0].transport(), CitationReaderTransport::Cli);
+        assert_eq!(readers[0].command(), ["./tools/cites", "--json"]);
+        assert_eq!(readers[0].extensions(), ["scxml"]);
+        assert_eq!(
+            readers[0].timeout_ms(),
+            DEFAULT_READER_TIMEOUT_MS,
+            "a reader that does not name a timeout still has one"
+        );
+
+        let unmodeled = parse_config(
+            r#"
+[workspace]
+
+[plugins.set_equality_validator]
+citation_readers = [{ name = "sce", transport = "cli", command = ["c"], extensions = ["scxml"], cwd = "/tmp" }]
+"#,
+        )
+        .expect_err("a key a declaration does not model is refused");
+        assert!(
+            format!("{unmodeled:#}").contains("cwd"),
+            "the refusal names the key: {unmodeled:#}"
+        );
+    }
+
     #[test]
     fn continuity_section_parses_with_defaults() {
         let cfg = parse_config(

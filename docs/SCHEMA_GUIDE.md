@@ -299,11 +299,32 @@ you `informative`, it is older than R422 — the store will refuse it.
  annotation shape costs a reader rather than a fourth axis; a reader answers
  where the citations are and never whether one is missing or deprecated, which
  stays the gate's judgment against the store. Every run
- publishes what the axis REACHED (`inventory_attribute_axis` in `--json`, and a
- line of its own in the plain report): the documents it was declared for, how
- many carry the attribute, how many citations it read and how many did not
- parse. An attribute no document carries reads nothing, and a run that read
+ publishes what EVERY reader REACHED (`inventory_reader_axis` in `--json`, and a
+ line each in the plain report): the documents it was declared for, how
+ many carry the annotation, how many citations it read and how many did not
+ parse, naming the first ten documents that carry nothing. An annotation no
+ document carries reads nothing, and a run that read
  nothing otherwise prints exactly what a clean run prints.
+- **`[plugins.set_equality_validator].citation_readers`** — A READER THAT IS NOT
+ OURS. When your documents are in a format this gate does not parse, declare
+ your own parser as the reader instead of waiting for one here:
+ `citation_readers = [{ name = "scxml-cites", transport = "cli", command =
+ ["./tools/cites"], extensions = ["scxml"], timeout_ms = 5000 }]`. For each
+ document of a declared extension the gate runs the argv with the document's
+ path appended, writes the document's text to stdin, and reads ONE JSON object
+ from stdout: `{"cites": [{"line": 12, "id": "REQ-1"}]}`, where `line` is
+ 1-based. `timeout_ms` defaults to 5000 and bounds ONE document's run. The
+ program says WHERE a citation is and WHAT id it names; whether that id is
+ missing or deprecated is decided here, against the store, so a declared reader
+ cannot pass its own gate. Anything other than that object — a command that
+ cannot be started, a non-zero exit, unparsable or non-UTF-8 stdout, or a run
+ that outstays its timeout — makes the document `inventory_document_unreadable`
+ with the reason, never a silent empty answer, because a reader that returned
+ nothing and a document that cites nothing must not print the same thing.
+ ⚠ A declared reader is a program THIS WORKSPACE RUNS, with the gate's
+ environment and working directory, from a tracked config file: read a
+ `citation_readers` list the way you would read a build script before running
+ it over a tree you do not own.
 - **`[plugins.set_equality_validator].external_section_prefixes`** — single-token prefix
  list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
  of external-standard `§` skip (Round 277). Citation form:

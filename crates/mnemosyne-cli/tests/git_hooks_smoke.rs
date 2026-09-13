@@ -3023,7 +3023,17 @@ fn every_compiling_gate_a_git_hook_runs_is_one_a_hosted_job_runs() {
 /// that starts reaching tomorrow is in neither list and FAILS — an unclassified
 /// member is a red and not a pass, which is the one property every exemption
 /// list in this repository has been caught without.
-const REACHES_A_MACHINE_AND_STILL_ASKS_ABOUT_THE_TREE: [(&str, &str); 5] = [
+const REACHES_A_MACHINE_AND_STILL_ASKS_ABOUT_THE_TREE: [(&str, &str); 6] = [
+    (
+        "crates/mnemosyne-validate/Cargo.toml",
+        "the program it spawns is never named in its source (Round 1331): a \
+         workspace declares it in `citation_readers`, beside the documents it \
+         declares it for, so a runner reading the same tree runs the same \
+         program that tree asks for. And a runner that does not have it does not \
+         pass quietly — the document is reported unreadable carrying the reason \
+         the spawn failed, which is an answer about this tree's declaration \
+         rather than about the machine that noticed",
+    ),
     (
         "tools/outside-reach/Cargo.toml",
         "it CLASSIFIES the paths a traced run touched, and the pushing user's \

@@ -9,14 +9,16 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "                || extension.contains(['.', '/', '\\\\'])\n",
-          "to": "                || false && extension.contains(['.', '/', '\\\\'])\n"
+          "from": "            || extension.contains(['.', '/', '\\\\'])\n",
+          "to": "            || false && extension.contains(['.', '/', '\\\\'])\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ],
       "tests": [
+        "tests::a_citation_reader_refuses_a_declaration_that_could_not_run",
         "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
       ]
     },
@@ -24,8 +26,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n",
-          "to": "        struct Declared {\n"
+          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n            #[serde(default)]\n            namespace: Option<String>,\n",
+          "to": "        struct Declared {\n            #[serde(default)]\n            namespace: Option<String>,\n"
         }
       ],
       "expect_red": [
@@ -33,6 +35,21 @@
       ],
       "tests": [
         "tests::a_declared_inventory_attribute_is_read_as_declared"
+      ]
+    },
+    "a-key-a-reader-does-not-model-is-dropped": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        #[serde(deny_unknown_fields)]\n        struct Declared {\n            name: String,\n            transport: CitationReaderTransport,\n",
+          "to": "        struct Declared {\n            name: String,\n            transport: CitationReaderTransport,\n"
+        }
+      ],
+      "expect_red": [
+        "a_declared_citation_reader_is_read_as_declared"
+      ],
+      "tests": [
+        "tests::a_declared_citation_reader_is_read_as_declared"
       ]
     },
     "a-name-no-document-could-carry-is-accepted": {
@@ -65,18 +82,65 @@
         "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
       ]
     },
+    "a-reader-may-be-given-no-time": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if timeout_ms == 0 {\n",
+          "to": "        if false && timeout_ms == 0 {\n"
+        }
+      ],
+      "expect_red": [
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ],
+      "tests": [
+        "tests::a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ]
+    },
+    "a-reader-name-may-be-empty-or-spaced": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if name.is_empty() || name.contains(char::is_whitespace) {\n            return Err(format!(\n                \"a citation reader's `name` must be a non-empty word",
+          "to": "        if false && (name.is_empty() || name.contains(char::is_whitespace)) {\n            return Err(format!(\n                \"a citation reader's `name` must be a non-empty word"
+        }
+      ],
+      "expect_red": [
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ],
+      "tests": [
+        "tests::a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ]
+    },
+    "a-reader-with-no-command-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-config/src/lib.rs",
+          "from": "        if command.is_empty() || command[0].is_empty() {\n",
+          "to": "        if false && (command.is_empty() || command[0].is_empty()) {\n"
+        }
+      ],
+      "expect_red": [
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ],
+      "tests": [
+        "tests::a_citation_reader_refuses_a_declaration_that_could_not_run"
+      ]
+    },
     "a-whitespace-extension-is-accepted": {
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "                || extension.contains(char::is_whitespace)\n",
-          "to": "                || false && extension.contains(char::is_whitespace)\n"
+          "from": "            || extension.contains(char::is_whitespace)\n",
+          "to": "            || false && extension.contains(char::is_whitespace)\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ],
       "tests": [
+        "tests::a_citation_reader_refuses_a_declaration_that_could_not_run",
         "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
       ]
     },
@@ -84,14 +148,16 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "            if extension.is_empty()\n",
-          "to": "            if false && extension.is_empty()\n"
+          "from": "        if extension.is_empty()\n",
+          "to": "        if false && extension.is_empty()\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ],
       "tests": [
+        "tests::a_citation_reader_refuses_a_declaration_that_could_not_run",
         "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
       ]
     },
@@ -99,14 +165,16 @@
       "edits": [
         {
           "file": "crates/mnemosyne-config/src/lib.rs",
-          "from": "        if extensions.is_empty() {\n",
-          "to": "        if false && extensions.is_empty() {\n"
+          "from": "    if extensions.is_empty() {\n",
+          "to": "    if false && extensions.is_empty() {\n"
         }
       ],
       "expect_red": [
-        "an_inventory_attribute_refuses_a_declaration_no_document_could_match"
+        "an_inventory_attribute_refuses_a_declaration_no_document_could_match",
+        "a_citation_reader_refuses_a_declaration_that_could_not_run"
       ],
       "tests": [
+        "tests::a_citation_reader_refuses_a_declaration_that_could_not_run",
         "tests::an_inventory_attribute_refuses_a_declaration_no_document_could_match"
       ]
     },

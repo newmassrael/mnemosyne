@@ -74,7 +74,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use mnemosyne_config::{
-    InventoryXmlName, OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig,
+    CitationReaderDeclaration, InventoryXmlName, OrphanKind, OrphanLedgerEntry,
+    SetEqualityValidatorConfig,
 };
 use mnemosyne_core::DecisionStatus;
 use mnemosyne_core::{CitationExtractor, DocumentCitations, TextInput};
@@ -3009,6 +3010,165 @@ impl CitationExtractor for CommentPrefixReader {
     }
 }
 
+/// A DECLARED PROGRAM, as a reader behind the port (Round 1331).
+///
+/// THE FIRST OUT-OF-PROCESS PLUGIN THIS REPOSITORY ACTUALLY RUNS. The symbol
+/// port has carried a `cli` transport since Round 306 and it answers
+/// `NotImplemented` to this day; this is the shape made real, on the axis whose
+/// three wrong rounds bought the lesson: an adopter's own parser already
+/// defines their annotation's grammar, and a reader lets it BE the reader.
+///
+/// THE PROTOCOL, WHICH IS THE WHOLE CONTRACT. The gate runs the declared argv
+/// with the document's path appended, writes the document's text to stdin, and
+/// reads one JSON object from stdout: `{"cites": [{"line": 12, "id": "REQ-1"}]}`.
+/// A line is 1-based. Anything else — a program that cannot be started, a
+/// non-zero exit, stdout that is not that object, or a run that outstays its
+/// `timeout_ms` — is an UNREADABLE document carrying that as its reason, never
+/// a silent empty answer, because a reader that returns nothing and a document
+/// that cites nothing are the two things this axis exists to tell apart.
+///
+/// WHAT DOES NOT CROSS: the verdict. The program says where citations are; this
+/// gate alone decides whether an id is missing or deprecated (Rounds 481-488).
+#[derive(Debug, Clone)]
+pub struct ProgramReader {
+    declared: CitationReaderDeclaration,
+}
+
+impl ProgramReader {
+    /// A reader that runs `declared`.
+    pub fn new(declared: CitationReaderDeclaration) -> Self {
+        ProgramReader { declared }
+    }
+
+    /// Run the program over one document and take stdout, or the reason it
+    /// cannot be taken.
+    fn run(&self, file: &Path, text: &str) -> Result<String, String> {
+        let argv = self.declared.command();
+        let mut child = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .arg(file)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|why| format!("`{}` could not be run: {why}", argv.join(" ")))?;
+        // THE DOCUMENT GOES IN ON STDIN, from the text the caller already read,
+        // for the reason the symbol port states: two reads of one file can
+        // disagree, and then the answer is about a file the citation was not in.
+        if let Some(stdin) = child.stdin.take() {
+            let mut stdin = stdin;
+            if let Err(why) = std::io::Write::write_all(&mut stdin, text.as_bytes()) {
+                // A reader that does not read its input is not an error by
+                // itself — it may answer from the path alone — so the write
+                // failing is only fatal when the program then fails too.
+                let _ = why;
+            }
+        }
+        let deadline = std::time::Instant::now()
+            + std::time::Duration::from_millis(self.declared.timeout_ms());
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(format!(
+                            "`{}` outstayed its {} ms and was stopped",
+                            argv.join(" "),
+                            self.declared.timeout_ms()
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(why) => return Err(format!("`{}` could not be waited for: {why}", argv[0])),
+            }
+        }
+        let answer = child
+            .wait_with_output()
+            .map_err(|why| format!("`{}` could not be read: {why}", argv[0]))?;
+        if !answer.status.success() {
+            let said = String::from_utf8_lossy(&answer.stderr);
+            let first = said.lines().next().unwrap_or("").trim();
+            return Err(format!(
+                "`{}` exited {} saying: {first}",
+                argv.join(" "),
+                answer
+                    .status
+                    .code()
+                    .map_or_else(|| "on a signal".to_string(), |code| code.to_string())
+            ));
+        }
+        String::from_utf8(answer.stdout)
+            .map_err(|why| format!("`{}` printed bytes that are not UTF-8: {why}", argv[0]))
+    }
+}
+
+impl CitationExtractor for ProgramReader {
+    fn name(&self) -> String {
+        format!("program {}", self.declared.name())
+    }
+
+    fn extensions(&self) -> Vec<String> {
+        self.declared.extensions().to_vec()
+    }
+
+    fn reads(&self, file: &Path) -> bool {
+        file.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                self.declared
+                    .extensions()
+                    .iter()
+                    .any(|declared| declared.eq_ignore_ascii_case(extension))
+            })
+    }
+
+    fn read(&self, file: &Path, text: &str) -> DocumentCitations {
+        let said = match self.run(file, text) {
+            Ok(said) => said,
+            Err(why) => {
+                return DocumentCitations {
+                    cites: Vec::new(),
+                    unreadable: Some((1, why)),
+                }
+            }
+        };
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Answer {
+            cites: Vec<Cite>,
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Cite {
+            line: usize,
+            id: String,
+        }
+        match serde_json::from_str::<Answer>(said.trim()) {
+            Ok(answer) => DocumentCitations {
+                cites: answer
+                    .cites
+                    .into_iter()
+                    .map(|cite| (cite.line, cite.id))
+                    .collect(),
+                unreadable: None,
+            },
+            Err(why) => DocumentCitations {
+                cites: Vec::new(),
+                unreadable: Some((
+                    1,
+                    format!(
+                        "`{}` printed something that is not `{{\"cites\": [{{\"line\": n, \
+                         \"id\": \"…\"}}]}}`: {why}",
+                        self.declared.command().join(" ")
+                    ),
+                )),
+            },
+        }
+    }
+}
+
 /// One declared XML ATTRIBUTE, as a reader behind the port (Round 1328).
 ///
 /// The attribute is found by its namespace URI and local name under whatever
@@ -3254,6 +3414,13 @@ impl InventoryCitationAxes {
         }
         for declared in &config.inventory_elements {
             readers.push(Box::new(XmlElementReader::new(declared.clone())));
+        }
+        // LAST, AND DECLARED ONE BY ONE: the programs this workspace names
+        // (Round 1331). They come after the built-ins so a run's report reads
+        // in the order the config does, and a document both a built-in and a
+        // program read is read by both — the dedup is on the citations.
+        for declared in &config.citation_readers {
+            readers.push(Box::new(ProgramReader::new(declared.clone())));
         }
         InventoryCitationAxes { readers }
     }
@@ -6124,6 +6291,7 @@ mod tests {
                 inventory_path_prefixes: inventory_path_prefixes.to_vec(),
                 inventory_attributes: Vec::new(),
                 inventory_elements: Vec::new(),
+                citation_readers: Vec::new(),
                 section_namespace: section_namespace.map(String::from),
             },
             entry_id_prefix: prefix.to_string(),
@@ -6595,6 +6763,7 @@ mod tests {
                 inventory_path_prefixes: vec![],
                 inventory_attributes: Vec::new(),
                 inventory_elements: Vec::new(),
+                citation_readers: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6724,6 +6893,7 @@ mod tests {
                 )
                 .expect("a declaration")],
                 inventory_elements: Vec::new(),
+                citation_readers: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6970,6 +7140,7 @@ mod tests {
                 inventory_path_prefixes: vec![],
                 inventory_attributes: Vec::new(),
                 inventory_elements: Vec::new(),
+                citation_readers: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -7245,6 +7416,7 @@ mod tests {
                 inventory_path_prefixes: vec![],
                 inventory_attributes: Vec::new(),
                 inventory_elements: Vec::new(),
+                citation_readers: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -9086,6 +9258,7 @@ mod tests {
                 paths: vec!["doc/".to_string()],
                 inventory_attributes: req_attribute(),
                 inventory_elements: Vec::new(),
+                citation_readers: Vec::new(),
                 ..SetEqualityValidatorConfig::default()
             },
             entry_id_prefix: "Round ".to_string(),
@@ -9145,6 +9318,80 @@ mod tests {
             .cites,
             vec![(2, "REQ-1".to_string())]
         );
+    }
+
+    /// A declared program, built the way a workspace declares one.
+    fn program_reader(command: Vec<&str>, timeout_ms: u64) -> Box<dyn CitationExtractor> {
+        Box::new(ProgramReader::new(
+            CitationReaderDeclaration::new(
+                "fixture",
+                mnemosyne_config::CitationReaderTransport::Cli,
+                command.into_iter().map(str::to_string).collect(),
+                vec!["scxml".to_string()],
+                timeout_ms,
+            )
+            .expect("a declaration"),
+        ))
+    }
+
+    /// Round 1331 — A DECLARED PROGRAM IS A READER: the gate hands it the
+    /// document on stdin and its path as the last argument, and the object it
+    /// prints is where the citations are. Nothing about this document is
+    /// readable by any built-in reader, which is the point.
+    #[test]
+    fn a_declared_program_reads_what_no_built_in_reader_can() {
+        let read = readers_read(
+            vec![program_reader(
+                vec![
+                    "sh",
+                    "-c",
+                    "test \"$(cat)\" = 'REQ-7 lives on line three' && \
+                     printf '{\"cites\":[{\"line\":3,\"id\":\"REQ-7\"}]}'",
+                ],
+                5_000,
+            )],
+            "doc/model.scxml",
+            "REQ-7 lives on line three",
+        );
+        assert_eq!(read.cites, vec![(3, "REQ-7".to_string())]);
+        assert!(read.unreadable.is_empty(), "{read:?}");
+        assert_eq!(read.reach[0].reader, "program fixture");
+        assert_eq!(read.reach[0].citations, 1);
+    }
+
+    /// Round 1331 — EVERY WAY A PROGRAM CAN FAIL TO ANSWER IS AN UNREADABLE
+    /// DOCUMENT CARRYING THE REASON, never a silent empty answer: a reader that
+    /// returns nothing and a document that cites nothing are exactly what this
+    /// axis exists to tell apart.
+    #[test]
+    fn a_program_that_cannot_answer_leaves_the_document_unreadable() {
+        for (command, timeout_ms, expected) in [
+            (
+                vec!["definitely-not-a-program-on-this-machine"],
+                5_000u64,
+                "could not be run",
+            ),
+            (
+                vec!["sh", "-c", "echo broke >&2; exit 3"],
+                5_000,
+                "exited 3",
+            ),
+            (
+                vec!["sh", "-c", "printf 'not json'"],
+                5_000,
+                "printed something that is not",
+            ),
+            (vec!["sh", "-c", "sleep 5"], 150, "outstayed its 150 ms"),
+        ] {
+            let read = readers_read(vec![program_reader(command, timeout_ms)], "m.scxml", "x");
+            assert!(read.cites.is_empty(), "{read:?}");
+            assert_eq!(read.unreadable.len(), 1, "{read:?}");
+            assert!(
+                read.unreadable[0].reason.contains(expected),
+                "the reason must say {expected:?}: {read:?}"
+            );
+            assert!(read.reach[0].unreadable, "{read:?}");
+        }
     }
 
     /// Round 1328 — THE PORT'S SECOND READER: an element's TEXT lists ids the

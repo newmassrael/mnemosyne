@@ -22,6 +22,21 @@
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
+    "a-declared-program-builds-no-reader": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            readers.push(Box::new(ProgramReader::new(declared.clone())));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_declared_program_is_the_reader_through_the_binary"
+      ],
+      "tests": [
+        "inventory_marker_smoke::a_declared_program_is_the_reader_through_the_binary"
+      ]
+    },
     "a-doctype-makes-a-document-unreadable": {
       "edits": [
         {
@@ -109,6 +124,36 @@
       "tests": [
         "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
         "code_refs::tests::scan_inventory_decay_respects_comment_only_flag"
+      ]
+    },
+    "a-program-may-outstay-its-time": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                    if std::time::Instant::now() >= deadline {\n",
+          "to": "                    if false && std::time::Instant::now() >= deadline {\n"
+        }
+      ],
+      "expect_red": [
+        "a_program_that_cannot_answer_leaves_the_document_unreadable"
+      ],
+      "tests": [
+        "code_refs::tests::a_program_that_cannot_answer_leaves_the_document_unreadable"
+      ]
+    },
+    "a-program-that-fails-is-read-as-citing-nothing": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            Err(why) => {\n                return DocumentCitations {\n                    cites: Vec::new(),\n                    unreadable: Some((1, why)),\n                }\n            }\n",
+          "to": "            Err(_) => return DocumentCitations::default(),\n"
+        }
+      ],
+      "expect_red": [
+        "a_program_that_cannot_answer_leaves_the_document_unreadable"
+      ],
+      "tests": [
+        "code_refs::tests::a_program_that_cannot_answer_leaves_the_document_unreadable"
       ]
     },
     "a-value-is-read-as-raw-text": {
@@ -211,6 +256,7 @@
       "expect_red": [
         "a_document_that_does_not_parse_is_returned_not_skipped",
         "a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+        "a_program_that_cannot_answer_leaves_the_document_unreadable",
         "a_document_that_does_not_parse_is_reported_with_the_reason",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
@@ -218,6 +264,7 @@
       "tests": [
         "code_refs::tests::a_document_that_does_not_parse_is_returned_not_skipped",
         "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+        "code_refs::tests::a_program_that_cannot_answer_leaves_the_document_unreadable",
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
@@ -283,6 +330,9 @@
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
         "an_element_reader_reads_the_ids_its_element_holds",
+        "a_declared_program_reads_what_no_built_in_reader_can",
+        "a_program_that_cannot_answer_leaves_the_document_unreadable",
+        "a_declared_program_is_the_reader_through_the_binary",
         "scan_inventory_missing_reject",
         "scan_inventory_deprecated_reject",
         "scan_inventory_decay_respects_comment_only_flag",
@@ -302,8 +352,10 @@
         "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
+        "code_refs::tests::a_declared_program_reads_what_no_built_in_reader_can",
         "code_refs::tests::a_document_that_does_not_parse_is_returned_not_skipped",
         "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+        "code_refs::tests::a_program_that_cannot_answer_leaves_the_document_unreadable",
         "code_refs::tests::an_attribute_in_no_namespace_is_the_unprefixed_one",
         "code_refs::tests::an_attribute_is_read_by_its_namespace_not_its_prefix",
         "code_refs::tests::an_attribute_value_is_read_as_xml_defines_it",
@@ -315,6 +367,7 @@
         "code_refs::tests::scan_inventory_deprecated_reject",
         "code_refs::tests::scan_inventory_missing_reject",
         "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
+        "inventory_marker_smoke::a_declared_program_is_the_reader_through_the_binary",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
@@ -352,9 +405,11 @@
       ],
       "expect_red": [
         "an_attribute_no_document_carries_is_reported_rather_than_silent",
-        "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot"
+        "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
+        "a_declared_program_is_the_reader_through_the_binary"
       ],
       "tests": [
+        "inventory_marker_smoke::a_declared_program_is_the_reader_through_the_binary",
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
         "inventory_marker_smoke::an_element_declaration_reads_the_annotation_the_attribute_reader_cannot"
       ]

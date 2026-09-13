@@ -121,6 +121,7 @@ fn build_validator(
             inventory_path_prefixes: vec![],
             inventory_attributes: Vec::new(),
             inventory_elements: Vec::new(),
+            citation_readers: Vec::new(),
             section_namespace: None,
         },
         entry_id_prefix: "Round ".to_string(),
