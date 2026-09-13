@@ -6860,8 +6860,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         mnemosyne_validate::code_refs::NumberingOriginAxis::derive(&root),
     );
     let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
-    let violations = validator
-        .scan(&attribution, &snapshot)
+    // Round 1327 — one walk, both answers: the judgments and what the inventory
+    // attribute axis reached while making them, so the report cannot be about a
+    // different reading of the tree than the verdicts are.
+    let (violations, inventory_attribute_axis) = validator
+        .scan_and_reach(&attribution, &snapshot)
         .with_context(|| "SetEqualityValidator scan failed".to_string())?;
     // What this run judged, by axis — the same map the scan took every one of
     // its skips from. Read here so the report can print a count where one was
@@ -6873,10 +6876,6 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // `severity_binding = reject` reads as symbol-level enforcement, and for
     // an unreachable file it is file-level, silently.
     let symbol_axis = validator.symbol_axis_coverage(&attribution, &snapshot)?;
-    // Round 1326 — what the inventory attribute axis reached, published every
-    // run: an attribute no document carries reads nothing, and nothing is what
-    // a clean run prints too.
-    let inventory_attribute_axis = validator.inventory_attribute_coverage(&attribution)?;
 
     // What this run read, once, for every axis that reports coverage below —
     // narrowed by `--paths` where one was given, because a coverage report that
@@ -7291,9 +7290,26 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         // it nowhere judges nothing, and judging nothing looks exactly like
         // judging everything clean.
         for row in &inventory_attribute_axis {
+            // Round 1327 — the bare documents by NAME, not only by count: a
+            // count says the annotation is written some other way, and a name
+            // says where to look. Capped, with the remainder counted.
+            let bare = if row.bare.is_empty() {
+                String::new()
+            } else {
+                let more = row.documents - row.carrying - row.unreadable - row.bare.len();
+                format!(
+                    " — read and carrying none of it: {}{}",
+                    row.bare.join(", "),
+                    if more > 0 {
+                        format!(" and {more} more")
+                    } else {
+                        String::new()
+                    }
+                )
+            };
             println!(
                 "inventory attribute {} (.{}) — {} document(s), {} carrying, {} citation(s), \
-                 {} unreadable{}",
+                 {} unreadable{}{}",
                 row.attribute,
                 row.extensions.join(" ."),
                 row.documents,
@@ -7304,7 +7320,8 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                     " — NO DOCUMENT CARRIES IT, so this axis judged nothing"
                 } else {
                     ""
-                }
+                },
+                bare
             );
         }
         if !cfg.inventory_path_prefixes.is_empty() {

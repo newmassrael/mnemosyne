@@ -5,6 +5,23 @@
   ],
   "complete": true,
   "fired": {
+    "a-bare-document-is-counted-but-not-named": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                } else if row.bare.len() < BARE_DOCUMENTS_NAMED {\n                    row.bare.push(rel_str.clone());\n                }\n",
+          "to": "                }\n"
+        }
+      ],
+      "expect_red": [
+        "the_attribute_axis_publishes_what_it_reached",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ],
+      "tests": [
+        "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
+        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ]
+    },
     "a-doctype-makes-a-document-unreadable": {
       "edits": [
         {
@@ -146,8 +163,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                if reach.citations > 0 {\n                    row.carrying += 1;\n                }\n",
-          "to": "                row.carrying += 1;\n"
+          "from": "                } else if reach.citations > 0 {\n                    row.carrying += 1;\n",
+          "to": "                } else if true {\n                    row.carrying += 1;\n"
         }
       ],
       "expect_red": [
@@ -199,16 +216,20 @@
       ],
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
+        "the_attribute_axis_publishes_what_it_reached",
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+        "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },

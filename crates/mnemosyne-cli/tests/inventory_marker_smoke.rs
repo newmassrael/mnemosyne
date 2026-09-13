@@ -218,6 +218,11 @@ fn an_attribute_no_document_carries_is_reported_rather_than_silent() {
         (Some("{http://example/ext}req"), Some(1), Some(0), Some(0)),
         "the report must say the document was read and carries none of it: {report}"
     );
+    assert_eq!(
+        axis["bare"][0].as_str(),
+        Some("doc/model.scxml"),
+        "and it must NAME the document, not only count it: {report}"
+    );
 
     let plain = run(ws.path(), &["validate-code-refs"]);
     let text = format!(
@@ -226,8 +231,8 @@ fn an_attribute_no_document_carries_is_reported_rather_than_silent() {
         String::from_utf8_lossy(&plain.stderr)
     );
     assert!(
-        text.contains("NO DOCUMENT CARRIES IT"),
-        "the line a person reads must carry it too: {text}"
+        text.contains("NO DOCUMENT CARRIES IT") && text.contains("doc/model.scxml"),
+        "the line a person reads must carry it too, document named: {text}"
     );
 }
 

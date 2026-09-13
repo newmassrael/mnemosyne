@@ -3064,7 +3064,18 @@ pub struct InventoryAttributeCoverage {
     pub carrying: usize,
     /// Citations read under it: distinct `(line, id)` pairs.
     pub citations: usize,
+    /// The first [`BARE_DOCUMENTS_NAMED`] documents that parsed and carry none
+    /// of it, named rather than only counted (Round 1327) — a count says the
+    /// annotation is written some other way, and a name says where to look.
+    /// Documents that did not parse are not here; they are violations of their
+    /// own, with their own file and reason.
+    pub bare: Vec<String>,
 }
+
+/// How many bare documents a coverage row names before it stops (Round 1327).
+/// A report that grows with the tree stops being read; the count beside the
+/// names is what says how many more there are.
+pub const BARE_DOCUMENTS_NAMED: usize = 10;
 
 /// The inventory citation axes a workspace declares, read as ONE thing.
 ///
@@ -4495,11 +4506,41 @@ impl SetEqualityValidator {
     /// modes + Inventory axis with two tail shapes + bidirectional
     /// set-equality (Path B) + spec-side coverage axiom. See
     /// [`CodeRefViolation`] doc for per-variant evidence.
+    ///
+    /// # Errors
+    ///
+    /// Whatever [`Self::scan_and_reach`] fails with.
     pub fn scan(
         &self,
         attribution: &CitationAttribution,
         snapshot: &mnemosyne_core::AtomicSnapshot,
     ) -> std::io::Result<Vec<CodeRefViolation>> {
+        Ok(self.scan_and_reach(attribution, snapshot)?.0)
+    }
+
+    /// The scan, and WHAT THE INVENTORY ATTRIBUTE AXIS REACHED WHILE DOING IT
+    /// (Round 1327).
+    ///
+    /// ONE WALK, BOTH ANSWERS. Round 1326 published the reach from a second
+    /// walk of the read set beside this one. That parsed every declared document
+    /// twice, and — the half that matters more than the milliseconds — read the
+    /// tree at two moments, so a file written between them would leave the
+    /// report and the judgments describing different trees. The counts are a
+    /// by-product of the walk that judges now, so they cannot be about anything
+    /// else.
+    ///
+    /// The rows follow THIS run: a path-scoped run reports the documents it
+    /// scanned rather than the ones an unscoped run would have.
+    ///
+    /// # Errors
+    ///
+    /// Whatever the directory walk, the file reads or a symbol resolver fail
+    /// with.
+    pub fn scan_and_reach(
+        &self,
+        attribution: &CitationAttribution,
+        snapshot: &mnemosyne_core::AtomicSnapshot,
+    ) -> std::io::Result<(Vec<CodeRefViolation>, Vec<InventoryAttributeCoverage>)> {
         // The tree comes from the attribution rather than beside it (Round 867):
         // a root passed separately could name a tree the numbering origin was not
         // derived from, and the answer would be wrong while looking right.
@@ -4512,6 +4553,18 @@ impl SetEqualityValidator {
         let verdicts = self.axis_verdicts();
         let comment_only = self.config.comment_only;
         let inventory_axes = InventoryCitationAxes::of(&self.config);
+        // A row per DECLARED attribute, so an attribute this tree holds no
+        // document for is a row of zeroes rather than an absence (Round 1326).
+        let mut inventory_reach: Vec<InventoryAttributeCoverage> = self
+            .config
+            .inventory_attributes
+            .iter()
+            .map(|attribute| InventoryAttributeCoverage {
+                attribute: attribute.expanded_name(),
+                extensions: attribute.extensions().to_vec(),
+                ..InventoryAttributeCoverage::default()
+            })
+            .collect();
         // Empty resolver map = symbol axis silently skipped; identical
         // semantic to the pre-R307 `Option<&BTreeMap>` shape where None
         // bypassed lookup entirely.
@@ -4823,6 +4876,28 @@ impl SetEqualityValidator {
             // axis — opaque id, section path, marker — is read as one, and a
             // citation two axes both read surfaces once.
             let inventory_read = inventory_axes.extract(&abs, &raw, &content);
+            // What each declared attribute reached HERE, counted on the way past
+            // (Round 1327): the documents it was declared for, the ones that
+            // carry it, and — named, not just counted — the ones read and found
+            // to carry none of it, which is what an annotation written some
+            // other way looks like.
+            for reach in &inventory_read.reach {
+                let Some(row) = inventory_reach
+                    .iter_mut()
+                    .find(|row| row.attribute == reach.attribute)
+                else {
+                    continue;
+                };
+                row.documents += 1;
+                row.citations += reach.citations;
+                if reach.unreadable {
+                    row.unreadable += 1;
+                } else if reach.citations > 0 {
+                    row.carrying += 1;
+                } else if row.bare.len() < BARE_DOCUMENTS_NAMED {
+                    row.bare.push(rel_str.clone());
+                }
+            }
             for (line, inventory_id) in inventory_read.cites {
                 let kind = match snapshot.inventory.get(&inventory_id).copied() {
                     None if verdicts.judges(AuditAxis::InventoryMissing) => {
@@ -4977,7 +5052,7 @@ impl SetEqualityValidator {
         }
 
         sort_violations(&mut violations);
-        Ok(violations)
+        Ok((violations, inventory_reach))
     }
 
     /// Curation support for Path B adoption. Scans the configured paths for
@@ -5224,67 +5299,6 @@ impl SetEqualityValidator {
             }
         }
         Ok(cov)
-    }
-
-    /// What each declared inventory ATTRIBUTE reached across the read set
-    /// (Round 1326).
-    ///
-    /// # Why
-    ///
-    /// An attribute declared for documents that do not carry it reads nothing,
-    /// and an axis that reads nothing prints exactly what an axis that found
-    /// everything in order prints: no violation. An adopter who writes the
-    /// annotation as element text, or binds the namespace to a URI differing by
-    /// a character, or declares extensions the read set does not reach, gets a
-    /// green gate and no hint. So the counts go out every run — Round 855's
-    /// shape for the symbol axis, applied to this one.
-    ///
-    /// REPORTED, NOT REJECTED, for Round 819's reason: an adopter mid-adoption
-    /// legitimately has documents with no annotation yet, and a gate that
-    /// refused that would refuse the first day of every adoption. What a report
-    /// may not do is stay silent.
-    ///
-    /// # Errors
-    ///
-    /// Whatever the directory walk fails with.
-    pub fn inventory_attribute_coverage(
-        &self,
-        attribution: &CitationAttribution,
-    ) -> std::io::Result<Vec<InventoryAttributeCoverage>> {
-        let declared = &self.config.inventory_attributes;
-        if declared.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut rows: Vec<InventoryAttributeCoverage> = declared
-            .iter()
-            .map(|attribute| InventoryAttributeCoverage {
-                attribute: attribute.expanded_name(),
-                extensions: attribute.extensions().to_vec(),
-                ..InventoryAttributeCoverage::default()
-            })
-            .collect();
-        for abs in self.read_set(attribution.root())? {
-            let Ok(raw) = std::fs::read_to_string(&abs) else {
-                continue;
-            };
-            // THE SAME READER THE GATE USES, by calling it rather than by
-            // repeating it: a coverage report free to disagree with the gate
-            // about what this axis reads would be reporting some other tool's.
-            for reach in extract_inventory_attribute_citations(declared, &abs, &raw).reach {
-                let Some(row) = rows.iter_mut().find(|row| row.attribute == reach.attribute) else {
-                    continue;
-                };
-                row.documents += 1;
-                if reach.unreadable {
-                    row.unreadable += 1;
-                }
-                if reach.citations > 0 {
-                    row.carrying += 1;
-                }
-                row.citations += reach.citations;
-            }
-        }
-        Ok(rows)
     }
 }
 
@@ -8883,10 +8897,13 @@ mod tests {
             path_scope: None,
         };
         let attribution = no_foreign_subtree(tmp.path(), &validator.config);
+        let store = mnemosyne_atomic::AtomicStore::new();
+        let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+        let (_, reach) = validator
+            .scan_and_reach(&attribution, &snapshot)
+            .expect("the scan");
         assert_eq!(
-            validator
-                .inventory_attribute_coverage(&attribution)
-                .expect("the walk"),
+            reach,
             vec![InventoryAttributeCoverage {
                 attribute: "{http://example/ext}req".to_string(),
                 extensions: vec!["scxml".to_string()],
@@ -8894,6 +8911,9 @@ mod tests {
                 unreadable: 1,
                 carrying: 1,
                 citations: 2,
+                // Named, not only counted: this is the document annotated as
+                // element text, which is what the report exists to surface.
+                bare: vec!["doc/bare.scxml".to_string()],
             }]
         );
     }

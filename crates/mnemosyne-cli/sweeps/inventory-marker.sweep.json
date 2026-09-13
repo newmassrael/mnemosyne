@@ -153,8 +153,10 @@
       ],
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
+        "the_attribute_axis_publishes_what_it_reached",
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "a_document_that_does_not_parse_is_reported_with_the_reason",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
@@ -197,8 +199,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                if reach.citations > 0 {\n                    row.carrying += 1;\n                }\n",
-          "to": "                row.carrying += 1;\n"
+          "from": "                } else if reach.citations > 0 {\n                    row.carrying += 1;\n",
+          "to": "                } else if true {\n                    row.carrying += 1;\n"
         }
       ],
       "expect_red": [
@@ -214,6 +216,21 @@
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
           "from": "                row.documents += 1;\n",
           "to": "                row.documents += usize::from(reach.citations > 0);\n"
+        }
+      ],
+      "expect_red": [
+        "the_attribute_axis_publishes_what_it_reached",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ]
+    },
+    {
+      "name": "a-bare-document-is-counted-but-not-named",
+      "why": "the report says how many documents carry none of the attribute and never which, so an adopter reading it still has to search the tree for the ones written another way",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                } else if row.bare.len() < BARE_DOCUMENTS_NAMED {\n                    row.bare.push(rel_str.clone());\n                }\n",
+          "to": "                }\n"
         }
       ],
       "expect_red": [
