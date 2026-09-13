@@ -20395,6 +20395,47 @@
         "ONE READER PER PREFIX LIST, NOT PER PREFIX. A workspace declaring eight prefixes gets one row in the reach report rather than eight, so \"which prefix reached nothing\" is not a question this report answers. The list is what the config declares; per-prefix reach is derivable from the same walk if an adopter ever needs it."
       ]
     },
+    "Round 1330 — the port is named in prose, not as a link": {
+      "decision_summary": "R1330 (immediate repayment of the red Round 1328 left on `main`, found by the push hook refusing to build on it).\n\nWHAT BROKE. Round 1328's config doc for `inventory_elements` wrote the port's name as an intra-doc LINK — `[`mnemosyne_core::CitationExtractor`]` — from a crate that does not depend on `mnemosyne-core`. Rustdoc cannot resolve a path to a crate that is not there, so the link is a citation naming no item, which is exactly what `tools/item-citations` is for. The hosted job `item citations name items` went red on `42821d2`, and the push of Round 1329 was refused because it was building on a red nobody had read.\n\nWHY THE LOCAL GATES DID NOT SEE IT. The law runs over the WHOLE workspace's documentation — every target of every crate — and the side-workspace gate runs each separate workspace's own suite. Nothing local this round ran the workspace-wide documentation pass, so the first reader of the defect was CI, which is the arrangement working as designed rather than a gap: the local lanes are the fast ones and this one is not.\n\nTHE FIX IS THE SMALLEST TRUE ONE. The port is named in plain text, with the reason written beside it — this crate does not depend on that one, and a link rustdoc cannot resolve is a citation naming no item. Naming it in prose keeps the pointer a reader needs without claiming a resolvable path that does not exist.\n\nAND THE PUSH THAT CARRIES THIS SAYS WHAT IT IS BUILDING ON. The hook's refusal is not a block on repairing a red; it asks the pusher to name the red. This push names `item citations name items@42821d2`, which is the job this entry repairs.",
+      "changes_bullets": [
+        "the `inventory_elements` doc in `mnemosyne-config` names the citation port in plain text instead of as an intra-doc link, with the reason beside it: this crate does not depend on `mnemosyne-core`, and a link rustdoc cannot resolve is a citation naming no item"
+      ],
+      "verification_bullets": [
+        "THE LAW THAT WENT RED IS THE ONE RUN FIRST, AND IT IS GREEN. `cargo run --locked --manifest-path tools/item-citations/Cargo.toml --bin item-citations -- --workspace Cargo.toml` — the exact command the hosted step runs — on a build machine: exit 0, 57 of 57 targets reached, 56 clean and one with citations only the harness could resolve. Before the fix the same command on the same machine printed the defect this entry repairs: `crates/mnemosyne-config/src/lib.rs:924 mnemosyne_core::CitationExtractor — no item of that name, in mnemosyne-config Lib mnemosyne_config`, exit 1.",
+        "THE ROOT POPULATION, FILED. `cargo test --workspace --locked --no-fail-fast` through the wrapper on this machine: 82 result lines, 2215 passed, 0 failed — unchanged from Round 1329, a doc comment being what this round touched — sealed as `exit=0` into `20260913T110312Z-r1330-1755695.log`, the record this entry's `verification_runs` carries.",
+        "NO SEPARATE-WORKSPACE RUN, AND WHY. The change is one doc comment in a root crate; the separate workspaces were green on this tree an hour ago (27 of 27, Round 1329) and nothing this round reaches them. The lane that matters for this defect is the workspace-wide documentation pass above, which is the one that found it.",
+        "THE PUSH NAMES THE RED IT BUILDS ON. `MNEMOSYNE_PUSH_OVER_RED='item citations name items@42821d29'`, which is the job this entry repairs — the hook asks a pusher to say what it is building on rather than forbidding the repair."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "A CROSS-CRATE DOC LINK IS ONLY CHECKED BY THE WORKSPACE-WIDE PASS, AND NOTHING LOCAL RUNS IT. `tools/item-citations --workspace` documents every target of every crate; the pre-commit hook does not run it and the side-workspace gate cannot, so a broken intra-doc link reaches CI before it reaches a person. Making it a local lane is a minute of documentation build per commit, which is why it lives in CI — but a round that writes cross-crate doc links should run it by hand, and this entry is the reason to remember that."
+      ],
+      "verification_runs": [
+        {
+          "command": "cargo test --workspace --locked --no-fail-fast",
+          "exit_code": 0,
+          "log": "20260913T110312Z-r1330-1755695.log"
+        }
+      ],
+      "publishable_decision_summary": "R1330 (immediate repayment of the red Round 1328 left on `main`, found by the push hook refusing to build on it).\n\nWHAT BROKE. Round 1328's config doc for `inventory_elements` wrote the port's name as an intra-doc LINK — `[`mnemosyne_core::CitationExtractor`]` — from a crate that does not depend on `mnemosyne-core`. Rustdoc cannot resolve a path to a crate that is not there, so the link is a citation naming no item, which is exactly what `tools/item-citations` is for. The hosted job `item citations name items` went red on `42821d2`, and the push of Round 1329 was refused because it was building on a red nobody had read.\n\nWHY THE LOCAL GATES DID NOT SEE IT. The law runs over the WHOLE workspace's documentation — every target of every crate — and the side-workspace gate runs each separate workspace's own suite. Nothing local this round ran the workspace-wide documentation pass, so the first reader of the defect was CI, which is the arrangement working as designed rather than a gap: the local lanes are the fast ones and this one is not.\n\nTHE FIX IS THE SMALLEST TRUE ONE. The port is named in plain text, with the reason written beside it — this crate does not depend on that one, and a link rustdoc cannot resolve is a citation naming no item. Naming it in prose keeps the pointer a reader needs without claiming a resolvable path that does not exist.\n\nAND THE PUSH THAT CARRIES THIS SAYS WHAT IT IS BUILDING ON. The hook's refusal is not a block on repairing a red; it asks the pusher to name the red. This push names `item citations name items@42821d2`, which is the job this entry repairs.",
+      "publishable_changes_bullets": [
+        "the `inventory_elements` doc in `mnemosyne-config` names the citation port in plain text instead of as an intra-doc link, with the reason beside it: this crate does not depend on `mnemosyne-core`, and a link rustdoc cannot resolve is a citation naming no item"
+      ],
+      "publishable_verification_bullets": [
+        "THE LAW THAT WENT RED IS THE ONE RUN FIRST, AND IT IS GREEN. `cargo run --locked --manifest-path tools/item-citations/Cargo.toml --bin item-citations -- --workspace Cargo.toml` — the exact command the hosted step runs — on a build machine: exit 0, 57 of 57 targets reached, 56 clean and one with citations only the harness could resolve. Before the fix the same command on the same machine printed the defect this entry repairs: `crates/mnemosyne-config/src/lib.rs:924 mnemosyne_core::CitationExtractor — no item of that name, in mnemosyne-config Lib mnemosyne_config`, exit 1.",
+        "THE ROOT POPULATION, FILED. `cargo test --workspace --locked --no-fail-fast` through the wrapper on this machine: 82 result lines, 2215 passed, 0 failed — unchanged from Round 1329, a doc comment being what this round touched — sealed as `exit=0` into `20260913T110312Z-r1330-1755695.log`, the record this entry's `verification_runs` carries.",
+        "NO SEPARATE-WORKSPACE RUN, AND WHY. The change is one doc comment in a root crate; the separate workspaces were green on this tree an hour ago (27 of 27, Round 1329) and nothing this round reaches them. The lane that matters for this defect is the workspace-wide documentation pass above, which is the one that found it.",
+        "THE PUSH NAMES THE RED IT BUILDS ON. `MNEMOSYNE_PUSH_OVER_RED='item citations name items@42821d29'`, which is the job this entry repairs — the hook asks a pusher to say what it is building on rather than forbidding the repair."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "A CROSS-CRATE DOC LINK IS ONLY CHECKED BY THE WORKSPACE-WIDE PASS, AND NOTHING LOCAL RUNS IT. `tools/item-citations --workspace` documents every target of every crate; the pre-commit hook does not run it and the side-workspace gate cannot, so a broken intra-doc link reaches CI before it reaches a person. Making it a local lane is a minute of documentation build per commit, which is why it lives in CI — but a round that writes cross-crate doc links should run it by hand, and this entry is the reason to remember that."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

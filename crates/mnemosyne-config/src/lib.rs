@@ -920,9 +920,11 @@ pub struct SetEqualityValidatorConfig {
     ///
     /// IT EXISTS BECAUSE THE PORT MADE IT CHEAP. Round 1325 recorded "this axis
     /// reads attributes, not element text" as a decision, and it was a fair one
-    /// while a second shape meant a second axis inside the gate. Behind
-    /// [`mnemosyne_core::CitationExtractor`] it is one more reader, and a
-    /// decision whose whole price is one reader is not worth keeping. Empty =
+    /// while a second shape meant a second axis inside the gate. Behind the
+    /// citation port — `mnemosyne_core::CitationExtractor`, named here in plain
+    /// text because this crate does not depend on that one and a link rustdoc
+    /// cannot resolve is a citation naming no item — it is one more reader, and
+    /// a decision whose whole price is one reader is not worth keeping. Empty =
     /// no such reader.
     #[serde(default)]
     pub inventory_elements: Vec<InventoryXmlName>,
