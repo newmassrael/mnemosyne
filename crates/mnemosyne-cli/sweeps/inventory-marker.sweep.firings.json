@@ -31,10 +31,12 @@
         }
       ],
       "expect_red": [
-        "a_declared_program_is_the_reader_through_the_binary"
+        "a_declared_program_is_the_reader_through_the_binary",
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
       ],
       "tests": [
-        "inventory_marker_smoke::a_declared_program_is_the_reader_through_the_binary"
+        "inventory_marker_smoke::a_declared_program_is_the_reader_through_the_binary",
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
       ]
     },
     "a-doctype-makes-a-document-unreadable": {
@@ -154,6 +156,26 @@
       ],
       "tests": [
         "code_refs::tests::a_program_that_cannot_answer_leaves_the_document_unreadable"
+      ]
+    },
+    "a-reader-is-handed-its-input-on-a-pipe": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            .stdin(std::process::Stdio::from(handed))\n",
+          "to": "            .stdin(std::process::Stdio::piped())\n"
+        },
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            .spawn()\n            .map_err(|why| format!(\"`{}` could not be run: {why}\", argv.join(\" \")))?;\n",
+          "to": "            .spawn()\n            .map_err(|why| format!(\"`{}` could not be run: {why}\", argv.join(\" \")))?;\n        if let Some(pipe) = child.stdin.take() {\n            let mut pipe = pipe;\n            let _ = std::io::Write::write_all(&mut pipe, text.as_bytes());\n        }\n"
+        }
+      ],
+      "expect_red": [
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
+      ],
+      "tests": [
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
       ]
     },
     "a-value-is-read-as-raw-text": {
@@ -349,7 +371,8 @@
         "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
         "the_same_annotation_under_the_path_axis_misses_the_active_entry",
         "every_citation_axis_publishes_what_it_read",
-        "every_axis_that_reads_something_publishes_it_through_the_binary"
+        "every_axis_that_reads_something_publishes_it_through_the_binary",
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
       ],
       "tests": [
         "code_refs::tests::a_declared_program_reads_what_no_built_in_reader_can",
@@ -369,6 +392,7 @@
         "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
         "inventory_marker_smoke::a_declared_program_is_the_reader_through_the_binary",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
         "inventory_marker_smoke::an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",

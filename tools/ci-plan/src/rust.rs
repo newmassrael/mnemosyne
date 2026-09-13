@@ -1016,14 +1016,6 @@ impl RustSpawns {
     }
 }
 
-/// Every cargo command tracked Rust sources issue, and what could not be read.
-///
-/// # Panics
-///
-/// When a tracked `.rs` file does not parse. That is deliberate and it is the
-/// same stance [`crate::parse_workflow`] takes: a file this walk skips is a file
-/// whose spawns are invisible, and the skip would be silent.
-#[must_use]
 /// Every tracked Rust file in this repository, sorted.
 ///
 /// THE ONE ANSWER to "what Rust does this repository hold". Two walks asked it
@@ -1048,6 +1040,14 @@ pub fn tracked_rust_sources(root: &Path) -> Vec<String> {
     sources
 }
 
+/// Every cargo command tracked Rust sources issue, and what could not be read.
+///
+/// # Panics
+///
+/// When a tracked `.rs` file does not parse. That is deliberate and it is the
+/// same stance [`crate::parse_workflow`] takes: a file this walk skips is a file
+/// whose spawns are invisible, and the skip would be silent.
+#[must_use]
 pub fn cargo_commands(root: &Path) -> RustSpawns {
     let sources = tracked_rust_sources(root);
 

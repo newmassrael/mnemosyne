@@ -201,8 +201,19 @@ fn build_symbol_resolver_map(
 /// Sound at exactly this point and nowhere later: `main`'s first statement, so
 /// no output has been produced and no thread exists to observe the change (this
 /// binary spawns none). The disposition then applies to every pipe this process
-/// writes — which is only its own stdout/stderr: it opens no socket, and its one
-/// child (`git log`, read via `Command::output`) is never written to.
+/// writes — which is only its own stdout/stderr: it opens no socket, and NO
+/// CHILD OF THIS PROCESS IS WRITTEN TO THROUGH A PIPE.
+///
+/// ⚠ THAT LAST CLAUSE IS AN INVARIANT THIS BINARY OWES ITS CHILDREN, and Round
+/// 1331 broke it without noticing: a declared citation reader
+/// (`mnemosyne_validate::code_refs::ProgramReader`) is a child the gate hands
+/// the document to, and a reader that answers from the path alone never reads
+/// it. Writing to its pipe raised `SIGPIPE` and killed this process mid-scan —
+/// empty stdout, empty stderr, nothing for a test or a person to read — and only
+/// on a machine loaded enough for the child to exit first. Round 1334 gave that
+/// child a FILE for stdin, which restores the clause. Any future child that must
+/// be written to needs the same treatment: this disposition is not negotiable
+/// per call site, and a pipe is what makes it fatal.
 #[cfg(unix)]
 fn restore_default_sigpipe() {
     // SAFETY: see the section above — first statement of `main`, single-threaded,

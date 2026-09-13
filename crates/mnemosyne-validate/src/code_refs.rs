@@ -3044,26 +3044,35 @@ impl ProgramReader {
     /// cannot be taken.
     fn run(&self, file: &Path, text: &str) -> Result<String, String> {
         let argv = self.declared.command();
+        // THE DOCUMENT GOES IN ON STDIN, from the text the caller already read,
+        // for the reason the symbol port states: two reads of one file can
+        // disagree, and then the answer is about a file the citation was not in.
+        //
+        // FROM A FILE AND NEVER A PIPE, and that is a correctness requirement
+        // rather than a convenience (Round 1334). A reader may legitimately
+        // answer from the path alone and never read its input — the fixture that
+        // proves this axis is a `printf` — and writing to a pipe whose reader has
+        // gone raises `SIGPIPE`. This gate runs inside `mnemosyne-cli`, which
+        // restores `SIG_DFL` for that signal so a piped report dies like `cat`
+        // (Round 859), so the write KILLS THE GATE: no report, no message, no
+        // exit code anyone can read. It is also a race, so it passes everywhere
+        // until a loaded machine runs it — measured on a hosted runner while the
+        // same suite was green on this one. A file has no reader to close.
+        let mut handed = tempfile::tempfile()
+            .map_err(|why| format!("`{}` could not be given its input: {why}", argv[0]))?;
+        std::io::Write::write_all(&mut handed, text.as_bytes())
+            .and_then(|()| {
+                std::io::Seek::seek(&mut handed, std::io::SeekFrom::Start(0)).map(|_| ())
+            })
+            .map_err(|why| format!("`{}` could not be given its input: {why}", argv[0]))?;
         let mut child = std::process::Command::new(&argv[0])
             .args(&argv[1..])
             .arg(file)
-            .stdin(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::from(handed))
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|why| format!("`{}` could not be run: {why}", argv.join(" ")))?;
-        // THE DOCUMENT GOES IN ON STDIN, from the text the caller already read,
-        // for the reason the symbol port states: two reads of one file can
-        // disagree, and then the answer is about a file the citation was not in.
-        if let Some(stdin) = child.stdin.take() {
-            let mut stdin = stdin;
-            if let Err(why) = std::io::Write::write_all(&mut stdin, text.as_bytes()) {
-                // A reader that does not read its input is not an error by
-                // itself — it may answer from the path alone — so the write
-                // failing is only fatal when the program then fails too.
-                let _ = why;
-            }
-        }
         let deadline = std::time::Instant::now()
             + std::time::Duration::from_millis(self.declared.timeout_ms());
         loop {

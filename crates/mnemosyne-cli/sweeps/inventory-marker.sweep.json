@@ -179,7 +179,8 @@
         "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
         "the_same_annotation_under_the_path_axis_misses_the_active_entry",
         "every_citation_axis_publishes_what_it_read",
-        "every_axis_that_reads_something_publishes_it_through_the_binary"
+        "every_axis_that_reads_something_publishes_it_through_the_binary",
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
       ]
     },
     {
@@ -256,7 +257,27 @@
         }
       ],
       "expect_red": [
-        "a_declared_program_is_the_reader_through_the_binary"
+        "a_declared_program_is_the_reader_through_the_binary",
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
+      ]
+    },
+    {
+      "name": "a-reader-is-handed-its-input-on-a-pipe",
+      "why": "THE DEFECT ROUND 1331 SHIPPED AND ROUND 1334 REPAID, put back exactly. A reader may answer from the path and never read its input, and `mnemosyne-cli` restores SIG_DFL for SIGPIPE (Round 859) so a piped report dies like `cat` — so the gate's own write to a reader that has exited KILLS THE GATE mid-scan: empty stdout, empty stderr, nothing to read. On a pipe it is a race the fast machine wins, which is why it passed two local root suites and one of the two hosted jobs of the same commit; against the half-megabyte document it is certain",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            .stdin(std::process::Stdio::from(handed))\n",
+          "to": "            .stdin(std::process::Stdio::piped())\n"
+        },
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            .spawn()\n            .map_err(|why| format!(\"`{}` could not be run: {why}\", argv.join(\" \")))?;\n",
+          "to": "            .spawn()\n            .map_err(|why| format!(\"`{}` could not be run: {why}\", argv.join(\" \")))?;\n        if let Some(pipe) = child.stdin.take() {\n            let mut pipe = pipe;\n            let _ = std::io::Write::write_all(&mut pipe, text.as_bytes());\n        }\n"
+        }
+      ],
+      "expect_red": [
+        "inventory_marker_smoke::a_reader_that_ignores_its_input_does_not_kill_the_gate"
       ]
     },
     {

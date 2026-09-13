@@ -310,6 +310,45 @@ fn a_declared_program_is_the_reader_through_the_binary() {
     );
 }
 
+/// Round 1334 — A READER THAT NEVER READS ITS INPUT MUST NOT KILL THE GATE.
+///
+/// The fixture above is such a reader — `printf` answers from nothing — and
+/// Round 1331 handed it the document on a PIPE. `mnemosyne-cli` restores
+/// `SIG_DFL` for `SIGPIPE` so a piped report dies like `cat` (Round 859), so the
+/// gate's own write to a reader that had already exited killed the gate: empty
+/// stdout, empty stderr, and a test whose only evidence was that the binary said
+/// nothing. It was a RACE — the gate usually won it — so the suite was green on
+/// this machine and on one of the two hosted jobs of the same commit.
+///
+/// This test removes the race rather than reruns it: the document is larger than
+/// any pipe buffer, so a write to a pipe could not complete before the reader
+/// exits, and the gate would die every time. It passes only because stdin is now
+/// a file, which has no reader to close.
+#[test]
+fn a_reader_that_ignores_its_input_does_not_kill_the_gate() {
+    let mut document = String::from("REQ-7 is cited on line one\n");
+    // Comfortably past a Linux pipe's 64 KiB, so the write cannot fit.
+    while document.len() < 512 * 1024 {
+        document.push_str("filler that no reader here parses, only bytes to write\n");
+    }
+    let ws = workspace(
+        r#"citation_readers = [{ name = "deaf", transport = "cli", command = ["sh", "-c", "printf '{\"cites\":[{\"line\":1,\"id\":\"REQ-7\"}]}'"], extensions = ["scxml"] }]"#,
+        &[("model.scxml", document.as_str())],
+    );
+    let (passed, report) = report(ws.path());
+    let found = violations(&report);
+    assert!(
+        !passed,
+        "the program named a deprecated id and the gate lived to judge it: {found:?}"
+    );
+    assert_eq!(
+        found,
+        vec![("inventory_deprecated".to_string(), "REQ-7".to_string(), 1)],
+        "the gate survived handing half a megabyte to a reader that read none of \
+         it, and still judged what the reader said: {report}"
+    );
+}
+
 /// CONTROL: the same annotation under the path axis keeps the attribute's
 /// syntax in the id, so even the active entry is reported — the shape the
 /// attribute axis exists for.
