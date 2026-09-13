@@ -77,7 +77,7 @@ use mnemosyne_config::{
     InventoryXmlName, OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig,
 };
 use mnemosyne_core::DecisionStatus;
-use mnemosyne_core::{CitationExtractor, DocumentCitations};
+use mnemosyne_core::{CitationExtractor, DocumentCitations, TextInput};
 use serde::Serialize;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
@@ -2939,6 +2939,76 @@ fn ids_listed_in(
     listed
 }
 
+/// The opaque-id and section-path PREFIX axes, as readers behind the port
+/// (Round 1329).
+///
+/// These read a CODE COMMENT rather than a document, so they ask for what the
+/// comment filter left — which is why the port lets a reader declare its text
+/// ([`TextInput`]). The same file is a parse to one reader and a pile of
+/// comments to another, and a reader free to choose between them could disagree
+/// with the gate about what it read.
+///
+/// One reader per declared LIST rather than per prefix: the list is what a
+/// workspace declares and what the reach report should speak about, and a
+/// prefix inside it is a spelling of the same axis.
+#[derive(Debug, Clone)]
+pub struct CommentPrefixReader {
+    prefixes: Vec<String>,
+    tail: InventoryTailMode,
+}
+
+impl CommentPrefixReader {
+    /// The opaque-id axis (`inventory_prefixes`): `<prefix>[A-Z0-9_]+` with a
+    /// digit terminus, the prefix part of the id.
+    pub fn opaque(prefixes: Vec<String>) -> Self {
+        CommentPrefixReader {
+            prefixes,
+            tail: InventoryTailMode::IdToken,
+        }
+    }
+
+    /// The section-path axis (`inventory_path_prefixes`): the section-path tail
+    /// class with no digit terminus, the prefix part of the id.
+    pub fn section_path(prefixes: Vec<String>) -> Self {
+        CommentPrefixReader {
+            prefixes,
+            tail: InventoryTailMode::SectionPath,
+        }
+    }
+}
+
+impl CitationExtractor for CommentPrefixReader {
+    fn name(&self) -> String {
+        let axis = match self.tail {
+            InventoryTailMode::IdToken => "opaque-id prefixes",
+            InventoryTailMode::SectionPath => "section-path prefixes",
+        };
+        format!("{axis} {:?}", self.prefixes)
+    }
+
+    /// EVERY FILE, which an empty list is what this report calls it: a prefix
+    /// axis reads comments wherever the read set has them rather than a
+    /// declared document type.
+    fn extensions(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn reads(&self, _file: &Path) -> bool {
+        true
+    }
+
+    fn input(&self) -> TextInput {
+        TextInput::Comments
+    }
+
+    fn read(&self, _file: &Path, text: &str) -> DocumentCitations {
+        DocumentCitations {
+            cites: extract_inventory_citations_with_tail(&self.prefixes, text, self.tail),
+            unreadable: None,
+        }
+    }
+}
+
 /// One declared XML ATTRIBUTE, as a reader behind the port (Round 1328).
 ///
 /// The attribute is found by its namespace URI and local name under whatever
@@ -3154,52 +3224,63 @@ pub const BARE_DOCUMENTS_NAMED: usize = 10;
 /// reader did not see; both take this instead. A document format added after
 /// this round is a reader behind the port, not a fourth field here — which is
 /// the whole of what Rounds 1322 to 1324 paid to learn.
-pub struct InventoryCitationAxes<'a> {
-    /// Opaque-id prefixes (`inventory_prefixes`); the prefix is part of the id.
-    pub opaque: &'a [String],
-    /// Section-path prefixes (`inventory_path_prefixes`); the prefix is part of
-    /// the id.
-    pub path: &'a [String],
-    /// The declared document readers, in declaration order: the XML attributes
-    /// (`inventory_attributes`), then the XML elements (`inventory_elements`).
+pub struct InventoryCitationAxes {
+    /// Every declared reader, in declaration order: the opaque-id prefixes, the
+    /// section-path prefixes, the XML attributes (`inventory_attributes`) and
+    /// the XML elements (`inventory_elements`).
+    ///
+    /// ONE LIST SINCE ROUND 1329. Two of these were fields of their own until
+    /// the prefix axes moved behind the port, and every caller that threaded a
+    /// list is now a caller that threads none.
     pub readers: Vec<Box<dyn CitationExtractor>>,
 }
 
-impl<'a> InventoryCitationAxes<'a> {
+impl InventoryCitationAxes {
     /// The axes a validator config declares, with its readers built.
-    pub fn of(config: &'a SetEqualityValidatorConfig) -> Self {
+    pub fn of(config: &SetEqualityValidatorConfig) -> Self {
         let mut readers: Vec<Box<dyn CitationExtractor>> = Vec::new();
+        if !config.inventory_prefixes.is_empty() {
+            readers.push(Box::new(CommentPrefixReader::opaque(
+                config.inventory_prefixes.clone(),
+            )));
+        }
+        if !config.inventory_path_prefixes.is_empty() {
+            readers.push(Box::new(CommentPrefixReader::section_path(
+                config.inventory_path_prefixes.clone(),
+            )));
+        }
         for declared in &config.inventory_attributes {
             readers.push(Box::new(XmlAttributeReader::new(declared.clone())));
         }
         for declared in &config.inventory_elements {
             readers.push(Box::new(XmlElementReader::new(declared.clone())));
         }
-        InventoryCitationAxes {
-            opaque: &config.inventory_prefixes,
-            path: &config.inventory_path_prefixes,
-            readers,
-        }
+        InventoryCitationAxes { readers }
     }
 
     /// Whether no axis is declared, so there is nothing to read.
     pub fn is_empty(&self) -> bool {
-        self.opaque.is_empty() && self.path.is_empty() && self.readers.is_empty()
+        self.readers.is_empty()
     }
 
-    /// Every inventory citation in one file under any declared axis, what each
-    /// declared reader reached in it, and every reader that could not read it.
+    /// Every inventory citation in one file under any declared reader, what each
+    /// reached in it, and every reader that could not read it.
     ///
-    /// The prefix axes read `content` — the text `comment_only` leaves — and a
-    /// reader reads `raw`, because a parser needs the document rather than the
-    /// comments cut out of it.
+    /// EACH READER IS HANDED THE TEXT IT ASKED FOR (Round 1329): `raw` for a
+    /// reader that parses the document, `content` — what the comment filter left
+    /// — for one whose citations live in code comments. The caller owns the
+    /// filter, so no reader has to hold both and choose.
     pub fn extract(&self, file: &Path, raw: &str, content: &str) -> InventoryCitations {
         let mut read = InventoryCitations::default();
         for reader in &self.readers {
             if !reader.reads(file) {
                 continue;
             }
-            let answer = reader.read(file, raw);
+            let text = match reader.input() {
+                TextInput::Document => raw,
+                TextInput::Comments => content,
+            };
+            let answer = reader.read(file, text);
             let cites: BTreeSet<(usize, String)> = answer.cites.into_iter().collect();
             read.reach.push(CitationReaderReach {
                 reader: reader.name(),
@@ -3215,10 +3296,6 @@ impl<'a> InventoryCitationAxes<'a> {
             }
             read.cites.extend(cites);
         }
-        read.cites
-            .extend(extract_inventory_citations(self.opaque, content));
-        read.cites
-            .extend(extract_inventory_path_citations(self.path, content));
         read.cites.sort();
         read.cites.dedup();
         read
@@ -5598,7 +5675,7 @@ pub fn scan_inventory_decay(
     workspace_root: &Path,
     paths: &[String],
     inventory_id: &str,
-    axes: &InventoryCitationAxes<'_>,
+    axes: &InventoryCitationAxes,
     comment_only: bool,
 ) -> std::io::Result<Vec<Citation>> {
     if axes.is_empty() {
@@ -8842,12 +8919,7 @@ mod tests {
         file: &str,
         document: &str,
     ) -> InventoryCitations {
-        InventoryCitationAxes {
-            opaque: &[],
-            path: &[],
-            readers,
-        }
-        .extract(Path::new(file), document, document)
+        InventoryCitationAxes { readers }.extract(Path::new(file), document, document)
     }
 
     /// What the declared ATTRIBUTE reader reads in one document.
@@ -9122,12 +9194,14 @@ mod tests {
     /// document while the prefix axes read what `comment_only` left.
     #[test]
     fn inventory_citation_axes_read_every_declared_axis() {
-        let opaque = vec!["ARP_".to_string()];
-        let path = vec!["W3C SCXML ".to_string()];
         let axes = InventoryCitationAxes {
-            opaque: &opaque,
-            path: &path,
-            readers: vec![Box::new(XmlAttributeReader::new(req_declaration()))],
+            readers: vec![
+                Box::new(CommentPrefixReader::opaque(vec!["ARP_".to_string()])),
+                Box::new(CommentPrefixReader::section_path(vec![
+                    "W3C SCXML ".to_string()
+                ])),
+                Box::new(XmlAttributeReader::new(req_declaration())),
+            ],
         };
         let raw = "<!-- ARP_07 beside W3C SCXML 3.13 -->\n\
                    <scxml xmlns:s=\"http://example/ext\">\
@@ -9148,9 +9222,7 @@ mod tests {
         );
         assert!(!axes.is_empty());
         assert!(InventoryCitationAxes {
-            opaque: &[],
-            path: &[],
-            readers: Vec::new(),
+            readers: Vec::new()
         }
         .is_empty());
     }
@@ -10286,9 +10358,7 @@ mod tests {
             &["src/".to_string()],
             "ARP_07",
             &InventoryCitationAxes {
-                opaque: &prefixes,
-                path: &[],
-                readers: Vec::new(),
+                readers: vec![Box::new(CommentPrefixReader::opaque(prefixes.clone()))],
             },
             true,
         )
@@ -10309,8 +10379,6 @@ mod tests {
             &["src/".to_string()],
             "ARP_07",
             &InventoryCitationAxes {
-                opaque: &[],
-                path: &[],
                 readers: Vec::new(),
             },
             true,
@@ -10335,9 +10403,7 @@ mod tests {
             &["src/".to_string()],
             "ARP_07",
             &InventoryCitationAxes {
-                opaque: &prefixes,
-                path: &[],
-                readers: Vec::new(),
+                readers: vec![Box::new(CommentPrefixReader::opaque(prefixes.clone()))],
             },
             true,
         )

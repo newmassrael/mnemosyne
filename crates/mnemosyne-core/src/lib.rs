@@ -74,6 +74,24 @@ pub struct DocumentCitations {
     pub unreadable: Option<(usize, String)>,
 }
 
+/// WHICH TEXT OF A FILE A READER ASKS FOR (Round 1329).
+///
+/// A parser needs the document; a rule about code comments needs what the
+/// comment filter left. Round 1328's port handed every reader the whole
+/// document, which is right for a parser and wrong for the prefix axes — so the
+/// reader DECLARES what it reads and the caller, which owns the comment filter,
+/// hands it that. A reader is never given both and left to choose, because a
+/// reader free to choose is a reader that can disagree with the gate about what
+/// it read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextInput {
+    /// The file as it sits on disk. What a parser needs.
+    Document,
+    /// What the workspace's comment filter left — the whole file when the knob
+    /// is off, or when the extension has no comment syntax this tree knows.
+    Comments,
+}
+
 /// A READER OF CITATIONS IN A DOCUMENT THIS REPOSITORY DOES NOT OWN
 /// (Round 1328).
 ///
@@ -111,8 +129,15 @@ pub trait CitationExtractor: Send + Sync {
     /// Whether it reads the document at `file`.
     fn reads(&self, file: &Path) -> bool;
 
-    /// The citations in `raw`, or why they could not be read.
-    fn read(&self, file: &Path, raw: &str) -> DocumentCitations;
+    /// Which text of the file it asks for (Round 1329). A parser wants the
+    /// document; a rule about code comments wants what the comment filter left.
+    fn input(&self) -> TextInput {
+        TextInput::Document
+    }
+
+    /// The citations in `text` — whichever text [`Self::input`] asked for — or
+    /// why they could not be read.
+    fn read(&self, file: &Path, text: &str) -> DocumentCitations;
 }
 
 pub trait SymbolResolver: Send + Sync {

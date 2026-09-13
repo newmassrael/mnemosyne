@@ -77,19 +77,38 @@
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
-    "a-reader-is-handed-what-comment-stripping-left": {
+    "a-prefix-list-builds-no-reader": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            let answer = reader.read(file, raw);\n",
-          "to": "            let answer = reader.read(file, content);\n"
+          "from": "            readers.push(Box::new(CommentPrefixReader::opaque(\n                config.inventory_prefixes.clone(),\n            )));\n",
+          "to": ""
         }
       ],
       "expect_red": [
+        "scan_inventory_deprecated_reject",
+        "scan_inventory_missing_reject"
+      ],
+      "tests": [
+        "code_refs::tests::scan_inventory_deprecated_reject",
+        "code_refs::tests::scan_inventory_missing_reject"
+      ]
+    },
+    "a-prefix-reader-is-handed-the-document": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "    fn input(&self) -> TextInput {\n        TextInput::Comments\n    }\n",
+          "to": "    fn input(&self) -> TextInput {\n        TextInput::Document\n    }\n"
+        }
+      ],
+      "expect_red": [
+        "scan_inventory_decay_respects_comment_only_flag",
         "inventory_citation_axes_read_every_declared_axis"
       ],
       "tests": [
-        "code_refs::tests::inventory_citation_axes_read_every_declared_axis"
+        "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+        "code_refs::tests::scan_inventory_decay_respects_comment_only_flag"
       ]
     },
     "a-value-is-read-as-raw-text": {
@@ -221,6 +240,23 @@
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
+    "the-caller-ignores-what-a-reader-asked-for": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            let text = match reader.input() {\n                TextInput::Document => raw,\n                TextInput::Comments => content,\n            };\n",
+          "to": "            let text = raw;\n"
+        }
+      ],
+      "expect_red": [
+        "scan_inventory_decay_respects_comment_only_flag",
+        "inventory_citation_axes_read_every_declared_axis"
+      ],
+      "tests": [
+        "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+        "code_refs::tests::scan_inventory_decay_respects_comment_only_flag"
+      ]
+    },
     "the-line-a-person-reads-omits-the-reach": {
       "edits": [
         {
@@ -247,6 +283,9 @@
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
         "an_element_reader_reads_the_ids_its_element_holds",
+        "scan_inventory_missing_reject",
+        "scan_inventory_deprecated_reject",
+        "scan_inventory_decay_respects_comment_only_flag",
         "the_attribute_axis_publishes_what_it_reached",
         "an_attribute_is_read_by_its_namespace_not_its_prefix",
         "an_attribute_value_is_read_as_xml_defines_it",
@@ -258,6 +297,7 @@
         "a_document_that_does_not_parse_is_reported_with_the_reason",
         "an_attribute_no_document_carries_is_reported_rather_than_silent",
         "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
+        "the_same_annotation_under_the_path_axis_misses_the_active_entry",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
@@ -271,11 +311,15 @@
         "code_refs::tests::an_id_spelled_through_an_entity_carries_its_own_line",
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+        "code_refs::tests::scan_inventory_decay_respects_comment_only_flag",
+        "code_refs::tests::scan_inventory_deprecated_reject",
+        "code_refs::tests::scan_inventory_missing_reject",
         "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
         "inventory_marker_smoke::an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
+        "inventory_marker_smoke::the_same_annotation_under_the_path_axis_misses_the_active_entry",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
@@ -458,6 +502,24 @@
           "code_refs::tests::extract_inventory_marker_citations_strips_the_prefix",
           "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
           "inventory_marker_smoke::a_marker_prefix_cites_the_id_after_it"
+        ]
+      }
+    },
+    "a-reader-is-handed-what-comment-stripping-left": {
+      "because": "R1329 replaced its subject: a reader now DECLARES which text it wants, so the defect is no longer a reader handed the wrong one but the caller ignoring what it asked for — the-caller-ignores-what-a-reader-asked-for, and a-prefix-reader-is-handed-the-document beside it",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "            let answer = reader.read(file, raw);\n",
+            "to": "            let answer = reader.read(file, content);\n"
+          }
+        ],
+        "expect_red": [
+          "inventory_citation_axes_read_every_declared_axis"
+        ],
+        "tests": [
+          "code_refs::tests::inventory_citation_axes_read_every_declared_axis"
         ]
       }
     },

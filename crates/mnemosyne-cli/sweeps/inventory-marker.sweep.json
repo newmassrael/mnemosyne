@@ -49,6 +49,9 @@
     "an_attribute_in_no_namespace_is_the_unprefixed_one",
     "an_element_reader_reads_the_ids_its_element_holds",
     "inventory_citation_axes_read_every_declared_axis",
+    "scan_inventory_missing_reject",
+    "scan_inventory_deprecated_reject",
+    "scan_inventory_decay_respects_comment_only_flag",
     "the_attribute_axis_publishes_what_it_reached",
     "every_citation_axis_publishes_what_it_read",
     "every_axis_that_reads_something_publishes_it_through_the_binary",
@@ -154,6 +157,9 @@
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
         "an_element_reader_reads_the_ids_its_element_holds",
+        "scan_inventory_missing_reject",
+        "scan_inventory_deprecated_reject",
+        "scan_inventory_decay_respects_comment_only_flag",
         "the_attribute_axis_publishes_what_it_reached",
         "an_attribute_is_read_by_its_namespace_not_its_prefix",
         "an_attribute_value_is_read_as_xml_defines_it",
@@ -165,21 +171,23 @@
         "a_document_that_does_not_parse_is_reported_with_the_reason",
         "an_attribute_no_document_carries_is_reported_rather_than_silent",
         "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
+        "the_same_annotation_under_the_path_axis_misses_the_active_entry",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
     {
-      "name": "a-reader-is-handed-what-comment-stripping-left",
-      "why": "a parser handed the comment-stripped text, which is not a document — the reason the one reader takes both the raw file and the stripped text",
+      "name": "the-caller-ignores-what-a-reader-asked-for",
+      "why": "every reader handed the document whatever it declared, so a prefix axis reads a citation-shaped token out of a string literal — the caller owns the comment filter and this is it failing to apply it",
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            let answer = reader.read(file, raw);\n",
-          "to": "            let answer = reader.read(file, content);\n"
+          "from": "            let text = match reader.input() {\n                TextInput::Document => raw,\n                TextInput::Comments => content,\n            };\n",
+          "to": "            let text = raw;\n"
         }
       ],
       "expect_red": [
+        "scan_inventory_decay_respects_comment_only_flag",
         "inventory_citation_axes_read_every_declared_axis"
       ]
     },
@@ -199,6 +207,36 @@
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
+      ]
+    },
+    {
+      "name": "a-prefix-reader-is-handed-the-document",
+      "why": "Round 1329's reason for letting a reader declare its text: a prefix axis handed the whole document reads a citation-shaped token out of a string literal or a data file, which is what `comment_only` exists to stop",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "    fn input(&self) -> TextInput {\n        TextInput::Comments\n    }\n",
+          "to": "    fn input(&self) -> TextInput {\n        TextInput::Document\n    }\n"
+        }
+      ],
+      "expect_red": [
+        "scan_inventory_decay_respects_comment_only_flag",
+        "inventory_citation_axes_read_every_declared_axis"
+      ]
+    },
+    {
+      "name": "a-prefix-list-builds-no-reader",
+      "why": "the opaque-id axis declared and never built — every inventory citation in a code comment goes unread while the config says the axis is on",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            readers.push(Box::new(CommentPrefixReader::opaque(\n                config.inventory_prefixes.clone(),\n            )));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "scan_inventory_deprecated_reject",
+        "scan_inventory_missing_reject"
       ]
     },
     {
