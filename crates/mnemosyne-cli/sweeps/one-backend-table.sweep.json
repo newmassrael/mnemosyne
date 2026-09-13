@@ -1,0 +1,90 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE BACKEND TABLE HAS ONE HOME — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-cli/sweeps/one-backend-table.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. Round 1335 moved `IN_PROCESS_BACKENDS` and the wiring",
+    "that turns `[plugins.symbol_resolver.<lang>]` into live resolvers out of",
+    "`mnemosyne-cli` and into `mnemosyne-backends`, so the agent-facing surface",
+    "N295 asks for refuses the same declarations this binary does. Two laws hold",
+    "it: the row type is built in one file, and the wiring has callers but no",
+    "second definition beside them.",
+    "",
+    "WHY THIS SWEEP EXISTS. Both laws are walks, and a walk that reads nothing",
+    "produces an empty finding list — which is what a clean tree produces. The",
+    "first run of the second law was itself the proof: it said NOBODY calls",
+    "`resolver_map` while three sites did, because the walker counted method",
+    "calls and not path calls. A law can be wrong in the direction that reads as",
+    "compliance, and only an injection says which.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "one_backend_table::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-second-crate-grows-its-own-table",
+      "why": "THE THING THE FIRST LAW PROTECTS, and what it adds over the compiler. `InProcessBackend.make` is private, so today no other crate can write a row at all — the law restates a guarantee rustc already gives. What it is FOR is the day that field is made public for some ordinary reason, after which a second list of backends is a second answer to `which grammars does this build ship` and the three refusals that read it differ per surface. So the injection does both: open the field, then grow the second table",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-backends/src/lib.rs",
+          "from": "    make: fn() -> Box<dyn SymbolResolver>,\n",
+          "to": "    pub make: fn() -> Box<dyn SymbolResolver>,\n"
+        },
+        {
+          "file": "crates/mnemosyne-cli/src/lib.rs",
+          "from": "pub mod atomic_cli;",
+          "to": "pub mod atomic_cli;\n\n#[allow(dead_code)]\nfn _a_second_table() -> mnemosyne_backends::InProcessBackend {\n    mnemosyne_backends::InProcessBackend {\n        key: mnemosyne_plugin_tree_sitter_rust::BACKEND_KEY,\n        language: mnemosyne_plugin_tree_sitter_rust::SYMBOL_AXIS_LANGUAGE,\n        spec: &mnemosyne_plugin_tree_sitter_rust::SPEC,\n        make: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),\n    }\n}"
+        }
+      ],
+      "expect_red": [
+        "one_backend_table::the_backend_table_is_written_in_one_place"
+      ]
+    },
+    {
+      "name": "the-walk-reads-no-files",
+      "why": "an empty population finds no second table and no caller, which is the shape of a law that holds AND of one that never looked — the floor and the row count are what separate them",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if path.contains(\"/tests/\") || path.contains(\"/benches/\") {\n            continue;\n        }\n",
+          "to": "        if !path.contains(\"crates/mnemosyne-style/\") {\n            continue;\n        }\n"
+        }
+      ],
+      "expect_red": [
+        "one_backend_table::the_backend_table_is_written_in_one_place",
+        "one_backend_table::a_config_becomes_resolvers_in_one_place"
+      ]
+    },
+    {
+      "name": "a-path-call-is-not-counted",
+      "why": "THE DEFECT THIS LAW'S OWN FIRST RUN HAD. `mnemosyne_backends::resolver_map(..)` is a path call, not a method call, so a walker that counts only methods reports `nobody calls it` about a function three sites call — a law that fails in the direction that reads as a finding rather than as a hole",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    fn visit_expr_call(&mut self, expr: &'ast syn::ExprCall) {\n        if let syn::Expr::Path(path) = expr.func.as_ref() {\n",
+          "to": "    fn visit_expr_call(&mut self, expr: &'ast syn::ExprCall) {\n        if let syn::Expr::Path(path) = expr.func.as_ref() {\n            let _ = &path;\n            return;\n        }\n        #[allow(unreachable_code)]\n        if let syn::Expr::Path(path) = expr.func.as_ref() {\n"
+        }
+      ],
+      "expect_red": [
+        "one_backend_table::a_config_becomes_resolvers_in_one_place"
+      ]
+    }
+  ]
+}

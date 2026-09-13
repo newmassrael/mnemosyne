@@ -1,0 +1,62 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-path-call-is-not-counted": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    fn visit_expr_call(&mut self, expr: &'ast syn::ExprCall) {\n        if let syn::Expr::Path(path) = expr.func.as_ref() {\n",
+          "to": "    fn visit_expr_call(&mut self, expr: &'ast syn::ExprCall) {\n        if let syn::Expr::Path(path) = expr.func.as_ref() {\n            let _ = &path;\n            return;\n        }\n        #[allow(unreachable_code)]\n        if let syn::Expr::Path(path) = expr.func.as_ref() {\n"
+        }
+      ],
+      "expect_red": [
+        "one_backend_table::a_config_becomes_resolvers_in_one_place"
+      ],
+      "tests": [
+        "one_backend_table::a_config_becomes_resolvers_in_one_place"
+      ]
+    },
+    "a-second-crate-grows-its-own-table": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-backends/src/lib.rs",
+          "from": "    make: fn() -> Box<dyn SymbolResolver>,\n",
+          "to": "    pub make: fn() -> Box<dyn SymbolResolver>,\n"
+        },
+        {
+          "file": "crates/mnemosyne-cli/src/lib.rs",
+          "from": "pub mod atomic_cli;",
+          "to": "pub mod atomic_cli;\n\n#[allow(dead_code)]\nfn _a_second_table() -> mnemosyne_backends::InProcessBackend {\n    mnemosyne_backends::InProcessBackend {\n        key: mnemosyne_plugin_tree_sitter_rust::BACKEND_KEY,\n        language: mnemosyne_plugin_tree_sitter_rust::SYMBOL_AXIS_LANGUAGE,\n        spec: &mnemosyne_plugin_tree_sitter_rust::SPEC,\n        make: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),\n    }\n}"
+        }
+      ],
+      "expect_red": [
+        "one_backend_table::the_backend_table_is_written_in_one_place"
+      ],
+      "tests": [
+        "one_backend_table::the_backend_table_is_written_in_one_place"
+      ]
+    },
+    "the-walk-reads-no-files": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if path.contains(\"/tests/\") || path.contains(\"/benches/\") {\n            continue;\n        }\n",
+          "to": "        if !path.contains(\"crates/mnemosyne-style/\") {\n            continue;\n        }\n"
+        }
+      ],
+      "expect_red": [
+        "one_backend_table::the_backend_table_is_written_in_one_place",
+        "one_backend_table::a_config_becomes_resolvers_in_one_place"
+      ],
+      "tests": [
+        "one_backend_table::a_config_becomes_resolvers_in_one_place",
+        "one_backend_table::the_backend_table_is_written_in_one_place"
+      ]
+    }
+  },
+  "forgotten": {}
+}

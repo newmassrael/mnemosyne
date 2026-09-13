@@ -11,7 +11,7 @@
 //! consumer's spec ledger names, and the second-to-last line of what
 //! `describe-symbol-axis-reach` publishes as `languages_without_backend`.
 //!
-//! Registered into the CLI's backend table (`mnemosyne_cli::backends`), which
+//! Registered into this build's backend table (`mnemosyne_backends`), which
 //! the config wire and `describe-symbol-axis-reach` both read.
 
 use std::sync::OnceLock;

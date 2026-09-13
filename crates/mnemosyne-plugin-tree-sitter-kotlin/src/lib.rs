@@ -13,7 +13,7 @@
 //! requires `languages_without_backend` to be empty, so an extension row landing
 //! without a resolver fails at the moment it is added.
 //!
-//! Registered into the CLI's backend table (`mnemosyne_cli::backends`), which
+//! Registered into this build's backend table (`mnemosyne_backends`), which
 //! the config wire and `describe-symbol-axis-reach` both read.
 
 use std::sync::OnceLock;

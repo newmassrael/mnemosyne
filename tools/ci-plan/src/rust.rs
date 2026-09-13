@@ -3344,11 +3344,13 @@ impl TypeSite {
 ///
 /// # What is still not claimed
 ///
-/// A method call is matched by NAME. `x.scan_and_reach(..)` is counted whatever
-/// `x` is, because no reading of the syntax says which type a receiver has —
-/// the same limit `cargo_commands` states one function over. For a name this
-/// repository gives to one method that is exact; for a common one it would not
-/// be, and the caller chooses the name.
+/// A call is matched by NAME, in both shapes it can be written: `x.f(..)` as a
+/// method and `a::b::f(..)` as a path, the latter by its LAST segment because an
+/// import lets two files spell one function differently. Neither says which TYPE
+/// is involved — no reading of the syntax says what a receiver is, the same
+/// limit `cargo_commands` states one function over. For a name this repository
+/// gives to one thing that is exact; for a common one it would not be, and the
+/// caller chooses the name.
 #[derive(Debug, Clone, Default)]
 pub struct TypeSites {
     /// Files parsed — the population, asserted before the findings are read.
@@ -3451,5 +3453,24 @@ impl<'ast> Visit<'ast> for TypeWalk<'_> {
             });
         }
         syn::visit::visit_expr_method_call(self, expr);
+    }
+
+    // A FREE FUNCTION IS CALLED TOO, and counting only methods made a law read
+    // "nobody calls this" about a function three sites call by path. `x.f(..)`
+    // and `a::b::f(..)` are different syntax for the same question a caller law
+    // asks, so both are counted and the path's LAST segment is the name — an
+    // import can spell the same function `f` or `b::f` in two files.
+    fn visit_expr_call(&mut self, expr: &'ast syn::ExprCall) {
+        if let syn::Expr::Path(path) = expr.func.as_ref() {
+            if let Some(last) = path.path.segments.last() {
+                if last.ident == self.method {
+                    self.found.called.push(TypeSite {
+                        file: self.file.to_string(),
+                        line: last.ident.span().start().line,
+                    });
+                }
+            }
+        }
+        syn::visit::visit_expr_call(self, expr);
     }
 }

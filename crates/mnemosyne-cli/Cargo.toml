@@ -38,6 +38,7 @@ path = "tests/pinned_revision_rechecks_evidence_smoke.rs"
 
 [dependencies]
 mnemosyne-ops = { path = "../mnemosyne-ops" }
+mnemosyne-backends = { path = "../mnemosyne-backends" }
 mnemosyne-validate = { path = "../mnemosyne-validate" }
 mnemosyne-core = { path = "../mnemosyne-core" }
 mnemosyne-config = { path = "../mnemosyne-config" }

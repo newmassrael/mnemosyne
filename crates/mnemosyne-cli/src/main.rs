@@ -66,112 +66,6 @@ fn cli_schema() -> Result<&'static SchemaSection> {
     Ok(CACHE.get().expect("just set"))
 }
 
-/// Round 306 — build the SymbolResolver registry from
-/// `[plugins.symbol_resolver.<lang>]` config entries.
-///
-/// Only `transport = "in-process"` entries land production backends in
-/// R306. `transport = "mcp"` / `"cli"` parse cleanly (the config enum
-/// has those variants per RFC-003 transport-abstraction section) but their backends are not yet
-/// wired — callers reaching those variants surface `NotImplemented` at
-/// resolve time.
-///
-/// Round 855 — a declared resolver that CANNOT BE BUILT is a config error, not
-/// a warning. Both shapes were silent-ish before: an unknown backend printed to
-/// stderr and continued, and an unknown LANGUAGE printed nothing at all, so
-/// `[plugins.symbol_resolver.c]` — the obvious workaround for a `.c` tree that
-/// took no symbol binding — parsed, registered, and was never consulted by
-/// anything. Both leave `severity_binding = reject` reading as symbol-level
-/// enforcement while the run performs none, which is the defect a consumer
-/// reported one axis over. Refusing cannot break a working config: an entry
-/// this rejects was doing nothing by construction.
-///
-/// Round 1151 — the THIRD shape, and the only one of the three under which
-/// enforcement actually happens: a backend registered under a language it does
-/// not resolve. `[plugins.symbol_resolver.rust] backend = "tree-sitter-cpp"`
-/// parsed, registered and ran, and every citation in the tree was checked
-/// against whatever the C++ grammar made of Rust source — a published count
-/// rather than the `null` the two shapes above now produce. The pairing is not
-/// this site's to accept: each backend declares the one language it answers in
-/// (`SYMBOL_AXIS_LANGUAGE`), and the branch chain that used to live here became
-/// [`mnemosyne_cli::backends::IN_PROCESS_BACKENDS`] so both this check and
-/// `describe-symbol-axis-reach` read one table.
-///
-/// # Errors
-///
-/// A `lang` key no file extension can map to, an in-process `backend` name this
-/// build has no plugin for, or a backend that resolves some other language.
-fn build_symbol_resolver_map(
-    cfg: &WorkspaceConfig,
-) -> anyhow::Result<std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>>> {
-    use mnemosyne_config::SymbolResolverConfig;
-    let mut out: std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> =
-        std::collections::BTreeMap::new();
-    let Some(plugins) = cfg.plugins.as_ref() else {
-        return Ok(out);
-    };
-    let known_langs = mnemosyne_validate::code_refs::symbol_axis_languages();
-    for (lang, resolver_cfg) in &plugins.symbol_resolver {
-        if !known_langs.contains(lang.as_str()) {
-            anyhow::bail!(
-                "[plugins.symbol_resolver.{lang}] names a language no file extension maps to, \
-                 so nothing would ever consult it — the keys this build can reach are {:?}",
-                known_langs
-            );
-        }
-        match resolver_cfg {
-            SymbolResolverConfig::InProcess { backend } => {
-                let Some(entry) = mnemosyne_cli::backends::find(backend) else {
-                    anyhow::bail!(
-                        "[plugins.symbol_resolver.{lang}] names in-process backend `{backend}`, \
-                         which this build has no plugin for — the symbol axis would silently \
-                         fall back to file-level binding for {lang}. This build ships {:?} \
-                         (`mnemosyne-cli describe-symbol-axis-reach` prints them with the \
-                         languages they resolve)",
-                        mnemosyne_cli::backends::keys()
-                    );
-                };
-                if entry.language != lang.as_str() {
-                    anyhow::bail!(
-                        "[plugins.symbol_resolver.{lang}] names in-process backend \
-                         `{backend}`, which resolves `{}` and not `{lang}` — it would answer \
-                         in {}'s vocabulary for every {lang} file, and the axis would publish \
-                         that as a judged count rather than say it had no instrument",
-                        entry.language,
-                        entry.language
-                    );
-                }
-                out.insert(lang.clone(), entry.make());
-            }
-            SymbolResolverConfig::Mcp { command } => {
-                // Placeholder McpResolver — registered into the type surface so
-                // enforcement passes the call through; resolve_symbol_at returns
-                // ResolverError::NotImplemented until R307+ wires real MCP transport.
-                out.insert(
-                    lang.clone(),
-                    Box::new(mnemosyne_core::McpResolver {
-                        command: command.clone(),
-                    }),
-                );
-            }
-            SymbolResolverConfig::Cli {
-                command,
-                output_parser,
-            } => {
-                // Placeholder CliResolver — same NotImplemented behavior as McpResolver
-                // until R307+ wires shell-out + output_parser.
-                out.insert(
-                    lang.clone(),
-                    Box::new(mnemosyne_core::CliResolver {
-                        command: command.clone(),
-                        output_parser: output_parser.clone(),
-                    }),
-                );
-            }
-        }
-    }
-    Ok(out)
-}
-
 /// Restore the default `SIGPIPE` disposition (Round 859).
 ///
 /// # Why
@@ -4492,7 +4386,7 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
 /// it: when a resolver lands here, nothing they run notices, so a gap list
 /// outlives its gap. Every field below is derived — the extension table from
 /// `mnemosyne-validate`, the backends from
-/// [`mnemosyne_cli::backends::IN_PROCESS_BACKENDS`], and the shortfall from the
+/// [`mnemosyne_backends::IN_PROCESS_BACKENDS`], and the shortfall from the
 /// difference — so there is no third answer to fall behind the other two.
 fn cmd_describe_symbol_axis_reach(args: &[String]) -> Result<()> {
     let mut json = false;
@@ -4507,8 +4401,8 @@ fn cmd_describe_symbol_axis_reach(args: &[String]) -> Result<()> {
         }
     }
 
-    let backends = mnemosyne_cli::backends::IN_PROCESS_BACKENDS;
-    let served = mnemosyne_cli::backends::languages();
+    let backends = mnemosyne_backends::IN_PROCESS_BACKENDS;
+    let served = mnemosyne_backends::languages();
     let languages = mnemosyne_validate::code_refs::symbol_axis_languages();
     let extensions = mnemosyne_validate::code_refs::symbol_axis_extensions();
     let without: Vec<&str> = languages
@@ -6373,7 +6267,7 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
                 config: cfg.clone(),
                 entry_id_prefix: cli_schema()?.entry_id_prefix.clone(),
                 orphan_ledger: loaded.config.orphan_ledger.clone(),
-                symbol_resolvers: build_symbol_resolver_map(&loaded.config)?,
+                symbol_resolvers: mnemosyne_backends::resolver_map(&loaded.config)?,
                 filter_id: None,
                 path_scope: None,
             };
@@ -6569,7 +6463,7 @@ fn cmd_propose_implementations(args: &[String]) -> Result<()> {
     let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
-    let symbol_resolvers = build_symbol_resolver_map(&loaded.config)?;
+    let symbol_resolvers = mnemosyne_backends::resolver_map(&loaded.config)?;
     let validator = SetEqualityValidator {
         config: cfg.clone(),
         entry_id_prefix: prefix,
@@ -6770,7 +6664,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         scope_paths: scope_requested.then_some(scope_paths.as_slice()),
         filter_id: filter_id.clone(),
         severities: overrides,
-        symbol_resolvers: build_symbol_resolver_map(&loaded.config)?,
+        symbol_resolvers: mnemosyne_backends::resolver_map(&loaded.config)?,
     })?;
     let report = match scanned {
         mnemosyne_ops::CitationScan::Ran(report) => report,

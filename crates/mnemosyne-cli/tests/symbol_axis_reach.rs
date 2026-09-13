@@ -1012,7 +1012,7 @@ fn every_fixture_reads_differently_under_a_grammar_that_is_not_its_own() {
     // respelling per fixture rather than one change.
     let mut indistinguishable: Vec<String> = Vec::new();
     for fx in FIXTURES {
-        let own = mnemosyne_cli::backends::IN_PROCESS_BACKENDS
+        let own = mnemosyne_backends::IN_PROCESS_BACKENDS
             .iter()
             .find(|b| b.language == fx.language)
             .unwrap_or_else(|| panic!("no backend resolves `{}`", fx.language));
@@ -1027,7 +1027,7 @@ fn every_fixture_reads_differently_under_a_grammar_that_is_not_its_own() {
                 .position(|line| line.contains("§sec"))
                 .map(|index| index as u32 + 1)
                 .unwrap_or_else(|| panic!("the {} fixture holds no citation", fx.language));
-            let read = |backend: &mnemosyne_cli::backends::InProcessBackend| {
+            let read = |backend: &mnemosyne_backends::InProcessBackend| {
                 backend
                     .make()
                     .resolve_symbols_at(Path::new("/no/such/file"), source, &[cited])
@@ -1041,7 +1041,7 @@ fn every_fixture_reads_differently_under_a_grammar_that_is_not_its_own() {
                  so this law compares two absences\n--- source ---\n{source}",
                 fx.language
             );
-            for other in mnemosyne_cli::backends::IN_PROCESS_BACKENDS {
+            for other in mnemosyne_backends::IN_PROCESS_BACKENDS {
                 if other.language == fx.language {
                     continue;
                 }
@@ -1088,7 +1088,7 @@ fn the_report_publishes_the_doc_comment_rule_each_backend_answers_with() {
     let mut with_markers = 0usize;
     for row in rows {
         let key = row["backend"].as_str().expect("backend key");
-        let backend = mnemosyne_cli::backends::find(key)
+        let backend = mnemosyne_backends::find(key)
             .unwrap_or_else(|| panic!("the report names `{key}`, which no row holds"));
         let rule = &backend.spec.doc_comments;
 

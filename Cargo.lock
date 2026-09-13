@@ -1106,6 +1106,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-backends"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "mnemosyne-config",
+ "mnemosyne-core",
+ "mnemosyne-plugin-tree-sitter-core",
+ "mnemosyne-plugin-tree-sitter-cpp",
+ "mnemosyne-plugin-tree-sitter-go",
+ "mnemosyne-plugin-tree-sitter-kotlin",
+ "mnemosyne-plugin-tree-sitter-python",
+ "mnemosyne-plugin-tree-sitter-rust",
+ "mnemosyne-validate",
+]
+
+[[package]]
 name = "mnemosyne-build-stamp"
 version = "0.1.0"
 dependencies = [
@@ -1128,6 +1144,7 @@ dependencies = [
  "ci-plan",
  "libc",
  "mnemosyne-atomic",
+ "mnemosyne-backends",
  "mnemosyne-build-stamp",
  "mnemosyne-config",
  "mnemosyne-core",

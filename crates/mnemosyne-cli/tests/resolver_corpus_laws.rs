@@ -331,7 +331,7 @@ const KOTLIN_SHAPES: &[Shape] = &[
 ];
 
 /// EVERY BACKEND THIS BUILD SHIPS, and the population law says so against
-/// `mnemosyne_cli::backends` rather than against this file's idea of one.
+/// `mnemosyne_backends` rather than against this file's idea of one.
 ///
 /// Round 1161 covered the three that arrived without a predecessor and left the
 /// two PORTS out, on the reasoning that a port already had an oracle: agreement
@@ -1024,7 +1024,7 @@ fn every_backend_this_build_ships_answers_the_doc_comment_criterion() {
     // added there without a subject here reddens this, which is the same
     // derivation Law 0 makes from the compiled query.
     let named: BTreeSet<&str> = SUBJECTS.iter().map(|s| s.spec.backend_key).collect();
-    let shipped: BTreeSet<&str> = mnemosyne_cli::backends::keys().into_iter().collect();
+    let shipped: BTreeSet<&str> = mnemosyne_backends::keys().into_iter().collect();
     assert_eq!(
         named, shipped,
         "every shipped backend meets EVERY law in this file — there is no \

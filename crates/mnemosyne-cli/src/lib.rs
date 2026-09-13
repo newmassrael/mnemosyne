@@ -5,9 +5,15 @@
 //! cascade) lives in the separate `mnemosyne-ops` crate (R319), which both
 //! this bin and `mnemosyne-mcp` depend on. The CLI bin keeps only its own
 //! I/O concerns here; it does not re-export ops.
+//!
+//! The symbol-resolver backend table and the wiring that turns a workspace's
+//! `[plugins.symbol_resolver.<lang>]` into live resolvers moved to
+//! `mnemosyne-backends` in Round 1335, for the same reason `mnemosyne-ops`
+//! exists: a second surface needs them, and it should not have to depend on a
+//! crate of arg parsing and stdout handlers to learn which grammars this build
+//! contains.
 
 pub mod atomic_cli;
-pub mod backends;
 
 /// The CLI's top-level error, threaded from every command up to `main`.
 ///

@@ -1,0 +1,25 @@
+[package]
+name = "mnemosyne-backends"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mnemosyne — the symbol-resolver backends a build ships, and the one way a workspace's config becomes a live resolver map"
+
+[dependencies]
+mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-config = { path = "../mnemosyne-config" }
+mnemosyne-validate = { path = "../mnemosyne-validate" }
+# THE GRAMMARS THIS BUILD SHIPS. They live here rather than in `mnemosyne-ops`
+# because three crates depend on that one and `mnemosyne-engine` consults no
+# resolver — it would carry them for nothing. Measured before the move (Round
+# 1335): the five grammar rlibs are ~13.5 MB in debug, the marginal COMPILE cost
+# for a workspace build is zero because the same build already produces them,
+# and the binary that ships none was the larger of the two.
+mnemosyne-plugin-tree-sitter-core = { path = "../mnemosyne-plugin-tree-sitter-core" }
+mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
+mnemosyne-plugin-tree-sitter-cpp = { path = "../mnemosyne-plugin-tree-sitter-cpp" }
+mnemosyne-plugin-tree-sitter-go = { path = "../mnemosyne-plugin-tree-sitter-go" }
+mnemosyne-plugin-tree-sitter-python = { path = "../mnemosyne-plugin-tree-sitter-python" }
+mnemosyne-plugin-tree-sitter-kotlin = { path = "../mnemosyne-plugin-tree-sitter-kotlin" }
+anyhow.workspace = true

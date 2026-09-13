@@ -14,6 +14,7 @@ members = [
  "crates/mnemosyne-plugin-tree-sitter-go",
  "crates/mnemosyne-plugin-tree-sitter-python",
  "crates/mnemosyne-plugin-tree-sitter-kotlin",
+ "crates/mnemosyne-backends",
  "crates/mnemosyne-config",
  "crates/mnemosyne-atomic",
  "crates/mnemosyne-style",

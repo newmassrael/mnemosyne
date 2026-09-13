@@ -279,10 +279,10 @@
     },
     {
       "name": "the-wire-hands-rust-the-other-languages-resolver",
-      "why": "the config-to-plugin wire had no reader until Round 1142 — the one test that configured a buildable backend asserted only exit 0, so a registry keyed to the wrong resolver resolved nothing and passed; this is that miskeying. Round 1151 moved the wire out of an if/else chain in main.rs into the backend TABLE, so the miskeying now lands in the table's `rust` row and the anchor it used to name stopped existing (found by the sweeps gate, Round 1156). The move also gave the pairing a second reader — `backends::tests::each_row_builds_the_plugin_it_names` asks each row's constructor which plugin it built — but whether that test fires under this injection is UNMEASURED, so it is not listed below: an expect_red entry is a claim, and a claim about a run nobody has done belongs in prose",
+      "why": "the config-to-plugin wire had no reader until Round 1142 — the one test that configured a buildable backend asserted only exit 0, so a registry keyed to the wrong resolver resolved nothing and passed; this is that miskeying. Round 1151 moved the wire out of an if/else chain in main.rs into the backend TABLE, so the miskeying now lands in the table's `rust` row and the anchor it used to name stopped existing (found by the sweeps gate, Round 1156). The move also gave the pairing a second reader — `each_row_builds_the_plugin_it_names` asks each row's constructor which plugin it built — but whether that test fires under this injection is UNMEASURED, so it is not listed below: an expect_red entry is a claim, and a claim about a run nobody has done belongs in prose. Round 1335 moved the table AGAIN, out of `mnemosyne-cli` and into `mnemosyne-backends`, so that both surfaces running the citation gate refuse the same declarations; the anchor follows it and the sweeps gate found the stale one the same way it did in Round 1156",
       "edits": [
         {
-          "file": "crates/mnemosyne-cli/src/backends.rs",
+          "file": "crates/mnemosyne-backends/src/lib.rs",
           "from": "        make: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),",
           "to": "        make: || Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),"
         }
