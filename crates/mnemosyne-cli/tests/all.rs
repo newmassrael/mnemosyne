@@ -308,6 +308,9 @@ mod validate_confirmation_smoke;
 #[path = "validate_content_drift_epub_smoke.rs"]
 mod validate_content_drift_epub_smoke;
 
+#[path = "unmodeled_key_smoke.rs"]
+mod unmodeled_key_smoke;
+
 #[path = "validate_content_drift_smoke.rs"]
 mod validate_content_drift_smoke;
 

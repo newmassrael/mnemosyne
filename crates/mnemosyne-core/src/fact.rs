@@ -58,6 +58,7 @@ pub struct FactKey {
 /// key*, assigned at projection time, and is deliberately **not** part of the
 /// authoring skeleton.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SectionSkeleton {
     /// Heading title. Default = "" during the pre-backfill transitional
     /// state (Round 287 outline lift).

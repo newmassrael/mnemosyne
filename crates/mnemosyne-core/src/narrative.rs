@@ -50,6 +50,7 @@ fn is_main_branch(branch: &crate::BranchId) -> bool {
 /// `AtomicStore.frames`; the id is the value every [`NarrativeFact::frame`]
 /// must reference (fail-loud at the mutate primitive).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Frame {
     /// Free-form description of whose epistemic frame this is (e.g. a
     /// character, a faction, the ground-truth axis). Optional prose, not
@@ -65,6 +66,7 @@ pub struct Frame {
 /// world). [`MAIN_BRANCH`] is known by construction (it is the default axis
 /// value) and is never registered.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Branch {
     /// Free-form description of which quest-path/playthrough world this is.
     /// Optional prose, not load-bearing.
@@ -115,6 +117,7 @@ impl Branch {
 /// branch and the canon point (structure-section ref) where the child's
 /// history departs it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BranchFork {
     /// Parent world-line (`MAIN_BRANCH` or a registered branch).
     pub branch: crate::BranchId,
@@ -416,6 +419,7 @@ pub fn succession_branch_inherits(
 /// detectable offline and the scan demands re-affirmation instead of
 /// silently gating on a judgment about text that no longer exists.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConflictAssertion {
     /// The fact this claim was judged to contradict.
     pub target: crate::FactId,
@@ -445,6 +449,7 @@ pub struct ConflictAssertion {
 /// Round 402 unrevalidatable model) — it is counted and reported on its own
 /// axis, never silently clean.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceRef {
     /// Structure-section id evidencing the claim.
     pub section: crate::SectionId,
@@ -477,6 +482,7 @@ impl EvidenceRef {
 /// `(branch_id, entity_id, valid_from)`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Entity {
     /// Registered kind ref — a key of `AtomicStore.entity_kinds`, NOT free
     /// text. Optional (empty = unspecified); a NON-empty value must resolve,
@@ -524,6 +530,7 @@ pub struct Entity {
 /// backward-compat line: a pre-R738 store's lone `parent` migrates to a
 /// one-element `parents`, Round 738 load migration v37→v38).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityKind {
     /// This kind's direct super-kinds (registered `entity_kinds` refs) — a SET
     /// (0..N), because a kind may specialise more than one super-kind (a DAG,
@@ -551,6 +558,7 @@ pub struct EntityKind {
 /// registry keeps the set the consumer's while the substrate enforces THAT the
 /// unit is registered.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Unit {
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -569,6 +577,7 @@ pub struct Unit {
 /// (`affection` / `affinity` / `호감도`); the registry keeps the set the
 /// consumer's while the substrate enforces THAT the parameter is registered.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Parameter {
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -645,6 +654,7 @@ impl IntervalOp {
 /// lesson).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct ParameterGate {
     /// The gated meter — a `parameters` registry ref (fail-loud at the write
     /// path AND the scan boundary).
@@ -674,6 +684,7 @@ pub struct ParameterGate {
 /// materialize a cost the primitive never accepts. `stage_registry_entry` needs
 /// only `PartialEq`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EdgeCost {
     /// The cost amount — an exact positive integer (e.g. walk minutes).
     pub n: i64,
@@ -731,6 +742,7 @@ crate::closed_vocabulary!(PredicateObjectKind {
 /// the write-path endpoint gate matches an endpoint entity's kind against it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Predicate {
     /// Declared object shape; the builder enforces it on every typed leg.
     pub object_kind: PredicateObjectKind,
@@ -775,6 +787,7 @@ pub struct Predicate {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub enum TypedObject {
     /// A registered entity id (must also be a member of the owning fact's
     /// `entities` list — the entities list stays THE retrieval key).
@@ -865,6 +878,7 @@ impl TypedObject {
 /// conflict edges and the future LLM-discovery adapter cover the rest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct TypedClaim {
     /// Registered entity id; must be a member of the owning fact's
     /// `entities` list (a typed leg never silently widens the retrieval
@@ -918,6 +932,7 @@ fn payoff_unmarked(p: &PayoffExpectation) -> bool {
 /// that is transaction-time history (the git log of the store), not
 /// in-world belief change, and never routes through succession.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NarrativeFact {
     /// Epistemic frame id (registry key in `AtomicStore.frames`). Exactly
     /// one — a believed-fact and the corresponding ground-truth fact are
@@ -1069,6 +1084,7 @@ fn disclosure_mode_is_withhold(m: &DisclosureMode) -> bool {
 /// `first_at` only; `surface` is craft guidance).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureSurface {
     /// Structure-section ref the disclosure surfaces in.
     pub scene: crate::SectionId,
@@ -1097,6 +1113,7 @@ pub struct DisclosureSurface {
 /// normalized away — each k is a DISTINCT semantic (`Some(len)` = last-reached).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureReveal {
     /// The discourse-coordinate trigger set (each a canon structure-section ref,
     /// per-member dangling-ref checked). An emptied set drops the whole world
@@ -1112,6 +1129,7 @@ pub struct DisclosureReveal {
 /// One per-fact disclosure decision within a telling (Round 506, design sec
 /// 7.24): a sparse override over the plan's `default_mode`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureOverride {
     /// How this fact reaches the reader under this telling.
     pub mode: DisclosureMode,
@@ -1144,6 +1162,7 @@ pub struct DisclosureOverride {
 /// `store_registry_violations` — a dangling ref is corruption regardless of the
 /// telling, the same ref-emitting-field parity every other registry has.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DisclosurePlan {
     /// Free-form description of this telling. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]

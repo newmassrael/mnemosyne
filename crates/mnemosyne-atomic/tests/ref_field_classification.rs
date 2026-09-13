@@ -137,14 +137,25 @@ const CONTAINERS: &[&str] = &[
     "String", "Vec", "Option", "BTreeMap", "BTreeSet", "HashMap", "HashSet", "Cow", "Box",
 ];
 
-/// One type's body: the `(place, type-text)` pairs it declares.
+/// One declared type: the attribute text stacked above its header, and its body.
 ///
-/// `place` is a struct field name, an enum struct-variant field name, or a
-/// tuple-variant name. Enums are walked too, because they carry refs —
-/// `TypedObject::Entity { id }` is an entity id and `Locator::Prefix(String)` is
-/// not, which is the same undecidability one level in.
-fn type_bodies() -> BTreeMap<String, Vec<(String, String)>> {
-    let mut out: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+/// `body` holds the `(place, type-text)` pairs it declares. `place` is a struct
+/// field name, an enum struct-variant field name, or a tuple-variant name. Enums
+/// are walked too, because they carry refs — `TypedObject::Entity { id }` is an
+/// entity id and `Locator::Prefix(String)` is not, which is the same
+/// undecidability one level in.
+///
+/// `attributes` EXCLUDES comment lines, and that is load-bearing: this crate's
+/// doc comments name `deny_unknown_fields` in prose ("the store structs carry no
+/// `deny_unknown_fields`"), so a scan that read them would find the attribute on
+/// the very types that lacked it.
+struct TypeDecl {
+    attributes: String,
+    body: Vec<(String, String)>,
+}
+
+fn type_decls() -> BTreeMap<String, TypeDecl> {
+    let mut out: BTreeMap<String, TypeDecl> = BTreeMap::new();
     for (_label, src) in SOURCES {
         let lines: Vec<&str> = src.lines().collect();
         let mut i = 0;
@@ -159,6 +170,7 @@ fn type_bodies() -> BTreeMap<String, Vec<(String, String)>> {
                 i += 1;
                 continue;
             };
+            let attributes = preamble_attributes(&lines, i);
             let mut body: Vec<(String, String)> = Vec::new();
             i += 1;
             // A type block ends at the first column-0 `}` — nested braces are
@@ -183,10 +195,30 @@ fn type_bodies() -> BTreeMap<String, Vec<(String, String)>> {
                 }
                 i += 1;
             }
-            out.insert(name, body);
+            out.insert(name, TypeDecl { attributes, body });
         }
     }
     out
+}
+
+/// The attribute lines directly above line `header`, back to the blank line or
+/// column-0 `}` that ends the previous item — comment lines skipped (see
+/// [`TypeDecl`] for why).
+fn preamble_attributes(lines: &[&str], header: usize) -> String {
+    let mut attributes: Vec<&str> = Vec::new();
+    let mut j = header;
+    while j > 0 {
+        j -= 1;
+        let t = lines[j].trim();
+        if t.is_empty() || lines[j].starts_with('}') {
+            break;
+        }
+        if !t.starts_with("//") {
+            attributes.push(t);
+        }
+    }
+    attributes.reverse();
+    attributes.join(" ")
 }
 
 /// `Variant { a: T, b: U },` — an enum struct-variant written on one line, whose
@@ -254,42 +286,112 @@ fn referenced(ty: &str) -> BTreeSet<String> {
     out
 }
 
+/// Every type of ours reachable from `AtomicStore`, at any depth, the root
+/// included — ONE walk, read by both laws in this file, so the population the
+/// String classification covers and the population the unknown-key law covers
+/// cannot be two different graphs.
+fn reachable_types(decls: &BTreeMap<String, TypeDecl>) -> BTreeSet<String> {
+    assert!(
+        decls.contains_key("AtomicStore"),
+        "AtomicStore must parse — the walk has no root otherwise"
+    );
+    let mut frontier: Vec<String> = vec!["AtomicStore".to_string()];
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    while let Some(ty_name) = frontier.pop() {
+        let Some(decl) = decls.get(&ty_name) else {
+            continue; // not one of ours (an external or primitive type)
+        };
+        if !seen.insert(ty_name) {
+            continue;
+        }
+        for (_, ty) in &decl.body {
+            frontier.extend(referenced(ty).into_iter().filter(|t| !seen.contains(t)));
+        }
+    }
+    seen
+}
+
 /// Every `(Type, place)` reachable from `AtomicStore` whose declared type
 /// mentions `String`, at any depth.
 fn derived_pairs() -> BTreeSet<(String, String)> {
-    let bodies = type_bodies();
-    let root = bodies
-        .get("AtomicStore")
-        .expect("AtomicStore must parse — the walk has no root otherwise");
-    let mut frontier: Vec<String> = root
-        .iter()
-        .flat_map(|(_, ty)| referenced(ty))
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let decls = type_decls();
     let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
-    while let Some(ty_name) = frontier.pop() {
-        if !seen.insert(ty_name.clone()) {
-            continue;
+    for ty_name in reachable_types(&decls) {
+        if ty_name == "AtomicStore" {
+            continue; // the root's own String places are map KEYS, not fields
         }
-        let Some(body) = bodies.get(&ty_name) else {
-            continue; // not one of ours (an external or primitive type)
-        };
-        for (place, ty) in body {
+        for (place, ty) in &decls[&ty_name].body {
             // A String place, OR a place already migrated to a ref id type —
             // both must stay classified by covering gate.
             if ty.contains("String") || REF_ID_TYPES.iter().any(|t| ty.contains(t)) {
                 pairs.insert((ty_name.clone(), place.clone()));
             }
-            for next in referenced(ty) {
-                if !seen.contains(&next) {
-                    frontier.push(next);
-                }
-            }
         }
     }
     pairs
+}
+
+/// Whether a type is read FROM A JSON OBJECT — the only shape that can carry a
+/// key nobody declared. A struct with named fields is; so is an enum with a
+/// struct variant (`TypedObject::Quantity { n, unit }`). An enum of unit
+/// variants is a string and an enum of tuple variants wraps one value: neither
+/// has a key to refuse.
+fn is_map_shaped(decl: &TypeDecl) -> bool {
+    decl.body.iter().any(|(place, _)| {
+        place.contains('.') || place.starts_with(|c: char| c.is_ascii_lowercase())
+    })
+}
+
+/// THE STORE REFUSES A KEY IT DOES NOT MODEL, AT EVERY DEPTH.
+///
+/// Without `deny_unknown_fields` serde reads past a key it has no field for and
+/// the next save writes the store back without it. Measured by an adopter: an
+/// inventory entry carrying `"modality"` loaded, was invisible to every query,
+/// and was erased by an unrelated `set-inventory-status` that exited 0. The
+/// version guard cannot see that case — the key was not written by a newer
+/// build, it was written by a person — so the refusal has to live in the types.
+///
+/// A SOURCE LAW AND NOT ONLY A BEHAVIOURAL ONE, because the defect is an
+/// ABSENCE: a type added under the store tomorrow without the attribute
+/// reopens the hole at exactly one depth, and no test written today injects a
+/// key into a type that does not exist yet. The behavioural half — that the
+/// attribute does refuse, through `flatten` and through an internal tag — is
+/// `AtomicStore::load`'s own tests.
+#[test]
+fn every_map_shaped_type_under_the_store_denies_unknown_fields() {
+    let decls = type_decls();
+    let map_shaped: Vec<&String> = reachable_types(&decls)
+        .iter()
+        .filter(|t| is_map_shaped(&decls[*t]))
+        .map(|t| decls.get_key_value(t).expect("reachable ⊆ declared").0)
+        .collect();
+
+    // NON-VACUITY FLOOR — the same reason as the classification law's: a walk
+    // that stops matching finds nothing, and nothing lacks the attribute.
+    assert!(
+        map_shaped.len() >= 30,
+        "only {} map-shaped types reachable from AtomicStore — the walk has stopped \
+         reaching the graph rather than the graph having shrunk",
+        map_shaped.len()
+    );
+
+    let lenient: Vec<&String> = map_shaped
+        .iter()
+        .copied()
+        .filter(|t| !decls[*t].attributes.contains("deny_unknown_fields"))
+        .collect();
+    assert!(
+        lenient.is_empty(),
+        "{} of {} map-shaped type(s) under AtomicStore read past a key they do not \
+         model, so the next save erases it. Add `#[serde(deny_unknown_fields)]` to:\n    {}",
+        lenient.len(),
+        map_shaped.len(),
+        lenient
+            .iter()
+            .map(|t| t.as_str())
+            .collect::<Vec<_>>()
+            .join("\n    ")
+    );
 }
 
 /// THE TABLE. One line per String-bearing place reachable from the store,

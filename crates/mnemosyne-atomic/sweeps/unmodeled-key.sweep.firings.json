@@ -1,0 +1,80 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "the-flattened-section-reads-past-a-key": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct AtomicSection {",
+          "to": "pub struct AtomicSection {"
+        }
+      ],
+      "expect_red": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "a_key_the_store_does_not_model_is_refused_where_it_is"
+      ],
+      "tests": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "tests::a_key_the_store_does_not_model_is_refused_where_it_is"
+      ]
+    },
+    "the-inventory-entry-reads-past-a-key": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct InventoryEntry {",
+          "to": "pub struct InventoryEntry {"
+        }
+      ],
+      "expect_red": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "a_key_the_store_does_not_model_is_refused_where_it_is",
+        "an_undeclared_key_is_refused_by_the_read_and_survives_the_write"
+      ],
+      "tests": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "tests::a_key_the_store_does_not_model_is_refused_where_it_is",
+        "unmodeled_key_smoke::an_undeclared_key_is_refused_by_the_read_and_survives_the_write"
+      ]
+    },
+    "the-refusal-does-not-say-where": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "                    path: e.path().to_string(),\n",
+          "to": "                    path: String::new(),\n"
+        }
+      ],
+      "expect_red": [
+        "a_key_the_store_does_not_model_is_refused_where_it_is",
+        "an_undeclared_key_is_refused_by_the_read_and_survives_the_write"
+      ],
+      "tests": [
+        "tests::a_key_the_store_does_not_model_is_refused_where_it_is",
+        "unmodeled_key_smoke::an_undeclared_key_is_refused_by_the_read_and_survives_the_write"
+      ]
+    },
+    "the-tagged-object-reads-past-a-key": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-core/src/narrative.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub enum TypedObject {",
+          "to": "pub enum TypedObject {"
+        }
+      ],
+      "expect_red": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "a_key_the_store_does_not_model_is_refused_where_it_is"
+      ],
+      "tests": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "tests::a_key_the_store_does_not_model_is_refused_where_it_is"
+      ]
+    }
+  },
+  "forgotten": {}
+}

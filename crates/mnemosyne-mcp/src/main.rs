@@ -8352,7 +8352,7 @@ mod tests {
                 "schema_version": atomic::CURRENT_SCHEMA_VERSION,
                 "changelog_entries": {},
                 "sections": {"40": {
-                    "section_id": "40", "parent_doc": "spec", "title": "the section",
+                    "parent_doc": "spec", "title": "the section",
                     "decision_status": "superseded"
                 }}
             }}

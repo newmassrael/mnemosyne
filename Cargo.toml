@@ -46,6 +46,10 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The JSON path of the value a typed parse refused. The atomic store refuses a
+# key it does not model, and in a store of tens of megabytes "unknown field
+# `x`" without WHERE is a refusal nobody can act on.
+serde_path_to_error = "0.1"
 
 # Round 690 — JSON Schema derive for the atomic manifest / import DTOs, so the
 # MCP authoring surface hands an agent a real typed schema from the ONE type

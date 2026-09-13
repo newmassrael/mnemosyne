@@ -798,6 +798,22 @@ it. Rounds 821 and 822 changed no schema and changed what
 `validate-continuity` reports — a schema-only pin would not have moved
 while the verdicts did.
 
+A key the store does not model is REFUSED, at every depth, by every command
+that loads the store — and the refusal says where it is:
+
+```
+json shape at `inventory_entries.REQ-1`: unknown field `modality`, expected one of …
+```
+
+Before that was true, such a key loaded, was invisible to every read, and was
+erased by the next unrelated write at exit 0 — measured by an adopter who had
+added a `modality` to an inventory entry. So a store cannot be extended with a
+field of your own: a field it should hold is a schema change, and gets
+proposed as one. A store written by an older build reaches this build through
+the schema ladder's migrations, and a store from a newer build is refused by
+`schema_version` before any key is read, so this refusal fires on a key no
+build wrote — a hand edit, or an attempt to extend the format in place.
+
 To bind a section to a code file (so the binding axis recognizes the cite
 as backed), use `add-section-binding` with an explicit `--kind`:
 

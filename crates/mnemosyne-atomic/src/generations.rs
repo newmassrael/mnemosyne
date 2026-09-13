@@ -336,8 +336,8 @@ pub const GENERATIONS: &[Generation] = &[
         what: "coverage_expectation widens to 3 states and the `informative` tag is retired",
         migrate: None,
         probe: Probe::Pair {
-            retired: r#"{"sections": {"s-1": {"skeleton": {}, "coverage_expectation": "informative"}}}"#,
-            control: r#"{"sections": {"s-1": {"skeleton": {}, "coverage_expectation": "informational"}}}"#,
+            retired: r#"{"sections": {"s-1": {"coverage_expectation": "informative"}}}"#,
+            control: r#"{"sections": {"s-1": {"coverage_expectation": "informational"}}}"#,
         },
     },
     // v11→v12 adds `AtomicStore.frames` + `AtomicStore.narrative_facts` (Phase
@@ -569,7 +569,7 @@ pub const GENERATIONS: &[Generation] = &[
         what: "adds AtomicStore.entity_kinds; Entity.kind becomes a registry ref",
         migrate: None,
         probe: Probe::Boundary {
-            opens: r#"{"entities": {"e-1": {"entity_id": "e-1", "kind": "person"}}}"#,
+            opens: r#"{"entities": {"e-1": {"kind": "person"}}}"#,
             refused_by: an_unregistered_kind_is_refused_at_the_write_boundary,
         },
     },

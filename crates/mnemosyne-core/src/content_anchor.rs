@@ -18,6 +18,7 @@
 /// not resolve, not that the anchor is unconstructible.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct ContentAnchor {
     /// The content-SSOT document this anchor points into (a manuscript file id,
     /// or an EPUB spine href).

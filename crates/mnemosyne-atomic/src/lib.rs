@@ -64,6 +64,7 @@ use thiserror::Error;
 /// populates them from workspace markdown-derived Section data. Post-migration
 /// invariant: every AtomicSection has non-empty `title` + non-empty `parent_doc`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtomicSection {
     /// Layer-0 canonical scalar skeleton (Round 325; scoped to scalars in
     /// Round 326): the medium-neutral attributes (`title` / `parent_doc` /
@@ -141,10 +142,11 @@ pub struct AtomicSection {
     /// *compat* carries, not migration code), and it is **load-bearing for
     /// data safety** — without it a v4 store's entire binding set would
     /// deserialize empty (the field `#[serde(default)]`s to `[]`) and the
-    /// next save would erase it. It is the sole guard because `AtomicSection`
-    /// uses `#[serde(flatten)]`, which is incompatible with
-    /// `deny_unknown_fields`; the happy-path migration test pins that the
-    /// alias fires. Keep until a v4 store cannot exist anywhere (not provable
+    /// next save would erase it. `AtomicSection` now refuses a key it does not
+    /// model — through its `flatten`, which serde checks for keys the skeleton
+    /// left unclaimed — so without the alias a v4 store would fail to load
+    /// rather than lose its bindings; the alias is what lets it load at all. The
+    /// happy-path migration test pins that the alias fires. Keep until a v4 store cannot exist anywhere (not provable
     /// while external consumers hold old stores), then drop with a tracked
     /// round — do not remove on aesthetic grounds.
     #[serde(
@@ -274,6 +276,7 @@ fn is_dedicated_verification(v: &mnemosyne_core::VerificationExpectation) -> boo
 /// at [`build_normative_excerpt`], the sole constructor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct NormativeExcerpt {
     /// The one provenance substrate: content-SSOT anchor + verbatim projected
     /// text + drift hash. Shared with `content_excerpt` and `scene_cast` (R759)
@@ -310,6 +313,7 @@ pub struct NormativeExcerpt {
 /// one substrate is P3c.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct ContentExcerpt {
     /// The content-SSOT anchor this excerpt projects — its provenance (a
     /// manuscript file id + verbatim prefix today; an EPUB spine href + CFI
@@ -355,6 +359,7 @@ impl ContentExcerpt {
 /// presence — the `Line`/`Passage` provenance invariant applied to cast.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct ScenePresence {
     /// The store entity id present in the scene (the consumer resolves a
     /// manuscript form → id via its alias map at ingest and supplies the id).
@@ -391,6 +396,7 @@ pub struct ScenePresence {
 /// [`Locator::Prefix`]: mnemosyne_core::Locator::Prefix
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct LadderRung {
     /// Where the rung begins inside this section's `content_excerpt`: a
     /// [`Locator::Prefix`](mnemosyne_core::Locator::Prefix) whose `source` is the
@@ -424,6 +430,7 @@ pub struct LadderRung {
 /// consumer's need to hold a parallel coordinate space the kernel cannot see.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct SectionLadder {
     /// The entity carrying the ladder — the mouth the reader questions. `None`
     /// marks an OBSERVATION ladder: no one speaks it, the scene is looked at
@@ -447,6 +454,7 @@ pub struct SectionLadder {
 /// authored audit value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct EpubLocator {
     /// EPUB spine document holding this Section (e.g. `OEBPS/spec.xhtml`).
     pub spine_href: String,
@@ -469,6 +477,7 @@ pub struct EpubLocator {
 /// `--alternatives-file`, parsed by [`RejectedAlternative::parse_line`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct RejectedAlternative {
     /// The option that was considered and not taken.
     pub alternative: String,
@@ -498,6 +507,7 @@ impl RejectedAlternative {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExampleBlock {
     /// Language tag for fenced code block (`rust` / `toml` / `markdown` / etc).
     pub language: String,
@@ -538,6 +548,7 @@ fn binding_kind_implements_default() -> BindingKind {
 /// `kind`) still deserialize during the load migration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Binding {
     pub file: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -613,6 +624,7 @@ pub struct ExcerptHashBackfillReport {
 /// the workspace's census report, so neither wire accepts a count at all.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct PopulationCensus {
     /// The question this axis answers about the recorded population.
     pub axis: String,
@@ -657,6 +669,7 @@ pub struct PopulationCensus {
 /// second spelling of that, and one free to drift from the gate that owns it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct VerificationRun {
     /// The command the wrapper ran, as its own record states it.
     pub command: String,
@@ -691,6 +704,7 @@ pub struct VerificationRun {
 /// as the **audit** half (no rename → existing JSON loads unchanged); the
 /// publishable half is opt-in via the new `publishable_*` keys.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtomicChangelogEntry {
     /// Audit half — 1 sentence headline. Frozen after first commit (T2 scope).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -857,6 +871,7 @@ impl AtomicChangelogEntry {
 /// (e.g., `"ARP_07"`); not duplicated in the struct, mirroring the
 /// `AtomicSection` / `AtomicChangelogEntry` convention.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InventoryEntry {
     /// Lifecycle status. Default = Active.
     #[serde(default)]
@@ -882,6 +897,7 @@ pub struct InventoryEntry {
 /// `[atomic] sidecar_path` in `mnemosyne.toml` to override (CLI
 /// `--sidecar` flag still wins over config when both are present).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtomicStore {
     #[serde(default)]
     pub sections: BTreeMap<mnemosyne_core::SectionId, AtomicSection>,
@@ -1139,6 +1155,7 @@ fn default_schema_version() -> u32 {
 /// N, so a dropped condition still yields a well-formed smaller guard (the
 /// threshold-INVISIBILITY half is closed, N-completeness is not — R723 review F2).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EdgeGuard {
     /// The condition fact ids the edge requires (each a per-member dangling-ref
     /// check). An emptied set drops the whole `edge_guards` key.
@@ -1163,6 +1180,7 @@ pub struct EdgeGuard {
 /// The claim a confirmation event is about (design sec 7 claim-key).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub enum ConfirmationClaim {
     /// A `Verifies` binding ("does this test verify this requirement?"), keyed
     /// by `(section_id, file, symbol)` — `kind` is implicitly `Verifies`.
@@ -1243,6 +1261,7 @@ mnemosyne_core::closed_vocabulary!(Verdict {
 
 /// Who/what produced a confirmation (design sec 4.1 `confirmer`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Confirmer {
     pub kind: ConfirmerKind,
     pub id: String,
@@ -1276,6 +1295,7 @@ pub struct ArtifactHashes {
 /// on nine record types.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct MutationReason {
     /// The primitive that made the change, as the receipt names it.
     pub primitive: String,
@@ -1300,6 +1320,7 @@ pub struct MutationReason {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConfirmationEvent {
     pub claim: ConfirmationClaim,
     pub confirmer: Confirmer,
@@ -1454,6 +1475,19 @@ pub enum AtomicStoreError {
     Io(#[from] std::io::Error),
     #[error("json parse: {0}")]
     Json(#[from] serde_json::Error),
+    /// The typed parse refused a value, and `path` is WHERE — the JSON path of
+    /// the value it refused (`inventory_entries.REQ-1`).
+    ///
+    /// Separate from [`AtomicStoreError::Json`] because the store refuses a key
+    /// it does not model at every depth, and a store runs to tens of megabytes:
+    /// "unknown field `modality`" alone names the key and not the entry, which is
+    /// a refusal its holder cannot act on. `Json` stays for bytes that are not
+    /// JSON at all, where there is no path to give.
+    #[error("json shape at `{path}`: {source}")]
+    Shape {
+        path: String,
+        source: serde_json::Error,
+    },
     #[error("schema version mismatch: store={store} expected ≤ {expected}")]
     SchemaVersionMismatch { store: u32, expected: u32 },
     /// Round 708 — the free-text `value` object shape AND the `scalar` predicate
@@ -1540,9 +1574,10 @@ const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
 /// `parent` (`Option<String>`) to the `parents` SET (`BTreeSet<String>`) in the
-/// raw JSON, run by `load` BEFORE the typed parse. The retyped struct carries no
-/// `deny_unknown_fields`, so a lingering `"parent"` key would be silently dropped
-/// — data loss. Exact backward-compat: a string `parent` becomes a one-element
+/// raw JSON, run by `load` BEFORE the typed parse. Without it a lingering
+/// `"parent"` key is a key the retyped struct does not model, which the load now
+/// refuses; before the store refused such keys it was silently dropped — data
+/// loss. Exact backward-compat: a string `parent` becomes a one-element
 /// `parents` array, a null / empty / absent `parent` yields NO `parents` key (an
 /// empty set = a root kind). Idempotent + defensive: a kind already carrying
 /// `"parents"` keeps it (the legacy key, if also present, is just removed); a
@@ -1893,8 +1928,8 @@ impl AtomicStore {
         }
         let bytes = fs::read(path)?;
         // Parse to a raw Value first, so a SHAPE migration that must run BEFORE
-        // the typed parse can (a renamed/retyped field is silently dropped by
-        // serde otherwise — the store structs carry no `deny_unknown_fields`).
+        // the typed parse can (a renamed/retyped field is otherwise a key the
+        // store does not model, and the typed parse refuses it).
         // Cheap: the JSON is already in memory and load is not a hot path.
         let mut raw: serde_json::Value = serde_json::from_slice(&bytes)?;
         // A version-less store MUST default to the SAME value the typed
@@ -1926,9 +1961,13 @@ impl AtomicStore {
                 rewrite(&mut raw);
             }
         }
-        let mut store: AtomicStore = match serde_json::from_value(raw) {
+        let mut store: AtomicStore = match serde_path_to_error::deserialize(raw) {
             Ok(store) => store,
             Err(e) => {
+                let shape = AtomicStoreError::Shape {
+                    path: e.path().to_string(),
+                    source: e.into_inner(),
+                };
                 // Round 708 — the typed parse fails on a removed `{kind:value}`
                 // object (serde "unknown variant `value`"). Turn that cryptic
                 // error into the NAMED migration work-list (R625 brick lesson):
@@ -1938,7 +1977,7 @@ impl AtomicStore {
                 // Round 1247 — and whichever of the two it is, it leaves with the
                 // generation the read above worked from. The distance is what
                 // says whether one shape name is the whole repair.
-                let cause = store_removed_shape_error(&bytes).unwrap_or_else(|| e.into());
+                let cause = store_removed_shape_error(&bytes).unwrap_or(shape);
                 return Err(stale_generation(on_disk_version, cause));
             }
         };
@@ -10675,7 +10714,11 @@ pub struct ConflictProposal {
 /// not support `deny_unknown_fields` on internally tagged enums, and
 /// fail-loud parsing outranks the cosmetic tag (a silently-dropped
 /// `confidence` key would defeat the Goodhart guard) — so the two kinds
-/// are two typed arrays, each entry strictly parsed.
+/// are two typed arrays, each entry strictly parsed. THE PREMISE WAS LATER
+/// MEASURED FALSE for the serde this workspace locks: `TypedObject` is
+/// internally tagged, denies unknown fields, and refuses a stray key inside
+/// its struct variant (`a_key_the_store_does_not_model_is_refused_where_it_is`).
+/// The two-array shape stands as built; the reason recorded for it does not.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EdgeProposalsFile {
@@ -12428,7 +12471,8 @@ mod tests {
         )
         .unwrap();
         // (d) NEGATIVE CONTROL — a DIFFERENT unknown variant is NOT relabeled: the
-        // original serde error propagates (Json), never a false RemovedValueShape.
+        // original serde error propagates (as `Shape`, with where), never a false
+        // RemovedValueShape.
         let err = write_load(
             r#"{ "sections": {}, "changelog_entries": {}, "frames": { "gt": {} },
  "entities": { "kara": {} }, "predicates": { "alive": { "object_kind": "token", "object_tokens": ["x"] } },
@@ -12439,7 +12483,10 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            matches!(err.underlying(), AtomicStoreError::Json(_)),
+            matches!(
+                err.underlying(),
+                AtomicStoreError::Shape { path, .. } if path.contains("f-x")
+            ),
             "a different corruption must propagate the original serde error, got {err:?}"
         );
     }
@@ -12481,6 +12528,8 @@ mod tests {
                 // Reached UNWRAPPED only from a store already at the current
                 // generation; behind, it arrives inside `StaleGeneration`.
                 AtomicStoreError::RemovedValueShape { .. } => Class::Illegible,
+                // The same: a behind store's shape refusal arrives wrapped.
+                AtomicStoreError::Shape { .. } => Class::Illegible,
                 AtomicStoreError::StaleGeneration { .. } => Class::Behind,
             }
         }
@@ -12526,6 +12575,16 @@ mod tests {
             (
                 "current: a removed shape in a store that is not behind",
                 file("current.json", value_store(CURRENT_SCHEMA_VERSION)),
+            ),
+            (
+                "current: a key a store that is not behind does not model",
+                file(
+                    "unmodeled.json",
+                    format!(
+                        r#"{{ "schema_version": {}, "sections": {{}}, "modality": "shall_not" }}"#,
+                        CURRENT_SCHEMA_VERSION
+                    ),
+                ),
             ),
             (
                 "behind: a removed shape in a generation-28 store",
@@ -14376,7 +14435,7 @@ mod tests {
             "schema_version": 4,
             "sections": {
                 "X": {
-                    "skeleton": { "title": "X", "parent_doc": "d", "parent_section": null, "decision_status": "Active" },
+                    "title": "X", "parent_doc": "d", "parent_section": null, "decision_status": "active",
                     "implementations": [
                         { "file": "src/a.rs", "symbol": "foo" },
                         { "file": "src/b.rs" }
@@ -21119,10 +21178,11 @@ mod tests {
 
     /// Round 738 (v37→v38 load migration) — a hand-authored v37 store carrying
     /// the LEGACY single `parent` (`Option<String>`) is migrated on load to the
-    /// `parents` SET, BEFORE the typed parse would silently drop the field (data
-    /// loss — EntityKind has no `deny_unknown_fields`). NON-VACUITY: the same raw
-    /// value parsed WITHOUT the migration drops the legacy key, so `parents` is
-    /// empty — the control proves the migration, not serde, does the work.
+    /// `parents` SET, BEFORE the typed parse — which refuses the legacy key as
+    /// one `EntityKind` does not model (before the store refused such keys, it
+    /// silently dropped it: data loss). NON-VACUITY: the same raw value parsed
+    /// WITHOUT the migration is refused, naming `parent` — the control proves the
+    /// migration, not serde, is what lets a v37 store load.
     #[test]
     fn v37_parent_migrates_to_parents_on_load() {
         let tmp = TempDir::new().unwrap();
@@ -21158,13 +21218,103 @@ mod tests {
         ));
 
         // NON-VACUITY control: the SAME raw shape parsed WITHOUT the migration
-        // drops the legacy `parent` (the retyped struct has no such field), so
-        // `parents` would be empty — proving the migration is load-bearing.
-        let unmigrated: AtomicStore = serde_json::from_value(v37).unwrap();
+        // is refused on the legacy `parent` (the retyped struct has no such
+        // field) — proving the migration is what lets the store load.
+        let unmigrated = serde_json::from_value::<AtomicStore>(v37)
+            .expect_err("control: without migration the legacy parent is refused")
+            .to_string();
         assert!(
-            unmigrated.entity_kinds[&"weapon".into()].parents.is_empty(),
-            "control: without migration the legacy parent is silently dropped"
+            unmigrated.contains("unknown field `parent`"),
+            "control: the refusal names the legacy key: {unmigrated}"
         );
+    }
+
+    /// THE STORE REFUSES A KEY IT DOES NOT MODEL, AND SAYS WHERE.
+    ///
+    /// What this answers, measured by an adopter: an inventory entry carrying an
+    /// undeclared `"modality"` loaded, was invisible to every read, and was
+    /// erased by an unrelated `set-inventory-status` that exited 0.
+    /// `every_map_shaped_type_under_the_store_denies_unknown_fields` holds the
+    /// attribute on every type; this holds that the attribute REFUSES at the
+    /// three shapes where serde routes a key differently — a plain struct, a
+    /// struct with a `flatten` (the key is refused out of what the flattened
+    /// skeleton left unclaimed), and a struct variant of an internally tagged
+    /// enum (the tag is consumed before the variant sees the rest). The control
+    /// is the same store with nothing injected.
+    #[test]
+    fn a_key_the_store_does_not_model_is_refused_where_it_is() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        seed_section(&mut store, "ch-1");
+        store.frames.insert("gt".into(), Frame::default());
+        add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
+        add_entity(&mut store, &path, "cove", "place", "").unwrap();
+        add_entity(&mut store, &path, "dike", "place", "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "adjacent",
+            PredicateObjectKind::Entity,
+            Some("place"),
+            Some("place"),
+            &[],
+            "",
+        )
+        .unwrap();
+        let fact = FactImport {
+            entities: vec!["cove".to_string(), "dike".to_string()],
+            typed: Some(TypedClaim {
+                subject: "cove".into(),
+                predicate: "adjacent".into(),
+                object: TypedObject::Entity { id: "dike".into() },
+            }),
+            ..sample_fact("f-1", "gt")
+        };
+        add_fact(&mut store, &path, &fact).unwrap();
+        add_inventory_entry(
+            &mut store,
+            &path,
+            "REQ-1",
+            InventoryStatus::Active,
+            Some("ch-1"),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let clean: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        AtomicStore::load(&path).expect("control: the store as written loads");
+
+        for (pointer, shape) in [
+            ("", "the store root"),
+            ("/inventory_entries/REQ-1", "a plain struct"),
+            ("/sections/ch-1", "a struct with a flattened skeleton"),
+            (
+                "/narrative_facts/f-1/typed/object",
+                "a struct variant of an internally tagged enum",
+            ),
+        ] {
+            let mut injected = clean.clone();
+            injected
+                .pointer_mut(pointer)
+                .and_then(serde_json::Value::as_object_mut)
+                .unwrap_or_else(|| panic!("the fixture has no object at `{pointer}`"))
+                .insert("modality".to_string(), serde_json::json!("shall_not"));
+            fs::write(&path, serde_json::to_vec_pretty(&injected).unwrap()).unwrap();
+            let err = AtomicStore::load(&path).expect_err(shape).to_string();
+            assert!(
+                err.contains("unknown field `modality`"),
+                "{shape}: the refusal names the key: {err}"
+            );
+            let segments = pointer.split('/').filter(|s| !s.is_empty());
+            for segment in segments {
+                assert!(
+                    err.contains(segment),
+                    "{shape}: the refusal says where (`{segment}`): {err}"
+                );
+            }
+        }
     }
 
     /// Round 752 (v38→v39 load migration) — a hand-authored v38 store carrying

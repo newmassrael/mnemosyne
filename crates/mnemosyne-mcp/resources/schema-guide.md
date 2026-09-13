@@ -73,6 +73,12 @@ Maps a canonical form to a list of non-canonical variants for the
 |---|---|---|---|
 | `sidecar_path` | path | `"docs/.atomic/workspace.atomic.json"` | atomic store JSON location |
 
+The store at that path refuses a key it does not model, at every depth, and
+names where it is (`json shape at \`inventory_entries.REQ-1\`: unknown field
+\`modality\``). There is no extending an entry with a field of your own — such
+a key used to load, stay invisible to every read, and vanish on the next
+unrelated write at exit 0. A field the store should hold is a schema change.
+
 ### `[[orphan_ledger]]` (Round 253 + 254)
 
 Per-workspace registration of known-stale cross-refs. Each row is a

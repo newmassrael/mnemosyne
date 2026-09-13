@@ -1,0 +1,109 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE STORE'S REFUSAL OF AN UNMODELED KEY IS NOT VACUOUS —",
+    "run it from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-atomic/sweeps/unmodeled-key.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. An adopter measured that an inventory entry carrying an",
+    "undeclared `modality` loaded, was invisible to every read, and was erased by",
+    "an unrelated `set-inventory-status` that exited 0. Every map-shaped type under",
+    "the store now denies unknown fields, a source law holds that for types added",
+    "later, and the refusal carries the JSON path of the value it refused.",
+    "",
+    "SO THE INJECTIONS ARE THE THREE SERDE SHAPES A KEY IS ROUTED THROUGH, AND THE",
+    "PATH. A plain struct (`InventoryEntry`, the adopter's case), a struct whose",
+    "skeleton is flattened (`AtomicSection` — serde refuses out of what the",
+    "flattened fields left unclaimed, a different code path), and a struct variant",
+    "of an internally tagged enum (`TypedObject` — the tag is consumed before the",
+    "variant sees the rest, and a comment in this crate once said serde could not",
+    "refuse there at all). The fourth keeps every refusal and drops WHERE, which is",
+    "the version of this repair an adopter holding a thirty-megabyte store cannot",
+    "act on.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-atomic",
+    "-p",
+    "mnemosyne-cli",
+    "--no-fail-fast",
+    "--",
+    "every_map_shaped_type_under_the_store_denies_unknown_fields",
+    "a_key_the_store_does_not_model_is_refused_where_it_is",
+    "unmodeled_key_smoke::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-inventory-entry-reads-past-a-key",
+      "why": "the adopter's own case: the entry loads with the key, every read answers without it, and the next unrelated write drops it at exit 0. The law must name the type, the load must stop refusing, and the wire must stop refusing and start erasing",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct InventoryEntry {",
+          "to": "pub struct InventoryEntry {"
+        }
+      ],
+      "expect_red": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "a_key_the_store_does_not_model_is_refused_where_it_is",
+        "an_undeclared_key_is_refused_by_the_read_and_survives_the_write"
+      ]
+    },
+    {
+      "name": "the-flattened-section-reads-past-a-key",
+      "why": "a struct with a flatten is refused by a different serde path — the keys the flattened skeleton did not claim are collected and checked after it — so a refusal proven on a plain struct says nothing about a section",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct AtomicSection {",
+          "to": "pub struct AtomicSection {"
+        }
+      ],
+      "expect_red": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "a_key_the_store_does_not_model_is_refused_where_it_is"
+      ]
+    },
+    {
+      "name": "the-tagged-object-reads-past-a-key",
+      "why": "an internally tagged enum hands its variant a buffered copy with the tag removed, which is the third route and the one this crate's own documentation said serde could not refuse on",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-core/src/narrative.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub enum TypedObject {",
+          "to": "pub enum TypedObject {"
+        }
+      ],
+      "expect_red": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields",
+        "a_key_the_store_does_not_model_is_refused_where_it_is"
+      ]
+    },
+    {
+      "name": "the-refusal-does-not-say-where",
+      "why": "every refusal still fires and none of them names the entry, which in a store of tens of megabytes is a refusal nobody can act on — the repair that looks finished and is not",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "                    path: e.path().to_string(),\n",
+          "to": "                    path: String::new(),\n"
+        }
+      ],
+      "expect_red": [
+        "a_key_the_store_does_not_model_is_refused_where_it_is",
+        "an_undeclared_key_is_refused_by_the_read_and_survives_the_write"
+      ]
+    }
+  ]
+}
