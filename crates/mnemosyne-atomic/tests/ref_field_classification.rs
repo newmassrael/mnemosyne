@@ -242,11 +242,19 @@ fn inline_struct_variant(t: &str) -> Vec<(String, String)> {
 }
 
 /// `pub field: Type,` (struct) or `field: Type,` (enum struct-variant).
+///
+/// A field name may carry a DIGIT after its first character. Until that was
+/// allowed, `spec_sha256` was not a field, so `ArtifactHashes` parsed as a type
+/// with no body at all — see `the_walk_reads_a_field_whose_name_carries_a_digit`.
 fn named_field(t: &str) -> Option<(String, String)> {
     let t = t.strip_prefix("pub ").unwrap_or(t);
     let (place, ty) = t.split_once(':')?;
     let place = place.trim();
-    if place.is_empty() || !place.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
+    if !place.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
+        || !place
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
         return None;
     }
     Some((
@@ -342,6 +350,36 @@ fn is_map_shaped(decl: &TypeDecl) -> bool {
     })
 }
 
+/// A FIELD NAME MAY CARRY A DIGIT, AND THE WALK MUST READ IT.
+///
+/// The walk once accepted only lowercase letters and `_` in a field name, so
+/// `ArtifactHashes { spec_sha256, code_sha256, test_sha256 }` parsed as a type
+/// with no fields. It was then neither String-bearing (never classified) nor
+/// map-shaped (never required to deny unknown fields), and it read past an
+/// unknown key inside every confirmation event while both laws in this file
+/// passed. A law that under-reads its population reports clean about the part
+/// it cannot see, so the population's shape is pinned here by a witness.
+#[test]
+fn the_walk_reads_a_field_whose_name_carries_a_digit() {
+    let decls = type_decls();
+    let places: Vec<&str> = decls
+        .get("ArtifactHashes")
+        .expect("ArtifactHashes must parse — the witness has no subject otherwise")
+        .body
+        .iter()
+        .map(|(place, _)| place.as_str())
+        .collect();
+    assert_eq!(
+        places,
+        ["spec_sha256", "code_sha256", "test_sha256"],
+        "the walk dropped a field whose name carries a digit"
+    );
+    assert!(
+        reachable_types(&decls).contains("ArtifactHashes"),
+        "ArtifactHashes is a field of ConfirmationEvent and must be reached"
+    );
+}
+
 /// THE STORE REFUSES A KEY IT DOES NOT MODEL, AT EVERY DEPTH.
 ///
 /// Without `deny_unknown_fields` serde reads past a key it has no field for and
@@ -404,6 +442,9 @@ fn every_map_shaped_type_under_the_store_denies_unknown_fields() {
 /// table was filled in from the failure message this test prints.
 #[rustfmt::skip]
 const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
+    ("ArtifactHashes", "code_sha256", Coverage::NotARef, "hashes of the code files a confirmation was checked against, collected by the outside producer — not a store key"),
+    ("ArtifactHashes", "spec_sha256", Coverage::NotARef, "the hash of the spec text a confirmation was checked against — not a store key"),
+    ("ArtifactHashes", "test_sha256", Coverage::NotARef, "hashes of the test files a confirmation was checked against, collected by the outside producer — not a store key"),
     ("AtomicChangelogEntry", "carry_forward_bullets", Coverage::NotARef, "audit prose"),
     ("AtomicChangelogEntry", "changes_bullets", Coverage::NotARef, "audit prose"),
     ("AtomicChangelogEntry", "decision_summary", Coverage::NotARef, "audit prose"),
@@ -449,8 +490,10 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("Confirmer", "id", Coverage::NotARef, "the confirming tool's identity"),
     ("Confirmer", "version", Coverage::NotARef, "the confirming tool's version"),
     ("ConflictAssertion", "target", Coverage::Continuity, "FactId (R846) - ConflictTargetMissing"),
+    ("ConflictAssertion", "target_claim_sha256", Coverage::NotARef, "a fingerprint of the target fact's claim at the moment the conflict was judged — a drift witness, not a store key"),
     ("ContentAnchor", "source", Coverage::NotARef, "a document name, not a registry key"),
     ("ContentExcerpt", "text", Coverage::NotARef, "projected prose"),
+    ("ContentExcerpt", "text_sha256", Coverage::NotARef, "the hash of `text`, the offline drift anchor the mutate API sets at write time — not a store key"),
     ("DisclosureOverride", "first_at", Coverage::Detector, "BranchId (R845) keys - disclosure_ref_violations"),
     ("DisclosurePlan", "description", Coverage::NotARef, "authored prose"),
     ("DisclosurePlan", "overrides", Coverage::Detector, "FactId (R846) keys - disclosure_ref_violations"),
@@ -466,6 +509,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("EpubLocator", "cfi", Coverage::NotARef, "an EPUB coordinate"),
     ("EpubLocator", "fragment", Coverage::NotARef, "an EPUB coordinate"),
     ("EpubLocator", "spine_href", Coverage::NotARef, "an EPUB spine path"),
+    ("EvidenceRef", "reviewed_excerpt_sha256", Coverage::NotARef, "a fingerprint of the prose the author affirms having reviewed — authored, never computed, and not a store key"),
     ("EvidenceRef", "section", Coverage::Detector, "SectionId (R847) - fact_registry_refs Evidence facet"),
     ("ExampleBlock", "code", Coverage::NotARef, "authored content"),
     ("ExampleBlock", "language", Coverage::NotARef, "a language tag"),
@@ -486,6 +530,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("NarrativeFact", "frame", Coverage::Detector, "FrameId (R843) - fact_registry_refs Frame facet"),
     ("NarrativeFact", "pays_off", Coverage::Continuity, "FactId (R846) - PayoffTargetMissing"),
     ("NarrativeFact", "quote", Coverage::NotARef, "authored prose"),
+    ("NarrativeFact", "quote_sha256", Coverage::NotARef, "the hash of `quote`, computed by the mutate primitive for offline drift detection — not a store key"),
     ("NarrativeFact", "supersedes_in_frame", Coverage::Continuity, "FactId (R846) despite the name - SuccessionTargetMissing"),
     ("NormativeExcerpt", "anchor_url", Coverage::NotARef, "upstream provenance, not a store key"),
     ("NormativeExcerpt", "source_revision", Coverage::NotARef, "upstream provenance, not a store key"),

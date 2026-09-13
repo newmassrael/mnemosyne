@@ -1274,6 +1274,7 @@ pub struct Confirmer {
 /// code/test hashes are collected by the outside producer (design sec 4.6 — the
 /// core never reads the files).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactHashes {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spec_sha256: Option<String>,

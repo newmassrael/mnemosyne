@@ -1,0 +1,67 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE TYPE WALK READS A FIELD NAME WITH A DIGIT — run it",
+    "from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-atomic/sweeps/digit-field-names.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. `ref_field_classification.rs` walks the store's types",
+    "from source. Its field parser accepted only lowercase letters and `_`, so",
+    "`spec_sha256` was not a field: `ArtifactHashes` parsed as a type with no body,",
+    "was never classified, was never required to deny unknown fields, and read",
+    "past an unknown key inside every confirmation event while every law passed.",
+    "Seven String places carrying a digit had the same fate in the classification.",
+    "",
+    "TWO INJECTIONS, one per law the blind spot hid from. Restoring the old",
+    "character rule must turn the witness red AND the classification law red —",
+    "the seven rows it now carries become stale, which is how that law says its",
+    "population shrank. Removing the attribute from `ArtifactHashes` must turn the",
+    "unknown-key law red, which it could not do before the walk could see the type.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-atomic",
+    "--test",
+    "ref_field_classification",
+    "--no-fail-fast"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-digit-ends-the-field-name",
+      "why": "the walk as it was: a field name with a digit is not a field, so a type made only of such fields has no body and every law over the store reports clean about it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/tests/ref_field_classification.rs",
+          "from": "            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')\n",
+          "to": "            .all(|c| c.is_ascii_lowercase() || c == '_')\n"
+        }
+      ],
+      "expect_red": [
+        "the_walk_reads_a_field_whose_name_carries_a_digit",
+        "every_string_field_under_the_store_is_classified"
+      ]
+    },
+    {
+      "name": "the-artifact-hashes-read-past-a-key",
+      "why": "the store type the blind spot actually hid: a confirmation event's hashes read past an unknown key and the next save erases it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct ArtifactHashes {",
+          "to": "pub struct ArtifactHashes {"
+        }
+      ],
+      "expect_red": ["every_map_shaped_type_under_the_store_denies_unknown_fields"]
+    }
+  ]
+}

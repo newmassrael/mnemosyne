@@ -1,0 +1,42 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-digit-ends-the-field-name": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/tests/ref_field_classification.rs",
+          "from": "            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')\n",
+          "to": "            .all(|c| c.is_ascii_lowercase() || c == '_')\n"
+        }
+      ],
+      "expect_red": [
+        "the_walk_reads_a_field_whose_name_carries_a_digit",
+        "every_string_field_under_the_store_is_classified"
+      ],
+      "tests": [
+        "every_string_field_under_the_store_is_classified",
+        "the_walk_reads_a_field_whose_name_carries_a_digit"
+      ]
+    },
+    "the-artifact-hashes-read-past-a-key": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct ArtifactHashes {",
+          "to": "pub struct ArtifactHashes {"
+        }
+      ],
+      "expect_red": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields"
+      ],
+      "tests": [
+        "every_map_shaped_type_under_the_store_denies_unknown_fields"
+      ]
+    }
+  },
+  "forgotten": {}
+}
