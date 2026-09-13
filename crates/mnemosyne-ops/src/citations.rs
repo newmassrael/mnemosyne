@@ -35,6 +35,8 @@ use mnemosyne_validate::code_refs::{
     SetEqualityValidator, SymbolAxisCoverage, VcsIgnoreAxis,
 };
 
+use serde::Serialize;
+
 use crate::OpError;
 
 /// A `--severity-*` override per axis, already parsed. `None` leaves the
@@ -473,4 +475,137 @@ pub fn propose_implementations(
     with_reading(request, |validator, attribution, snapshot| {
         validator.propose_implementations(attribution, snapshot)
     })
+}
+
+/// One axis this run did NOT judge, and why.
+///
+/// The whole reason this type exists rather than an absent key: an axis that
+/// reported nothing because it was never asked and an axis that reported nothing
+/// because the tree is clean are the two silences a consumer must never confuse
+/// (Round 1141). A count of `0` is the second. This is the first, by name.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct AxisNotJudged {
+    /// The axis, by the tag its violations would have carried.
+    pub axis: String,
+    /// Machine-readable reason.
+    pub reason: String,
+    /// The same reason as a sentence.
+    pub detail: String,
+}
+
+/// What one declared citation reader reached over the scoped files.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct ReaderReach {
+    /// The reader, named as the report names it.
+    pub reader: String,
+    /// Documents of its declared extensions in the read set.
+    pub documents: usize,
+    /// How many of those carry its annotation.
+    pub carrying: usize,
+    /// Citations it read.
+    pub citations: usize,
+    /// Documents it could not parse.
+    pub unreadable: usize,
+}
+
+/// THE ANSWER AN AGENT GETS when it asks what the files it just touched broke.
+///
+/// A PROJECTION of [`CitationScanReport`] and deliberately not the report: that
+/// one is everything two writers need to render a full page, and handing it to
+/// an agent asking about three files would spend the agent's context on the
+/// tree's other ten thousand. What is kept is what answers the question — the
+/// findings on those files, who judged them, and which axes did not.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct CitationAdvice {
+    /// The paths asked about, as asked.
+    pub requested: Vec<String>,
+    /// Which of them this gate actually reads.
+    pub matched_files: Vec<String>,
+    /// Requested paths the gate never reads at all — a file outside its
+    /// configured roots is not clean, it is unexamined, and the two look alike
+    /// from an empty finding list.
+    pub out_of_read_set: Vec<String>,
+    /// Requested paths that do not exist.
+    pub not_found: Vec<String>,
+    /// Every violation on the scoped files, in the flat shape
+    /// `validate-code-refs --json` publishes — the one projection of a violation
+    /// this repository already has, rather than a third.
+    pub findings: Vec<serde_json::Value>,
+    /// Axes this run did not judge, each with its reason.
+    pub not_judged: Vec<AxisNotJudged>,
+    /// What each declared citation reader reached.
+    pub readers: Vec<ReaderReach>,
+    /// WHO DECIDES. This answer is advice; the commit and push hooks are what
+    /// refuse, and a clean answer here is not permission to push (Rounds
+    /// 481-488).
+    pub authority: String,
+}
+
+/// The sentence [`CitationAdvice::authority`] carries, in one place so the tool
+/// description and the answer cannot come to disagree about who decides.
+pub const CITATION_ADVICE_AUTHORITY: &str =
+    "advisory: the commit and push hooks decide, and a clean answer here is not permission to push";
+
+/// Run the citation gate over named paths and project what an agent asked for.
+///
+/// `paths` is REQUIRED by every caller of this function for the reason the type
+/// cannot express: an unscoped run over a large tree answers with everything,
+/// and everything is not an answer to "what did I just break". An empty list is
+/// refused by [`PathScope::new`] rather than widened.
+///
+/// # Errors
+///
+/// A scope naming a path outside the workspace, a sidecar that cannot be
+/// resolved or loaded, or a walk that fails. A workspace that never configured
+/// the gate answers `Ok(None)`.
+pub fn advise_on_citations(
+    loaded: &LoadedConfig,
+    entry_id_prefix: String,
+    paths: &[String],
+    symbol_resolvers: BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>>,
+) -> Result<Option<CitationAdvice>, OpError> {
+    let scanned = scan_citations(CitationScanRequest {
+        loaded,
+        entry_id_prefix,
+        scope_paths: Some(paths),
+        filter_id: None,
+        severities: CitationSeverityOverrides::default(),
+        symbol_resolvers,
+    })?;
+    let CitationScan::Ran(report) = scanned else {
+        return Ok(None);
+    };
+    let scope = report.path_scope.as_ref();
+    Ok(Some(CitationAdvice {
+        requested: paths.to_vec(),
+        matched_files: scope.map(|c| c.matched_files.clone()).unwrap_or_default(),
+        out_of_read_set: scope.map(|c| c.out_of_read_set.clone()).unwrap_or_default(),
+        not_found: scope.map(|c| c.not_found.clone()).unwrap_or_default(),
+        findings: report.violations.iter().map(|v| v.to_cli_json()).collect(),
+        not_judged: report
+            .verdicts
+            .not_judged()
+            .into_iter()
+            .map(|(axis, reason)| AxisNotJudged {
+                axis: axis.kind_tag().to_string(),
+                reason: reason.as_str().to_string(),
+                detail: reason.detail().to_string(),
+            })
+            .collect(),
+        readers: report
+            .reader_axis
+            .iter()
+            .map(|r| ReaderReach {
+                reader: r.reader.clone(),
+                documents: r.documents,
+                carrying: r.carrying,
+                citations: r.citations,
+                unreadable: r.unreadable,
+            })
+            .collect(),
+        authority: CITATION_ADVICE_AUTHORITY.to_string(),
+    }))
 }

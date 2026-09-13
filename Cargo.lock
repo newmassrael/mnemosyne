@@ -1240,6 +1240,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "mnemosyne-atomic",
+ "mnemosyne-backends",
  "mnemosyne-build-stamp",
  "mnemosyne-config",
  "mnemosyne-core",

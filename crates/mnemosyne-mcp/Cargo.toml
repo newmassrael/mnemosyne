@@ -14,6 +14,14 @@ path = "src/main.rs"
 # Round 1222 — the `schemars` feature is what lets the mutate answer type
 # publish a real `output_schema`; same opt-in shape as atomic/core below.
 mnemosyne-ops = { path = "../mnemosyne-ops", features = ["schemars"] }
+# Round 1337 — the same backend table the CLI ships, so the citation gate
+# answers the symbol axis alike on both surfaces. A surface with no resolvers
+# would report `not judged — no resolver` by name rather than silently, which is
+# honest and still leaves an agent fixing what its tool sees and being refused by
+# the hook on an axis its tool never judged. MEASURED before the dependency
+# (Round 1335): the five grammar rlibs are ~13.5 MB in debug and add nothing to
+# COMPILE time, because this workspace already builds them for the CLI.
+mnemosyne-backends = { path = "../mnemosyne-backends" }
 mnemosyne-config = { path = "../mnemosyne-config" }
 # Round 690 — enable the atomic/core `schemars` feature so the manifest / fact
 # DTOs derive JsonSchema and the authoring tools type them directly (no mirror).

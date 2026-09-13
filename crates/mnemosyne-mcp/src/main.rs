@@ -79,6 +79,22 @@ pub struct QuerySectionArgs {
     pub include_changelog: bool,
 }
 
+/// Round 1337 — the citation gate, scoped to files a caller names.
+///
+/// `paths` IS REQUIRED, and that is the design rather than an omission of a
+/// default. An unscoped run answers about the whole tree, and a whole tree is
+/// not an answer to "what did I just break" — it is this surface's context spent
+/// on ten thousand files nobody asked about. Making the argument required makes
+/// that answer unspellable rather than merely discouraged.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CheckCitationsArgs {
+    /// The files or directories to judge — the ones just written or about to be
+    /// committed. At least one; an empty list is refused rather than widened to
+    /// the whole tree.
+    pub paths: Vec<AgentPath>,
+}
+
 // Round 638 — the single-entry changelog read + the citation check.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -2088,6 +2104,57 @@ impl MnemosyneServer {
         match ops::validate_workspace(&self.workspace) {
             Ok(report) => Self::tool_text(report.render_plain()),
             Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Judge the code citations in FILES YOU NAME against the store — what the paths you just touched broke, before a hook tells you. ANSWERS WITH: `requested` (the paths as asked), `matched_files` (which of them this gate reads), `out_of_read_set` (paths outside its configured roots — unexamined, not clean), `not_found`, `findings` (one row per violation: kind, file, line, entry_id), `not_judged` (axes this run did NOT judge, each with `axis`, `reason` and `detail` — an axis that was never asked is not an axis that found nothing), `readers` (per declared citation reader: `reader`, `documents`, `carrying`, `citations`, `unreadable`) and `authority`. `paths` is required: this answers about files you name, never about the whole tree. It is ADVICE — the commit and push hooks decide."
+    )]
+    async fn check_citations(
+        &self,
+        args: Parameters<CheckCitationsArgs>,
+    ) -> Result<Json<ops::CitationAdvice>, Refused> {
+        // EVERY PATH THROUGH `AgentPath::resolve`, because that type has no way
+        // out that does not name a base — the raw string must not reach
+        // `PathScope`, which would let the OS resolve it against a working
+        // directory belonging to whatever host launched this server. `PathScope`
+        // takes an absolute path inside the workspace and refuses one outside,
+        // so the resolved form is what it should be handed.
+        let mut paths: Vec<String> = Vec::with_capacity(args.0.paths.len());
+        for path in &args.0.paths {
+            match path.resolve(&self.workspace) {
+                Ok(resolved) => paths.push(resolved.as_path().display().to_string()),
+                Err(why) => return Err(self.refused(ops::OpError::Other(why))),
+            }
+        }
+        let loaded = match mnemosyne_config::discover_config(&self.workspace) {
+            Ok(Some(loaded)) => loaded,
+            Ok(None) => {
+                return Err(self.refused(ops::OpError::Other(
+                    "mnemosyne.toml not found — this workspace or an ancestor must hold one"
+                        .to_string(),
+                )))
+            }
+            Err(e) => return Err(self.refused(ops::OpError::Other(format!("{e:#}")))),
+        };
+        let prefix = loaded
+            .config
+            .schema
+            .clone()
+            .unwrap_or_else(mnemosyne_config::SchemaSection::mnemosyne_preset)
+            .entry_id_prefix;
+        let resolvers = match mnemosyne_backends::resolver_map(&loaded.config) {
+            Ok(map) => map,
+            Err(e) => return Err(self.refused(ops::OpError::Other(format!("{e:#}")))),
+        };
+        match ops::advise_on_citations(&loaded, prefix, &paths, resolvers) {
+            Ok(Some(advice)) => Ok(Json(advice)),
+            Ok(None) => Err(self.refused(ops::OpError::Other(
+                "[plugins.set_equality_validator] is not configured in this workspace, so there \
+                 is no citation gate to ask — which is not the same as a tree with no problems"
+                    .to_string(),
+            ))),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -7051,9 +7118,12 @@ mod tests {
         // What is left is named in the ledger rather than counted here: three
         // tools that answer PROSE, and whether they get a shape is a decision.
         // R1321 added two inventory setters, born answering the write envelope.
+        // R1337 added `check_citations`, born typed: the citation gate's advice
+        // is a projection with a shape, and an agent reading `not_judged` needs
+        // that shape to know an axis reported nothing because nobody asked it.
         assert_eq!(
             typed.len(),
-            104,
+            105,
             "[output schema] {} of {} routed tools publish one. The arc converts in groups and \
              this number is its ledger — if a group just landed, raise it; if it FELL, a tool \
              lost its schema and the agent lost the contract. Typed: {typed:?}",
@@ -7237,6 +7307,25 @@ mod tests {
         )
         .expect("store");
         tmp
+    }
+
+    /// A WORKSPACE THAT HAS ASKED FOR THE CITATION GATE, for `check_citations`.
+    ///
+    /// Hand-written rather than a `world!` entry because both macros write their
+    /// fixtures as JSON and what this one needs is TOML: the gate exists only
+    /// where `[plugins.set_equality_validator]` does, and a workspace without it
+    /// gets a refusal from this tool whatever else is asked. The probe needs the
+    /// tool to ANSWER so that removing its one required argument can change the
+    /// answer.
+    async fn cited_workspace(_server: &MnemosyneServer, ws: &std::path::Path) {
+        std::fs::write(
+            ws.join("mnemosyne.toml"),
+            "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n\
+             [plugins.set_equality_validator]\npaths = [\"src/\"]\n",
+        )
+        .expect("config");
+        std::fs::create_dir_all(ws.join("src")).expect("src dir");
+        std::fs::write(ws.join("src/cited.rs"), "// Round 1 is cited here.\n").expect("source");
     }
 
     /// THE PATTERN EVERY ENTRY IN `EXERCISED` FOLLOWS: AN OPTIONAL ARGUMENT AN
@@ -9551,6 +9640,14 @@ mod tests {
     }
 
     probed! {
+        // Round 1337 — the citation gate's agent-facing surface. `paths` is its
+        // ONE required argument and the reason the tool exists in this shape: an
+        // unscoped run answers about the whole tree, which is not an answer to
+        // "what did I just break". Probing it is what says the handler reads it
+        // rather than walking everything and calling that a scope.
+        check_citations_probed:
+            @cited_workspace
+            check_citations(CheckCitationsArgs) {"paths": ["src"]};
         add_section_probed:
             @branch_story
             add_section(AddSectionArgs) {"section_id": "sc-04", "parent_doc": "spec", "title": "four"};

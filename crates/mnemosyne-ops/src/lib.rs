@@ -56,8 +56,9 @@ use thiserror::Error;
 
 pub use cascade::{validate_atomic_store, AtomicValidationSummary};
 pub use citations::{
-    citation_index, propose_implementations, scan_citations, CitationReadRequest, CitationScan,
-    CitationScanReport, CitationScanRequest, CitationSeverityOverrides, ResolvedSeverities,
+    advise_on_citations, citation_index, propose_implementations, scan_citations, AxisNotJudged,
+    CitationAdvice, CitationReadRequest, CitationScan, CitationScanReport, CitationScanRequest,
+    CitationSeverityOverrides, ReaderReach, ResolvedSeverities, CITATION_ADVICE_AUTHORITY,
 };
 /// The query crate's views, for the same reason as the validator's above: these
 /// reads return them, so a caller that must declare what it answers with has to
