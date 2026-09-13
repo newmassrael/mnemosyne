@@ -281,7 +281,10 @@ you `informative`, it is older than R422 — the store will refuse it.
  whatever prefix a document binds; its value is the one XML defines (entities
  decoded, either quote), and nothing inside a comment, a CDATA section, element
  text or an undeclared file type is read. Omit `namespace` for an attribute in
- no namespace. A declared document that does not parse is reported as
+ no namespace. A document type declaration is read and its internal subset's
+ entities are expanded; nothing external is fetched, so an entity declared only
+ in an external subset leaves the document unreadable. A declared document that
+ does not parse is reported as
  `inventory_document_unreadable` with the parser's reason (`parse_error`). A
  prefixed or non-XML `name`, an empty or whitespace-holding `namespace`, and an
  empty or malformed `extensions` list are refused when the config loads. Same

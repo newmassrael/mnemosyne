@@ -2909,7 +2909,20 @@ pub fn extract_inventory_attribute_citations(
     if declared.is_empty() {
         return read;
     }
-    let document = match roxmltree::Document::parse(raw) {
+    // A DOCTYPE IS ORDINARY XML AND IS READ (Round 1325). `roxmltree` refuses a
+    // DTD by default, which Round 1324 accepted because the adopter's own parser
+    // is called the same way — but this axis is not that adopter's, and a
+    // document type declaration is common enough in XML that refusing one would
+    // report every such document as unreadable. Turning it on reads the internal
+    // subset's entities; it fetches NOTHING (no external DTD, no network, no
+    // file), so an entity declared only in an external subset stays unknown and
+    // the document is reported with that as its reason rather than resolved
+    // behind the author's back, and the parser's own billion-laughs guard stands.
+    let options = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..roxmltree::ParsingOptions::default()
+    };
+    let document = match roxmltree::Document::parse_with_options(raw, options) {
         Ok(document) => document,
         Err(error) => {
             for attribute in declared {
@@ -2935,12 +2948,25 @@ pub fn extract_inventory_attribute_citations(
             let raw_value = &raw[value_range.clone()];
             let mut cursor = 0usize;
             for id in found.value().split_whitespace() {
+                // THE LINE IS THE RAW TEXT'S, AND THE WALK ONLY MOVES FORWARD
+                // (Round 1325). An id the document spelled literally is found
+                // where it stands; one spelled through an entity is not there to
+                // find, so it takes the next raw token — and the cursor moves
+                // past that token either way. Round 1324 left the cursor where it
+                // was in the second case, so a later id could match text inside
+                // an entity reference on an EARLIER line and be reported there.
                 let at = match raw_value[cursor..].find(id) {
                     Some(offset) => {
                         cursor += offset + id.len();
                         cursor - id.len()
                     }
-                    None => raw_value.len() - raw_value[cursor..].trim_start().len(),
+                    None => {
+                        let from = raw_value.len() - raw_value[cursor..].trim_start().len();
+                        cursor = raw_value[from..]
+                            .find(char::is_whitespace)
+                            .map_or(raw_value.len(), |end| from + end);
+                        from
+                    }
                 };
                 let line = line_of(document.text_pos_at(value_range.start + at));
                 cites.insert((line, id.to_string()));
@@ -8632,6 +8658,63 @@ mod tests {
         assert!(
             !read.unreadable[0].reason.is_empty() && read.unreadable[0].line >= 2,
             "{read:?}"
+        );
+    }
+
+    /// Round 1325 — a DOCUMENT TYPE DECLARATION is ordinary XML: the document is
+    /// read and an entity its internal subset declares is expanded like any
+    /// other. An entity declared only where the parser cannot reach — an
+    /// external subset, which nothing here fetches — leaves the document
+    /// unreadable with that as its reason, rather than resolved behind the
+    /// author's back.
+    #[test]
+    fn a_document_type_declaration_is_read_and_an_unreachable_entity_is_not() {
+        let internal = extract_inventory_attribute_citations(
+            &req_attribute(),
+            Path::new("m.scxml"),
+            "<!DOCTYPE scxml [<!ENTITY seven \"REQ-7\">]>\n\
+             <scxml xmlns:s=\"http://example/ext\"><state s:req=\"&seven; REQ-1\"/></scxml>\n",
+        );
+        assert_eq!(
+            internal.cites,
+            vec![(2, "REQ-1".to_string()), (2, "REQ-7".to_string())]
+        );
+        assert!(internal.unreadable.is_empty(), "{internal:?}");
+
+        let external = extract_inventory_attribute_citations(
+            &req_attribute(),
+            Path::new("m.scxml"),
+            "<!DOCTYPE scxml SYSTEM \"ids.dtd\">\n\
+             <scxml xmlns:s=\"http://example/ext\"><state s:req=\"&seven;\"/></scxml>\n",
+        );
+        assert!(external.cites.is_empty(), "{external:?}");
+        assert_eq!(external.unreadable.len(), 1, "{external:?}");
+        assert!(
+            external.unreadable[0].reason.contains("seven"),
+            "the reason names the entity it could not resolve: {external:?}"
+        );
+    }
+
+    /// Round 1325 — every id carries the line of the RAW text it came from, and
+    /// the walk that finds it only moves forward: an id spelled through an
+    /// entity takes its own token's line, and a later id whose text also occurs
+    /// inside that entity reference is not reported on the entity's line.
+    #[test]
+    fn an_id_spelled_through_an_entity_carries_its_own_line() {
+        let read = extract_inventory_attribute_citations(
+            &req_attribute(),
+            Path::new("m.scxml"),
+            "<scxml xmlns:s=\"http://example/ext\">\
+             <state s:req=\"&amp;A-1\n  A-1\n  B&#32;C\"/></scxml>\n",
+        );
+        assert_eq!(
+            read.cites,
+            vec![
+                (1, "&A-1".to_string()),
+                (2, "A-1".to_string()),
+                (3, "B".to_string()),
+                (3, "C".to_string()),
+            ]
         );
     }
 

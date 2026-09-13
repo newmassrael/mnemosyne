@@ -5,6 +5,21 @@
   ],
   "complete": true,
   "fired": {
+    "a-doctype-makes-a-document-unreadable": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "        allow_dtd: true,\n",
+          "to": "        allow_dtd: false,\n"
+        }
+      ],
+      "expect_red": [
+        "a_document_type_declaration_is_read_and_an_unreachable_entity_is_not"
+      ],
+      "tests": [
+        "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not"
+      ]
+    },
     "a-document-of-any-extension-is-parsed": {
       "edits": [
         {
@@ -36,10 +51,14 @@
       ],
       "expect_red": [
         "an_attribute_value_is_read_as_xml_defines_it",
+        "a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+        "an_id_spelled_through_an_entity_carries_its_own_line",
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ],
       "tests": [
+        "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
         "code_refs::tests::an_attribute_value_is_read_as_xml_defines_it",
+        "code_refs::tests::an_id_spelled_through_an_entity_carries_its_own_line",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
@@ -72,10 +91,12 @@
       ],
       "expect_red": [
         "an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "an_id_spelled_through_an_entity_carries_its_own_line",
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ],
       "tests": [
         "code_refs::tests::an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "code_refs::tests::an_id_spelled_through_an_entity_carries_its_own_line",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
@@ -89,12 +110,14 @@
       ],
       "expect_red": [
         "a_document_that_does_not_parse_is_returned_not_skipped",
+        "a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
         "a_document_that_does_not_parse_is_reported_with_the_reason",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
         "code_refs::tests::a_document_that_does_not_parse_is_returned_not_skipped",
+        "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
@@ -174,6 +197,21 @@
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
+      ]
+    },
+    "the-walk-that-attributes-a-line-does-not-move-forward": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                    None => {\n                        let from = raw_value.len() - raw_value[cursor..].trim_start().len();\n                        cursor = raw_value[from..]\n                            .find(char::is_whitespace)\n                            .map_or(raw_value.len(), |end| from + end);\n                        from\n                    }\n",
+          "to": "                    None => raw_value.len() - raw_value[cursor..].trim_start().len(),\n"
+        }
+      ],
+      "expect_red": [
+        "an_id_spelled_through_an_entity_carries_its_own_line"
+      ],
+      "tests": [
+        "code_refs::tests::an_id_spelled_through_an_entity_carries_its_own_line"
       ]
     }
   },

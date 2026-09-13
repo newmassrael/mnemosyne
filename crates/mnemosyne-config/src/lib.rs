@@ -887,7 +887,11 @@ pub struct SetEqualityValidatorConfig {
     /// defines: entities decoded, either quote, and nothing read from a comment,
     /// a CDATA section or element text. A declared document that does not parse
     /// is reported as `inventory_document_unreadable` with the parser's reason,
-    /// never read as citing nothing.
+    /// never read as citing nothing. A document type declaration is read and the
+    /// entities its internal subset declares are expanded (Round 1325); nothing
+    /// external is fetched, so an entity declared only in an external subset
+    /// leaves the document unreadable with that as its reason rather than
+    /// resolved behind the author's back.
     ///
     /// Round 1323 read the same annotation as text between an `open` and a
     /// `close` delimiter instead — a second grammar for an attribute the
