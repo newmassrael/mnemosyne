@@ -177,7 +177,10 @@ fn a_document_that_does_not_parse_is_reported_with_the_reason() {
             .iter()
             .map(|(kind, entry, _)| (kind.as_str(), entry.as_str()))
             .collect::<Vec<_>>(),
-        vec![("inventory_document_unreadable", "{http://example/ext}req")],
+        vec![(
+            "inventory_document_unreadable",
+            "attribute {http://example/ext}req"
+        )],
         "the document is reported for its attribute, not read as citing nothing"
     );
     assert!(
@@ -207,15 +210,20 @@ fn an_attribute_no_document_carries_is_reported_rather_than_silent() {
     assert!(passed, "nothing is cited, so nothing is violated: {report}");
     assert_eq!(violations(&report), vec![]);
 
-    let axis = &report["inventory_attribute_axis"][0];
+    let axis = &report["inventory_reader_axis"][0];
     assert_eq!(
         (
-            axis["attribute"].as_str(),
+            axis["reader"].as_str(),
             axis["documents"].as_u64(),
             axis["carrying"].as_u64(),
             axis["citations"].as_u64(),
         ),
-        (Some("{http://example/ext}req"), Some(1), Some(0), Some(0)),
+        (
+            Some("attribute {http://example/ext}req"),
+            Some(1),
+            Some(0),
+            Some(0)
+        ),
         "the report must say the document was read and carries none of it: {report}"
     );
     assert_eq!(
@@ -233,6 +241,40 @@ fn an_attribute_no_document_carries_is_reported_rather_than_silent() {
     assert!(
         text.contains("NO DOCUMENT CARRIES IT") && text.contains("doc/model.scxml"),
         "the line a person reads must carry it too, document named: {text}"
+    );
+}
+
+/// Round 1328 — THE PORT'S SECOND READER, DECLARED AND RUNNING: the adopter
+/// writes the annotation as element text and declares `inventory_elements`, and
+/// the same deprecated id is reported that an attribute would have carried. The
+/// shape Round 1325 recorded as "not read" costs one reader behind the port.
+#[test]
+fn an_element_declaration_reads_the_annotation_the_attribute_reader_cannot() {
+    let ws = workspace(
+        r#"inventory_elements = [{ namespace = "http://example/ext", name = "req", extensions = ["scxml"] }]"#,
+        &[(
+            "model.scxml",
+            "<scxml xmlns:x=\"http://example/ext\">\n\
+             <state><x:req>REQ-7</x:req></state>\n\
+             </scxml>\n",
+        )],
+    );
+    let (passed, report) = report(ws.path());
+    let found = violations(&report);
+    assert!(
+        !passed,
+        "a deprecated citation at reject severity fails the gate: {found:?}"
+    );
+    assert_eq!(
+        found,
+        vec![("inventory_deprecated".to_string(), "REQ-7".to_string(), 2)],
+        "the element's text is a citation on the line it stands: {report}"
+    );
+    let axis = &report["inventory_reader_axis"][0];
+    assert_eq!(
+        (axis["reader"].as_str(), axis["carrying"].as_u64()),
+        (Some("element {http://example/ext}req"), Some(1)),
+        "and the reach report names the reader that read it: {report}"
     );
 }
 

@@ -74,9 +74,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use mnemosyne_config::{
-    InventoryAttribute, OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig,
+    InventoryXmlName, OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig,
 };
 use mnemosyne_core::DecisionStatus;
+use mnemosyne_core::{CitationExtractor, DocumentCitations};
 use serde::Serialize;
 
 /// One `Round NNN` / `§<id>` citation candidate extracted from a source
@@ -2874,130 +2875,199 @@ pub fn extract_inventory_path_citations(
     extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::SectionPath)
 }
 
-/// Extract the inventory citations the declared XML ATTRIBUTES carry in one
-/// document (Round 1324).
+/// Parse a document as XML, the way every XML reader here does (Round 1328).
 ///
-/// A document whose extension no declared attribute names is not read at all.
-/// One that is, is parsed as XML — with `roxmltree`, the reader the adopter's
-/// own parser uses — and every element's attribute of a declared namespace URI
-/// and local name is read, under whatever prefix the document binds that
-/// namespace to. Its value is the one XML defines — entities decoded, either
-/// quote, nothing from a comment, a CDATA section or element text — and it is
-/// a whitespace-separated list of inventory ids: an id is what the store
-/// accepts as one, non-empty with no whitespace, so whitespace is exactly what
-/// separates two.
-///
-/// Each id carries the line its text starts on, found by walking the
-/// attribute's raw value in order; an id the document spelled through a
-/// character reference carries the line where the text after the previous id
-/// begins. A document that does not parse is returned in
-/// [`InventoryCitations::unreadable`] once per declared attribute it was to be
-/// read for, with the parser's reason and the line it stopped at — none of its
-/// attributes was read, and reading nothing there silently would look exactly
-/// like a document citing nothing.
-///
-/// Round 1323 read the same annotation as text between two delimiters, which
-/// could not decode an entity, missed the attribute under another prefix, and
-/// read an example inside a comment as a citation.
-pub fn extract_inventory_attribute_citations(
-    attributes: &[InventoryAttribute],
-    file: &Path,
-    raw: &str,
-) -> InventoryCitations {
-    let mut read = InventoryCitations::default();
-    let declared: Vec<&InventoryAttribute> = attributes.iter().filter(|a| a.reads(file)).collect();
-    if declared.is_empty() {
-        return read;
-    }
-    // WHAT EACH DECLARED ATTRIBUTE REACHED HERE, WHATEVER THAT IS (Round 1326).
-    // A row per attribute this document is declared for, carried even when the
-    // document turns out to hold none of it: a document read and found to carry
-    // nothing and a document never opened are different facts, and an axis that
-    // cannot tell them apart prints the same silence for both.
-    read.reach = declared
-        .iter()
-        .map(|attribute| InventoryAttributeReach {
-            attribute: attribute.expanded_name(),
-            citations: 0,
-            unreadable: false,
-        })
-        .collect();
-    // A DOCTYPE IS ORDINARY XML AND IS READ (Round 1325). `roxmltree` refuses a
-    // DTD by default, which Round 1324 accepted because the adopter's own parser
-    // is called the same way — but this axis is not that adopter's, and a
-    // document type declaration is common enough in XML that refusing one would
-    // report every such document as unreadable. Turning it on reads the internal
-    // subset's entities; it fetches NOTHING (no external DTD, no network, no
-    // file), so an entity declared only in an external subset stays unknown and
-    // the document is reported with that as its reason rather than resolved
-    // behind the author's back, and the parser's own billion-laughs guard stands.
+/// A DOCTYPE IS ORDINARY XML AND IS READ (Round 1325). `roxmltree` refuses a DTD
+/// by default, which Round 1324 accepted because the adopter's own parser is
+/// called the same way — but this axis is not that adopter's, and a document
+/// type declaration is common enough in XML that refusing one would report whole
+/// document sets as unreadable. Allowing it reads the internal subset's
+/// entities; it fetches NOTHING (no external subset, no network, no file), so an
+/// entity declared only in an external subset stays unknown and the document is
+/// reported with that as its reason rather than resolved behind the author's
+/// back, and the parser's own billion-laughs guard stands.
+fn parse_xml(raw: &str) -> Result<roxmltree::Document<'_>, (usize, String)> {
     let options = roxmltree::ParsingOptions {
         allow_dtd: true,
         ..roxmltree::ParsingOptions::default()
     };
-    let document = match roxmltree::Document::parse_with_options(raw, options) {
-        Ok(document) => document,
-        Err(error) => {
-            for attribute in declared {
-                read.unreadable.push(UnreadableDocument {
-                    line: line_of(error.pos()),
-                    attribute: attribute.expanded_name(),
-                    reason: error.to_string(),
-                });
+    roxmltree::Document::parse_with_options(raw, options)
+        .map_err(|error| (line_of(error.pos()), error.to_string()))
+}
+
+/// The ids one piece of XML text lists, each with the line its text starts on.
+///
+/// SHARED BY BOTH XML READERS (Round 1328), because an attribute's value and an
+/// element's text are the same thing to this axis: a whitespace-separated list
+/// of inventory ids, where an id is what the store accepts as one — non-empty
+/// with no whitespace — so whitespace is exactly what separates two.
+///
+/// THE LINE IS THE RAW TEXT'S, AND THE WALK ONLY MOVES FORWARD (Round 1325). An
+/// id the document spelled literally is found where it stands; one spelled
+/// through an entity is not there to find, so it takes the next raw token — and
+/// the cursor moves past that token either way. Round 1324 left the cursor where
+/// it was in the second case, so a later id could match text inside an entity
+/// reference on an EARLIER line and be reported there.
+fn ids_listed_in(
+    document: &roxmltree::Document<'_>,
+    raw: &str,
+    range: std::ops::Range<usize>,
+    value: &str,
+) -> Vec<(usize, String)> {
+    let raw_value = &raw[range.clone()];
+    let mut cursor = 0usize;
+    let mut listed = Vec::new();
+    for id in value.split_whitespace() {
+        let at = match raw_value[cursor..].find(id) {
+            Some(offset) => {
+                cursor += offset + id.len();
+                cursor - id.len()
             }
-            for row in &mut read.reach {
-                row.unreadable = true;
+            None => {
+                let from = raw_value.len() - raw_value[cursor..].trim_start().len();
+                cursor = raw_value[from..]
+                    .find(char::is_whitespace)
+                    .map_or(raw_value.len(), |end| from + end);
+                from
             }
-            return read;
-        }
-    };
-    let mut cites: BTreeSet<(usize, String)> = BTreeSet::new();
-    for element in document.descendants().filter(roxmltree::Node::is_element) {
-        for found in element.attributes() {
-            let Some(matched) = declared
-                .iter()
-                .find(|a| a.name() == found.name() && a.namespace() == found.namespace())
-            else {
-                continue;
-            };
-            let mut read_here = 0usize;
-            let value_range = found.range_value();
-            let raw_value = &raw[value_range.clone()];
-            let mut cursor = 0usize;
-            for id in found.value().split_whitespace() {
-                // THE LINE IS THE RAW TEXT'S, AND THE WALK ONLY MOVES FORWARD
-                // (Round 1325). An id the document spelled literally is found
-                // where it stands; one spelled through an entity is not there to
-                // find, so it takes the next raw token — and the cursor moves
-                // past that token either way. Round 1324 left the cursor where it
-                // was in the second case, so a later id could match text inside
-                // an entity reference on an EARLIER line and be reported there.
-                let at = match raw_value[cursor..].find(id) {
-                    Some(offset) => {
-                        cursor += offset + id.len();
-                        cursor - id.len()
-                    }
-                    None => {
-                        let from = raw_value.len() - raw_value[cursor..].trim_start().len();
-                        cursor = raw_value[from..]
-                            .find(char::is_whitespace)
-                            .map_or(raw_value.len(), |end| from + end);
-                        from
-                    }
-                };
-                let line = line_of(document.text_pos_at(value_range.start + at));
-                if cites.insert((line, id.to_string())) {
-                    read_here += 1;
+        };
+        listed.push((
+            line_of(document.text_pos_at(range.start + at)),
+            id.to_string(),
+        ));
+    }
+    listed
+}
+
+/// One declared XML ATTRIBUTE, as a reader behind the port (Round 1328).
+///
+/// The attribute is found by its namespace URI and local name under whatever
+/// prefix a document binds that namespace to, and its value is the one XML
+/// defines: entities decoded, either quote, and nothing from a comment, a CDATA
+/// section or element text.
+#[derive(Debug, Clone)]
+pub struct XmlAttributeReader {
+    declared: InventoryXmlName,
+}
+
+impl XmlAttributeReader {
+    /// A reader of the attribute `declared`.
+    pub fn new(declared: InventoryXmlName) -> Self {
+        XmlAttributeReader { declared }
+    }
+}
+
+impl CitationExtractor for XmlAttributeReader {
+    fn name(&self) -> String {
+        format!("attribute {}", self.declared.expanded_name())
+    }
+
+    fn extensions(&self) -> Vec<String> {
+        self.declared.extensions().to_vec()
+    }
+
+    fn reads(&self, file: &Path) -> bool {
+        self.declared.reads(file)
+    }
+
+    fn read(&self, _file: &Path, raw: &str) -> DocumentCitations {
+        let document = match parse_xml(raw) {
+            Ok(document) => document,
+            Err(why) => {
+                return DocumentCitations {
+                    cites: Vec::new(),
+                    unreadable: Some(why),
                 }
             }
-            let name = matched.expanded_name();
-            if let Some(row) = read.reach.iter_mut().find(|row| row.attribute == name) {
-                row.citations += read_here;
+        };
+        let mut cites: BTreeSet<(usize, String)> = BTreeSet::new();
+        for element in document.descendants().filter(roxmltree::Node::is_element) {
+            for found in element.attributes() {
+                if found.name() != self.declared.name()
+                    || found.namespace() != self.declared.namespace()
+                {
+                    continue;
+                }
+                cites.extend(ids_listed_in(
+                    &document,
+                    raw,
+                    found.range_value(),
+                    found.value(),
+                ));
             }
         }
+        DocumentCitations {
+            cites: cites.into_iter().collect(),
+            unreadable: None,
+        }
     }
-    read.cites = cites.into_iter().collect();
-    read
+}
+
+/// One declared XML ELEMENT, as a reader behind the port: the ids are the
+/// element's own TEXT (Round 1328).
+///
+/// `<req>REQ-1 REQ-2</req>` is the shape Round 1325 recorded as a decision NOT
+/// to read, because the adopter this axis was built for writes attributes. The
+/// port is what makes a second shape cost one reader rather than a fourth axis,
+/// and a decision whose whole price is one reader is not a decision worth
+/// keeping.
+#[derive(Debug, Clone)]
+pub struct XmlElementReader {
+    declared: InventoryXmlName,
+}
+
+impl XmlElementReader {
+    /// A reader of the element `declared`.
+    pub fn new(declared: InventoryXmlName) -> Self {
+        XmlElementReader { declared }
+    }
+}
+
+impl CitationExtractor for XmlElementReader {
+    fn name(&self) -> String {
+        format!("element {}", self.declared.expanded_name())
+    }
+
+    fn extensions(&self) -> Vec<String> {
+        self.declared.extensions().to_vec()
+    }
+
+    fn reads(&self, file: &Path) -> bool {
+        self.declared.reads(file)
+    }
+
+    fn read(&self, _file: &Path, raw: &str) -> DocumentCitations {
+        let document = match parse_xml(raw) {
+            Ok(document) => document,
+            Err(why) => {
+                return DocumentCitations {
+                    cites: Vec::new(),
+                    unreadable: Some(why),
+                }
+            }
+        };
+        let mut cites: BTreeSet<(usize, String)> = BTreeSet::new();
+        for element in document.descendants().filter(roxmltree::Node::is_element) {
+            if element.tag_name().name() != self.declared.name()
+                || element.tag_name().namespace() != self.declared.namespace()
+            {
+                continue;
+            }
+            // ITS OWN TEXT, NOT ITS DESCENDANTS'. A nested element's text is
+            // that element's, and reading it here would make one annotation a
+            // citation of every ancestor it happens to sit under.
+            for text in element.children().filter(roxmltree::Node::is_text) {
+                let Some(value) = text.text() else {
+                    continue;
+                };
+                cites.extend(ids_listed_in(&document, raw, text.range(), value));
+            }
+        }
+        DocumentCitations {
+            cites: cites.into_iter().collect(),
+            unreadable: None,
+        }
+    }
 }
 
 /// A parser position's row as a report line.
@@ -3005,14 +3075,14 @@ fn line_of(position: roxmltree::TextPos) -> usize {
     usize::try_from(position.row).unwrap_or(usize::MAX)
 }
 
-/// A declared document the attribute axis could not read (Round 1324).
+/// A declared document a reader could not read (Round 1324).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnreadableDocument {
-    /// The line the parser stopped at.
+    /// The line the reader stopped at.
     pub line: usize,
-    /// The expanded name of the attribute the document was to be read for.
-    pub attribute: String,
-    /// The parser's reason, as the parser states it.
+    /// The reader it was declared to be read by.
+    pub reader: String,
+    /// The reader's reason, in its own words.
     pub reason: String,
 }
 
@@ -3022,45 +3092,43 @@ pub struct InventoryCitations {
     /// Every citation, as `(line, inventory id)`, sorted and deduplicated — a
     /// citation two axes both read surfaces once.
     pub cites: Vec<(usize, String)>,
-    /// Every declared document that did not parse, once per attribute it was
-    /// to be read for. Only the attribute axis can leave one.
+    /// Every declared document that could not be read, once per reader it was
+    /// declared for. Only a document reader can leave one.
     pub unreadable: Vec<UnreadableDocument>,
-    /// What each attribute DECLARED for this document reached in it, including
-    /// the attributes that reached nothing (Round 1326).
-    pub reach: Vec<InventoryAttributeReach>,
+    /// What each reader DECLARED for this document reached in it, including the
+    /// readers that reached nothing (Round 1326).
+    pub reach: Vec<CitationReaderReach>,
 }
 
-/// What one declared attribute reached in ONE document (Round 1326).
+/// What one declared reader reached in ONE document (Round 1326).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InventoryAttributeReach {
-    /// The attribute's expanded name.
-    pub attribute: String,
-    /// Distinct citations it carried here; zero when the document carries none.
+pub struct CitationReaderReach {
+    /// The reader's name.
+    pub reader: String,
+    /// Distinct citations it read here; zero when the document carries none.
     pub citations: usize,
-    /// Whether the document did not parse, so nothing could be read for it.
+    /// Whether the document could not be read, so nothing was read for it.
     pub unreadable: bool,
 }
 
-/// What one declared inventory attribute reached across the read set (Round
-/// 1326), published every run by
-/// [`SetEqualityValidator::inventory_attribute_coverage`].
+/// What one declared READER reached across the read set (Round 1326),
+/// published every run by [`SetEqualityValidator::scan_and_reach`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
-pub struct InventoryAttributeCoverage {
-    /// The attribute's expanded name: `{namespace}local`, or the local name for
-    /// an attribute in no namespace.
-    pub attribute: String,
+pub struct CitationReaderCoverage {
+    /// The reader's name — `attribute {namespace}local`, `element …`.
+    pub reader: String,
     /// The extensions it is declared for.
     pub extensions: Vec<String>,
     /// Documents in the read set carrying one of those extensions.
     pub documents: usize,
-    /// Of those, the ones that did not parse, so nothing could be read in them.
+    /// Of those, the ones it could not read, so nothing was read in them.
     pub unreadable: usize,
-    /// Of those, the ones that actually carry the attribute.
+    /// Of those, the ones that actually carry what it reads.
     ///
     /// ZERO WITH `documents` ABOVE ZERO IS THE ANSWER THIS REPORT EXISTS FOR:
     /// the documents are there and not one is annotated the way the config says
-    /// — an annotation written as element text, a namespace URI that differs by
-    /// a character — and every other surface of the run reports that as silence.
+    /// — an annotation written in another shape, a namespace URI that differs
+    /// by a character — and every other surface reports that as silence.
     pub carrying: usize,
     /// Citations read under it: distinct `(line, id)` pairs.
     pub citations: usize,
@@ -3079,44 +3147,74 @@ pub const BARE_DOCUMENTS_NAMED: usize = 10;
 
 /// The inventory citation axes a workspace declares, read as ONE thing.
 ///
-/// Two prefix lists and an attribute list, three shapes, one lifecycle. Until
-/// Round 1322 the scan and the decay scan each chained the axes by hand and
-/// every caller threaded the lists as separate arguments, so an axis added to
-/// one reader was an axis another reader did not see. Both readers now take
-/// this.
-#[derive(Debug, Clone, Copy)]
+/// Two prefix lists, and the DOCUMENT READERS the workspace declares behind the
+/// port ([`CitationExtractor`], Round 1328). Until Round 1322 the scan and the
+/// decay scan each chained the axes by hand and every caller threaded the lists
+/// as separate arguments, so an axis added to one reader was an axis another
+/// reader did not see; both take this instead. A document format added after
+/// this round is a reader behind the port, not a fourth field here — which is
+/// the whole of what Rounds 1322 to 1324 paid to learn.
 pub struct InventoryCitationAxes<'a> {
     /// Opaque-id prefixes (`inventory_prefixes`); the prefix is part of the id.
     pub opaque: &'a [String],
     /// Section-path prefixes (`inventory_path_prefixes`); the prefix is part of
     /// the id.
     pub path: &'a [String],
-    /// XML attributes (`inventory_attributes`); a declared document is parsed
-    /// and the ids are what each attribute's value lists.
-    pub attributes: &'a [InventoryAttribute],
+    /// The declared document readers, in declaration order: the XML attributes
+    /// (`inventory_attributes`), then the XML elements (`inventory_elements`).
+    pub readers: Vec<Box<dyn CitationExtractor>>,
 }
 
 impl<'a> InventoryCitationAxes<'a> {
-    /// The axes a validator config declares.
+    /// The axes a validator config declares, with its readers built.
     pub fn of(config: &'a SetEqualityValidatorConfig) -> Self {
+        let mut readers: Vec<Box<dyn CitationExtractor>> = Vec::new();
+        for declared in &config.inventory_attributes {
+            readers.push(Box::new(XmlAttributeReader::new(declared.clone())));
+        }
+        for declared in &config.inventory_elements {
+            readers.push(Box::new(XmlElementReader::new(declared.clone())));
+        }
         InventoryCitationAxes {
             opaque: &config.inventory_prefixes,
             path: &config.inventory_path_prefixes,
-            attributes: &config.inventory_attributes,
+            readers,
         }
     }
 
     /// Whether no axis is declared, so there is nothing to read.
     pub fn is_empty(&self) -> bool {
-        self.opaque.is_empty() && self.path.is_empty() && self.attributes.is_empty()
+        self.opaque.is_empty() && self.path.is_empty() && self.readers.is_empty()
     }
 
-    /// Every inventory citation in one file under any declared axis, and every
-    /// declared document there that did not parse. The prefix axes read
-    /// `content`, the text `comment_only` leaves; the attribute axis reads
-    /// `raw`, because an XML parser needs the whole document.
+    /// Every inventory citation in one file under any declared axis, what each
+    /// declared reader reached in it, and every reader that could not read it.
+    ///
+    /// The prefix axes read `content` — the text `comment_only` leaves — and a
+    /// reader reads `raw`, because a parser needs the document rather than the
+    /// comments cut out of it.
     pub fn extract(&self, file: &Path, raw: &str, content: &str) -> InventoryCitations {
-        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);
+        let mut read = InventoryCitations::default();
+        for reader in &self.readers {
+            if !reader.reads(file) {
+                continue;
+            }
+            let answer = reader.read(file, raw);
+            let cites: BTreeSet<(usize, String)> = answer.cites.into_iter().collect();
+            read.reach.push(CitationReaderReach {
+                reader: reader.name(),
+                citations: cites.len(),
+                unreadable: answer.unreadable.is_some(),
+            });
+            if let Some((line, reason)) = answer.unreadable {
+                read.unreadable.push(UnreadableDocument {
+                    line,
+                    reader: reader.name(),
+                    reason,
+                });
+            }
+            read.cites.extend(cites);
+        }
         read.cites
             .extend(extract_inventory_citations(self.opaque, content));
         read.cites
@@ -4540,7 +4638,7 @@ impl SetEqualityValidator {
         &self,
         attribution: &CitationAttribution,
         snapshot: &mnemosyne_core::AtomicSnapshot,
-    ) -> std::io::Result<(Vec<CodeRefViolation>, Vec<InventoryAttributeCoverage>)> {
+    ) -> std::io::Result<(Vec<CodeRefViolation>, Vec<CitationReaderCoverage>)> {
         // The tree comes from the attribution rather than beside it (Round 867):
         // a root passed separately could name a tree the numbering origin was not
         // derived from, and the answer would be wrong while looking right.
@@ -4553,16 +4651,15 @@ impl SetEqualityValidator {
         let verdicts = self.axis_verdicts();
         let comment_only = self.config.comment_only;
         let inventory_axes = InventoryCitationAxes::of(&self.config);
-        // A row per DECLARED attribute, so an attribute this tree holds no
-        // document for is a row of zeroes rather than an absence (Round 1326).
-        let mut inventory_reach: Vec<InventoryAttributeCoverage> = self
-            .config
-            .inventory_attributes
+        // A row per DECLARED reader, so a reader this tree holds no document for
+        // is a row of zeroes rather than an absence (Round 1326).
+        let mut inventory_reach: Vec<CitationReaderCoverage> = inventory_axes
+            .readers
             .iter()
-            .map(|attribute| InventoryAttributeCoverage {
-                attribute: attribute.expanded_name(),
-                extensions: attribute.extensions().to_vec(),
-                ..InventoryAttributeCoverage::default()
+            .map(|reader| CitationReaderCoverage {
+                reader: reader.name(),
+                extensions: reader.extensions(),
+                ..CitationReaderCoverage::default()
             })
             .collect();
         // Empty resolver map = symbol axis silently skipped; identical
@@ -4884,7 +4981,7 @@ impl SetEqualityValidator {
             for reach in &inventory_read.reach {
                 let Some(row) = inventory_reach
                     .iter_mut()
-                    .find(|row| row.attribute == reach.attribute)
+                    .find(|row| row.reader == reach.reader)
                 else {
                     continue;
                 };
@@ -4938,7 +5035,7 @@ impl SetEqualityValidator {
                         citation: Citation {
                             file: rel.clone(),
                             line: unreadable.line,
-                            entry_id: unreadable.attribute,
+                            entry_id: unreadable.reader,
                         },
                         kind: ViolationKind::InventoryDocumentUnreadable,
                         evidence: Some(CitationEvidence::ParseError {
@@ -5949,6 +6046,7 @@ mod tests {
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: inventory_path_prefixes.to_vec(),
                 inventory_attributes: Vec::new(),
+                inventory_elements: Vec::new(),
                 section_namespace: section_namespace.map(String::from),
             },
             entry_id_prefix: prefix.to_string(),
@@ -6419,6 +6517,7 @@ mod tests {
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
                 inventory_attributes: Vec::new(),
+                inventory_elements: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6541,12 +6640,13 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_attributes: vec![InventoryAttribute::new(
+                inventory_attributes: vec![InventoryXmlName::new(
                     Some("http://example/ext".to_string()),
                     "req",
                     vec!["scxml".to_string()],
                 )
                 .expect("a declaration")],
+                inventory_elements: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6792,6 +6892,7 @@ mod tests {
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
                 inventory_attributes: Vec::new(),
+                inventory_elements: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -7066,6 +7167,7 @@ mod tests {
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
                 inventory_attributes: Vec::new(),
+                inventory_elements: Vec::new(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -8717,15 +8819,44 @@ mod tests {
         );
     }
 
-    /// The attribute the attribute-axis tests declare: `req` in
-    /// `http://example/ext`, read in `.scxml` documents.
-    fn req_attribute() -> Vec<InventoryAttribute> {
-        vec![InventoryAttribute::new(
+    /// The name these tests declare: `req` in `http://example/ext`, read in
+    /// `.scxml` documents.
+    fn req_declaration() -> InventoryXmlName {
+        InventoryXmlName::new(
             Some("http://example/ext".to_string()),
             "req",
             vec!["scxml".to_string()],
         )
-        .expect("a declaration")]
+        .expect("a declaration")
+    }
+
+    /// That name as a config's attribute list.
+    fn req_attribute() -> Vec<InventoryXmlName> {
+        vec![req_declaration()]
+    }
+
+    /// What `readers` read in one document, through the one reader the gate uses
+    /// (Round 1328) — the prefix axes are off, so the answer is the readers'.
+    fn readers_read(
+        readers: Vec<Box<dyn CitationExtractor>>,
+        file: &str,
+        document: &str,
+    ) -> InventoryCitations {
+        InventoryCitationAxes {
+            opaque: &[],
+            path: &[],
+            readers,
+        }
+        .extract(Path::new(file), document, document)
+    }
+
+    /// What the declared ATTRIBUTE reader reads in one document.
+    fn attribute_reader_reads(file: &str, document: &str) -> InventoryCitations {
+        readers_read(
+            vec![Box::new(XmlAttributeReader::new(req_declaration()))],
+            file,
+            document,
+        )
     }
 
     /// Round 1324 — an attribute is read BY ITS NAMESPACE: under whichever
@@ -8740,11 +8871,7 @@ mod tests {
                         <state s:req=\"REQ-8\n  REQ-9\"/>\n\
                         </scxml>\n";
         assert_eq!(
-            extract_inventory_attribute_citations(
-                &req_attribute(),
-                Path::new("doc/model.scxml"),
-                document
-            ),
+            attribute_reader_reads("doc/model.scxml", document),
             InventoryCitations {
                 cites: vec![
                     (2, "REQ-4.2.1".to_string()),
@@ -8753,8 +8880,8 @@ mod tests {
                     (5, "REQ-9".to_string()),
                 ],
                 unreadable: vec![],
-                reach: vec![InventoryAttributeReach {
-                    attribute: "{http://example/ext}req".to_string(),
+                reach: vec![CitationReaderReach {
+                    reader: "attribute {http://example/ext}req".to_string(),
                     citations: 4,
                     unreadable: false,
                 }],
@@ -8775,8 +8902,7 @@ mod tests {
                         <log>s:req=\"IN-TEXT\"</log>\n\
                         </scxml>\n";
         assert_eq!(
-            extract_inventory_attribute_citations(&req_attribute(), Path::new("m.scxml"), document)
-                .cites,
+            attribute_reader_reads("m.scxml", document).cites,
             vec![
                 (2, "A&B".to_string()),
                 (2, "REQ#10".to_string()),
@@ -8789,14 +8915,16 @@ mod tests {
     /// parser's reason, and none of its attributes is read.
     #[test]
     fn a_document_that_does_not_parse_is_returned_not_skipped() {
-        let read = extract_inventory_attribute_citations(
-            &req_attribute(),
-            Path::new("m.scxml"),
+        let read = attribute_reader_reads(
+            "m.scxml",
             "<scxml xmlns:s=\"http://example/ext\">\n<state s:req=\"REQ-7\">\n</scxml>\n",
         );
         assert!(read.cites.is_empty(), "{read:?}");
         assert_eq!(read.unreadable.len(), 1, "{read:?}");
-        assert_eq!(read.unreadable[0].attribute, "{http://example/ext}req");
+        assert_eq!(
+            read.unreadable[0].reader,
+            "attribute {http://example/ext}req"
+        );
         assert!(
             !read.unreadable[0].reason.is_empty() && read.unreadable[0].line >= 2,
             "{read:?}"
@@ -8811,9 +8939,8 @@ mod tests {
     /// author's back.
     #[test]
     fn a_document_type_declaration_is_read_and_an_unreachable_entity_is_not() {
-        let internal = extract_inventory_attribute_citations(
-            &req_attribute(),
-            Path::new("m.scxml"),
+        let internal = attribute_reader_reads(
+            "m.scxml",
             "<!DOCTYPE scxml [<!ENTITY seven \"REQ-7\">]>\n\
              <scxml xmlns:s=\"http://example/ext\"><state s:req=\"&seven; REQ-1\"/></scxml>\n",
         );
@@ -8823,9 +8950,8 @@ mod tests {
         );
         assert!(internal.unreadable.is_empty(), "{internal:?}");
 
-        let external = extract_inventory_attribute_citations(
-            &req_attribute(),
-            Path::new("m.scxml"),
+        let external = attribute_reader_reads(
+            "m.scxml",
             "<!DOCTYPE scxml SYSTEM \"ids.dtd\">\n\
              <scxml xmlns:s=\"http://example/ext\"><state s:req=\"&seven;\"/></scxml>\n",
         );
@@ -8843,9 +8969,8 @@ mod tests {
     /// inside that entity reference is not reported on the entity's line.
     #[test]
     fn an_id_spelled_through_an_entity_carries_its_own_line() {
-        let read = extract_inventory_attribute_citations(
-            &req_attribute(),
-            Path::new("m.scxml"),
+        let read = attribute_reader_reads(
+            "m.scxml",
             "<scxml xmlns:s=\"http://example/ext\">\
              <state s:req=\"&amp;A-1\n  A-1\n  B&#32;C\"/></scxml>\n",
         );
@@ -8888,6 +9013,7 @@ mod tests {
             config: SetEqualityValidatorConfig {
                 paths: vec!["doc/".to_string()],
                 inventory_attributes: req_attribute(),
+                inventory_elements: Vec::new(),
                 ..SetEqualityValidatorConfig::default()
             },
             entry_id_prefix: "Round ".to_string(),
@@ -8904,8 +9030,8 @@ mod tests {
             .expect("the scan");
         assert_eq!(
             reach,
-            vec![InventoryAttributeCoverage {
-                attribute: "{http://example/ext}req".to_string(),
+            vec![CitationReaderCoverage {
+                reader: "attribute {http://example/ext}req".to_string(),
                 extensions: vec!["scxml".to_string()],
                 documents: 3,
                 unreadable: 1,
@@ -8924,9 +9050,8 @@ mod tests {
     #[test]
     fn an_attribute_is_read_only_in_its_declared_extensions() {
         assert_eq!(
-            extract_inventory_attribute_citations(
-                &req_attribute(),
-                Path::new("doc/README.md"),
+            attribute_reader_reads(
+                "doc/README.md",
                 "An annotation reads <state s:req=\"REQ-7\"/> in a model.\n"
             ),
             InventoryCitations::default()
@@ -8937,17 +9062,58 @@ mod tests {
     /// and a namespaced attribute of the same local name is not it.
     #[test]
     fn an_attribute_in_no_namespace_is_the_unprefixed_one() {
-        let unprefixed = vec![
-            InventoryAttribute::new(None, "req", vec!["svg".to_string()]).expect("a declaration"),
-        ];
+        let unprefixed =
+            InventoryXmlName::new(None, "req", vec!["svg".to_string()]).expect("a declaration");
         assert_eq!(
-            extract_inventory_attribute_citations(
-                &unprefixed,
-                Path::new("a.svg"),
+            readers_read(
+                vec![Box::new(XmlAttributeReader::new(unprefixed))],
+                "a.svg",
                 "<svg xmlns:s=\"http://example/ext\">\n<g req=\"REQ-1\" s:req=\"REQ-2\"/>\n</svg>\n"
             )
             .cites,
             vec![(2, "REQ-1".to_string())]
+        );
+    }
+
+    /// Round 1328 — THE PORT'S SECOND READER: an element's TEXT lists ids the
+    /// same way an attribute's value does, under the same namespace rule, and
+    /// the two readers coexist over one document without either seeing the
+    /// other's shape. A nested element's text belongs to that element, not to
+    /// every ancestor it sits under.
+    #[test]
+    fn an_element_reader_reads_the_ids_its_element_holds() {
+        let document = "<scxml xmlns:s=\"http://example/ext\">\n\
+                        <state s:req=\"REQ-1\">\n\
+                        <s:req>REQ-2 REQ-3<note>NOT-READ-EITHER</note></s:req>\n\
+                        <req>NOT-READ</req>\n\
+                        </state>\n\
+                        </scxml>\n";
+        let readers: Vec<Box<dyn CitationExtractor>> = vec![
+            Box::new(XmlAttributeReader::new(req_declaration())),
+            Box::new(XmlElementReader::new(req_declaration())),
+        ];
+        let read = readers_read(readers, "m.scxml", document);
+        assert_eq!(
+            read.cites,
+            vec![
+                (2, "REQ-1".to_string()),
+                (3, "REQ-2".to_string()),
+                (3, "REQ-3".to_string()),
+            ],
+            "the attribute's value and the element's OWN text — nothing from a \
+             nested element, and nothing from an element of the same local name \
+             in no namespace"
+        );
+        assert_eq!(
+            read.reach
+                .iter()
+                .map(|row| (row.reader.as_str(), row.citations))
+                .collect::<Vec<_>>(),
+            vec![
+                ("attribute {http://example/ext}req", 1),
+                ("element {http://example/ext}req", 2),
+            ],
+            "and each reader's reach is its own: {read:?}"
         );
     }
 
@@ -8958,11 +9124,10 @@ mod tests {
     fn inventory_citation_axes_read_every_declared_axis() {
         let opaque = vec!["ARP_".to_string()];
         let path = vec!["W3C SCXML ".to_string()];
-        let attributes = req_attribute();
         let axes = InventoryCitationAxes {
             opaque: &opaque,
             path: &path,
-            attributes: &attributes,
+            readers: vec![Box::new(XmlAttributeReader::new(req_declaration()))],
         };
         let raw = "<!-- ARP_07 beside W3C SCXML 3.13 -->\n\
                    <scxml xmlns:s=\"http://example/ext\">\
@@ -8985,7 +9150,7 @@ mod tests {
         assert!(InventoryCitationAxes {
             opaque: &[],
             path: &[],
-            attributes: &[],
+            readers: Vec::new(),
         }
         .is_empty());
     }
@@ -10123,7 +10288,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &prefixes,
                 path: &[],
-                attributes: &[],
+                readers: Vec::new(),
             },
             true,
         )
@@ -10146,7 +10311,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &[],
                 path: &[],
-                attributes: &[],
+                readers: Vec::new(),
             },
             true,
         )
@@ -10172,7 +10337,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &prefixes,
                 path: &[],
-                attributes: &[],
+                readers: Vec::new(),
             },
             true,
         )

@@ -61,6 +61,60 @@ pub use ids::{
     BranchId, EntityId, EntityKindId, FactId, FrameId, ParameterId, PredicateId, SectionId, UnitId,
 };
 
+/// What a citation reader answers for ONE document (Round 1328).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DocumentCitations {
+    /// `(line, inventory id)` — the ids this document cites and where each
+    /// one's text begins.
+    pub cites: Vec<(usize, String)>,
+    /// Why the document could not be read, when it could not be: the line the
+    /// reader stopped on and its own words. A reader that cannot read a
+    /// document it is declared for SAYS SO, because reading nothing there in
+    /// silence is indistinguishable from a document that cites nothing.
+    pub unreadable: Option<(usize, String)>,
+}
+
+/// A READER OF CITATIONS IN A DOCUMENT THIS REPOSITORY DOES NOT OWN
+/// (Round 1328).
+///
+/// # Why this is a port
+///
+/// Rounds 1322, 1323 and 1324 each built a grammar for an adopter's annotation
+/// inside this gate — a prefix with a character class, a pair of delimiters, an
+/// XML attribute — and each was wrong until it was replaced by the grammar the
+/// document's own format already had. A fourth format would repeat it. The
+/// shape this repository already uses for the same problem one axis over is a
+/// port: [`SymbolResolver`] is declared in config, built at load and refused
+/// loudly when it cannot be built. This is that, for citations.
+///
+/// # What may not cross it
+///
+/// A reader answers WHERE THE CITATIONS ARE. It never answers whether one is
+/// missing, deprecated or stale: that is the gate's judgment against the store,
+/// and keeping it on this side is what Rounds 481-488 bought when they took the
+/// verdict away from a model. A reader that judged would be a second opinion
+/// about the ledger, which is the one thing this substrate may not have.
+///
+/// `raw` is the document as it sits on disk rather than the comment-stripped
+/// text, because a parser needs the document; and the CALLER holds it, for the
+/// reason [`SymbolResolver::resolve_symbols_at`] states one trait up — two
+/// reads of one file can disagree, and then the answer is about a file the
+/// citation was never in.
+pub trait CitationExtractor: Send + Sync {
+    /// What this reader is, as the report prints it and a refusal names it.
+    fn name(&self) -> String;
+
+    /// The file extensions it is declared for — what the report calls the
+    /// documents it was supposed to reach.
+    fn extensions(&self) -> Vec<String>;
+
+    /// Whether it reads the document at `file`.
+    fn reads(&self, file: &Path) -> bool;
+
+    /// The citations in `raw`, or why they could not be read.
+    fn read(&self, file: &Path, raw: &str) -> DocumentCitations;
+}
+
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;
 

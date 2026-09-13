@@ -37,12 +37,12 @@
         "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not"
       ]
     },
-    "a-document-of-any-extension-is-parsed": {
+    "a-document-of-any-extension-is-read": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "    let declared: Vec<&InventoryAttribute> = attributes.iter().filter(|a| a.reads(file)).collect();\n",
-          "to": "    let declared: Vec<&InventoryAttribute> = attributes.iter().collect();\n"
+          "from": "            if !reader.reads(file) {\n                continue;\n            }\n",
+          "to": ""
         }
       ],
       "expect_red": [
@@ -77,12 +77,27 @@
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
+    "a-reader-is-handed-what-comment-stripping-left": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            let answer = reader.read(file, raw);\n",
+          "to": "            let answer = reader.read(file, content);\n"
+        }
+      ],
+      "expect_red": [
+        "inventory_citation_axes_read_every_declared_axis"
+      ],
+      "tests": [
+        "code_refs::tests::inventory_citation_axes_read_every_declared_axis"
+      ]
+    },
     "a-value-is-read-as-raw-text": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "            for id in found.value().split_whitespace() {\n",
-          "to": "            for id in raw_value.split_whitespace() {\n"
+          "from": "    for id in value.split_whitespace() {\n",
+          "to": "    for id in raw_value.split_whitespace() {\n"
         }
       ],
       "expect_red": [
@@ -102,8 +117,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                .find(|a| a.name() == found.name() && a.namespace() == found.namespace())\n",
-          "to": "                .find(|a| a.name() == found.name())\n"
+          "from": "                if found.name() != self.declared.name()\n                    || found.namespace() != self.declared.namespace()\n                {\n",
+          "to": "                if found.name() != self.declared.name() {\n"
         }
       ],
       "expect_red": [
@@ -117,12 +132,42 @@
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
-    "an-id-carries-its-attributes-line-not-its-own": {
+    "an-element-list-builds-no-reader": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                let line = line_of(document.text_pos_at(value_range.start + at));\n",
-          "to": "                let line = line_of(document.text_pos_at(value_range.start));\n"
+          "from": "            readers.push(Box::new(XmlElementReader::new(declared.clone())));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot"
+      ],
+      "tests": [
+        "inventory_marker_smoke::an_element_declaration_reads_the_annotation_the_attribute_reader_cannot"
+      ]
+    },
+    "an-element-reader-reads-its-descendants-text": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            for text in element.children().filter(roxmltree::Node::is_text) {\n",
+          "to": "            for text in element.descendants().filter(roxmltree::Node::is_text) {\n"
+        }
+      ],
+      "expect_red": [
+        "an_element_reader_reads_the_ids_its_element_holds"
+      ],
+      "tests": [
+        "code_refs::tests::an_element_reader_reads_the_ids_its_element_holds"
+      ]
+    },
+    "an-id-carries-its-holders-line-not-its-own": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            line_of(document.text_pos_at(range.start + at)),\n",
+          "to": "            line_of(document.text_pos_at(range.start)),\n"
         }
       ],
       "expect_red": [
@@ -136,7 +181,7 @@
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
       ]
     },
-    "an-unreadable-document-is-skipped-by-the-extractor": {
+    "an-unreadable-document-is-skipped-by-the-reader": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
@@ -176,21 +221,6 @@
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
-    "the-attribute-axis-reads-what-comment-stripping-left": {
-      "edits": [
-        {
-          "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
-          "to": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, content);\n"
-        }
-      ],
-      "expect_red": [
-        "inventory_citation_axes_read_every_declared_axis"
-      ],
-      "tests": [
-        "code_refs::tests::inventory_citation_axes_read_every_declared_axis"
-      ]
-    },
     "the-line-a-person-reads-omits-the-reach": {
       "edits": [
         {
@@ -206,30 +236,46 @@
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
-    "the-one-reader-skips-the-attribute-axis": {
+    "the-one-reader-consults-no-reader": {
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
-          "to": "        let mut read = InventoryCitations::default();\n"
+          "from": "        for reader in &self.readers {\n",
+          "to": "        for reader in Vec::<Box<dyn CitationExtractor>>::new().iter() {\n"
         }
       ],
       "expect_red": [
         "inventory_citation_axes_read_every_declared_axis",
+        "an_element_reader_reads_the_ids_its_element_holds",
         "the_attribute_axis_publishes_what_it_reached",
+        "an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "an_attribute_value_is_read_as_xml_defines_it",
+        "a_document_that_does_not_parse_is_returned_not_skipped",
+        "a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+        "an_id_spelled_through_an_entity_carries_its_own_line",
+        "an_attribute_in_no_namespace_is_the_unprefixed_one",
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "a_document_that_does_not_parse_is_reported_with_the_reason",
         "an_attribute_no_document_carries_is_reported_rather_than_silent",
+        "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
       ],
       "tests": [
+        "code_refs::tests::a_document_that_does_not_parse_is_returned_not_skipped",
+        "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+        "code_refs::tests::an_attribute_in_no_namespace_is_the_unprefixed_one",
+        "code_refs::tests::an_attribute_is_read_by_its_namespace_not_its_prefix",
+        "code_refs::tests::an_attribute_value_is_read_as_xml_defines_it",
+        "code_refs::tests::an_element_reader_reads_the_ids_its_element_holds",
+        "code_refs::tests::an_id_spelled_through_an_entity_carries_its_own_line",
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
         "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
+        "inventory_marker_smoke::an_element_declaration_reads_the_annotation_the_attribute_reader_cannot",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
@@ -252,19 +298,21 @@
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
-    "the-report-omits-the-attribute-axis": {
+    "the-report-omits-the-reader-axis": {
       "edits": [
         {
           "file": "crates/mnemosyne-cli/src/main.rs",
-          "from": "            \"inventory_attribute_axis\": inventory_attribute_axis,\n",
+          "from": "            \"inventory_reader_axis\": inventory_reader_axis,\n",
           "to": ""
         }
       ],
       "expect_red": [
-        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+        "an_attribute_no_document_carries_is_reported_rather_than_silent",
+        "an_element_declaration_reads_the_annotation_the_attribute_reader_cannot"
       ],
       "tests": [
-        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
+        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
+        "inventory_marker_smoke::an_element_declaration_reads_the_annotation_the_attribute_reader_cannot"
       ]
     },
     "the-scan-drops-an-unreadable-document": {
@@ -290,8 +338,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                    None => {\n                        let from = raw_value.len() - raw_value[cursor..].trim_start().len();\n                        cursor = raw_value[from..]\n                            .find(char::is_whitespace)\n                            .map_or(raw_value.len(), |end| from + end);\n                        from\n                    }\n",
-          "to": "                    None => raw_value.len() - raw_value[cursor..].trim_start().len(),\n"
+          "from": "            None => {\n                let from = raw_value.len() - raw_value[cursor..].trim_start().len();\n                cursor = raw_value[from..]\n                    .find(char::is_whitespace)\n                    .map_or(raw_value.len(), |end| from + end);\n                from\n            }\n",
+          "to": "            None => raw_value.len() - raw_value[cursor..].trim_start().len(),\n"
         }
       ],
       "expect_red": [
@@ -303,6 +351,32 @@
     }
   },
   "forgotten": {
+    "a-document-of-any-extension-is-parsed": {
+      "because": "R1328 renamed it: the axis became a PORT and the thing that filters a document is now the READER's own reads(), so the injection is the same defect under the name a-document-of-any-extension-is-read",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "    let declared: Vec<&InventoryAttribute> = attributes.iter().filter(|a| a.reads(file)).collect();\n",
+            "to": "    let declared: Vec<&InventoryAttribute> = attributes.iter().collect();\n"
+          }
+        ],
+        "expect_red": [
+          "an_attribute_is_read_only_in_its_declared_extensions",
+          "the_attribute_axis_publishes_what_it_reached",
+          "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+          "every_citation_axis_publishes_what_it_read",
+          "every_axis_that_reads_something_publishes_it_through_the_binary"
+        ],
+        "tests": [
+          "code_refs::tests::an_attribute_is_read_only_in_its_declared_extensions",
+          "code_refs::tests::every_citation_axis_publishes_what_it_read",
+          "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
+          "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+          "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
+        ]
+      }
+    },
     "a-key-a-marker-does-not-model-is-dropped": {
       "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
       "was": {
@@ -441,6 +515,28 @@
         ]
       }
     },
+    "an-id-carries-its-attributes-line-not-its-own": {
+      "because": "R1328 renamed it: an element reader carries ids too, so the holder is an attribute OR an element — the same defect is an-id-carries-its-holders-line-not-its-own",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "                let line = line_of(document.text_pos_at(value_range.start + at));\n",
+            "to": "                let line = line_of(document.text_pos_at(value_range.start));\n"
+          }
+        ],
+        "expect_red": [
+          "an_attribute_is_read_by_its_namespace_not_its_prefix",
+          "an_id_spelled_through_an_entity_carries_its_own_line",
+          "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
+        ],
+        "tests": [
+          "code_refs::tests::an_attribute_is_read_by_its_namespace_not_its_prefix",
+          "code_refs::tests::an_id_spelled_through_an_entity_carries_its_own_line",
+          "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it"
+        ]
+      }
+    },
     "an-id-ends-at-a-character-class": {
       "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
       "was": {
@@ -497,6 +593,50 @@
         ]
       }
     },
+    "an-unreadable-document-is-skipped-by-the-extractor": {
+      "because": "R1328 renamed it: the extractor is a reader behind the port now — the same defect is an-unreadable-document-is-skipped-by-the-reader",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "                read.unreadable.push(UnreadableDocument {\n",
+            "to": "                drop(UnreadableDocument {\n"
+          }
+        ],
+        "expect_red": [
+          "a_document_that_does_not_parse_is_returned_not_skipped",
+          "a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+          "a_document_that_does_not_parse_is_reported_with_the_reason",
+          "every_citation_axis_publishes_what_it_read",
+          "every_axis_that_reads_something_publishes_it_through_the_binary"
+        ],
+        "tests": [
+          "code_refs::tests::a_document_that_does_not_parse_is_returned_not_skipped",
+          "code_refs::tests::a_document_type_declaration_is_read_and_an_unreachable_entity_is_not",
+          "code_refs::tests::every_citation_axis_publishes_what_it_read",
+          "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
+          "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
+        ]
+      }
+    },
+    "the-attribute-axis-reads-what-comment-stripping-left": {
+      "because": "R1328 renamed it: what is handed the stripped text is a reader rather than the attribute axis — the same defect is a-reader-is-handed-what-comment-stripping-left",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
+            "to": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, content);\n"
+          }
+        ],
+        "expect_red": [
+          "inventory_citation_axes_read_every_declared_axis"
+        ],
+        "tests": [
+          "code_refs::tests::inventory_citation_axes_read_every_declared_axis"
+        ]
+      }
+    },
     "the-longer-open-is-not-preferred": {
       "because": "R1324 replaced its subject rather than renaming it: the delimiter marker is gone and the annotation is read as the XML attribute the document's own format defines, so there is no open, close or enclosed text left to injure. What has teeth in its place is this sweep's nine attribute-reader injections and the ten declaration injections beside the config crate",
       "was": {
@@ -512,6 +652,36 @@
         ],
         "tests": [
           "code_refs::tests::a_marker_open_follows_the_word_span_and_length_rules"
+        ]
+      }
+    },
+    "the-one-reader-skips-the-attribute-axis": {
+      "because": "R1328 renamed it: the one reader now consults declared readers rather than an attribute list — the same defect is the-one-reader-consults-no-reader",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-validate/src/code_refs.rs",
+            "from": "        let mut read = extract_inventory_attribute_citations(self.attributes, file, raw);\n",
+            "to": "        let mut read = InventoryCitations::default();\n"
+          }
+        ],
+        "expect_red": [
+          "inventory_citation_axes_read_every_declared_axis",
+          "the_attribute_axis_publishes_what_it_reached",
+          "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+          "a_document_that_does_not_parse_is_reported_with_the_reason",
+          "an_attribute_no_document_carries_is_reported_rather_than_silent",
+          "every_citation_axis_publishes_what_it_read",
+          "every_axis_that_reads_something_publishes_it_through_the_binary"
+        ],
+        "tests": [
+          "code_refs::tests::every_citation_axis_publishes_what_it_read",
+          "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+          "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
+          "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
+          "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
+          "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent",
+          "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
         ]
       }
     },
@@ -534,6 +704,24 @@
           "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
           "inventory_marker_smoke::a_marker_cites_every_id_it_encloses",
           "inventory_marker_smoke::a_marker_that_never_closes_is_reported"
+        ]
+      }
+    },
+    "the-report-omits-the-attribute-axis": {
+      "because": "R1328 renamed it: the report is per reader and its key is inventory_reader_axis — the same defect is the-report-omits-the-reader-axis",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-cli/src/main.rs",
+            "from": "            \"inventory_attribute_axis\": inventory_attribute_axis,\n",
+            "to": ""
+          }
+        ],
+        "expect_red": [
+          "an_attribute_no_document_carries_is_reported_rather_than_silent"
+        ],
+        "tests": [
+          "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
         ]
       }
     },

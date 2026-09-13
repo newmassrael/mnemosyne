@@ -289,7 +289,16 @@ you `informative`, it is older than R422 — the store will refuse it.
  prefixed or non-XML `name`, an empty or whitespace-holding `namespace`, and an
  empty or malformed `extensions` list are refused when the config loads. Same
  lifecycle and severity as the other two axes; the orphan ledger suppresses its
- citations but not an unreadable document, which names no id. Every run
+ citations but not an unreadable document, which names no id.
+- **`[plugins.set_equality_validator].inventory_elements`** — the same
+ declaration for an annotation written as element TEXT: `inventory_elements =
+ [{ namespace = "http://example/ext", name = "req", extensions = ["scxml"] }]`
+ reads `<req>REQ-1 REQ-2</req>` as two citations. An element's own text only —
+ a nested element's text is that element's. Both lists build READERS behind one
+ port (`mnemosyne_core::CitationExtractor`, Round 1328), which is why a second
+ annotation shape costs a reader rather than a fourth axis; a reader answers
+ where the citations are and never whether one is missing or deprecated, which
+ stays the gate's judgment against the store. Every run
  publishes what the axis REACHED (`inventory_attribute_axis` in `--json`, and a
  line of its own in the plain report): the documents it was declared for, how
  many carry the attribute, how many citations it read and how many did not

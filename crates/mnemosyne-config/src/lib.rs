@@ -441,27 +441,32 @@ pub enum SymbolResolverConfig {
     },
 }
 
-/// One XML attribute that cites inventory ids (Round 1324): the attribute an
-/// adopter writes on the elements of a document it does not rewrite, named by
-/// its namespace URI and local name, and the file extensions whose documents
-/// are the XML that carries it.
+/// One XML NAME that cites inventory ids (Round 1324, widened in Round 1328):
+/// the attribute or the element an adopter writes in a document it does not
+/// rewrite, named by its namespace URI and local name, and the file extensions
+/// whose documents are the XML that carries it.
+///
+/// ONE TYPE FOR BOTH, because an attribute's value and an element's text are
+/// the same thing to this axis — a whitespace-separated list of ids — and what
+/// differs is which READER behind the citation port is built from it
+/// (`inventory_attributes` builds one kind, `inventory_elements` the other).
 ///
 /// NAMED BY NAMESPACE, NEVER BY PREFIX, because a prefix is only a binding the
 /// document chooses: `s:req` under `xmlns:s="http://example/ext"` is the same
 /// attribute as `sce:req` under `xmlns:sce="http://example/ext"`, and an XML
 /// reader — the adopter's own among them — reads it that way. Built only
-/// through [`InventoryAttribute::new`], which a TOML declaration goes through
+/// through [`InventoryXmlName::new`], which a TOML declaration goes through
 /// too, so a declaration a caller builds and one a workspace declares are
 /// refused on the same terms.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct InventoryAttribute {
+pub struct InventoryXmlName {
     #[serde(skip_serializing_if = "Option::is_none")]
     namespace: Option<String>,
     name: String,
     extensions: Vec<String>,
 }
 
-impl InventoryAttribute {
+impl InventoryXmlName {
     /// The attribute `name` in `namespace` (none when `None`), read in
     /// documents whose extension is one of `extensions`.
     ///
@@ -524,7 +529,7 @@ impl InventoryAttribute {
                 ));
             }
         }
-        Ok(InventoryAttribute {
+        Ok(InventoryXmlName {
             namespace,
             name,
             extensions,
@@ -569,7 +574,7 @@ impl InventoryAttribute {
     }
 }
 
-impl<'de> Deserialize<'de> for InventoryAttribute {
+impl<'de> Deserialize<'de> for InventoryXmlName {
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
@@ -586,7 +591,7 @@ impl<'de> Deserialize<'de> for InventoryAttribute {
             name,
             extensions,
         } = Declared::deserialize(deserializer)?;
-        InventoryAttribute::new(namespace, name, extensions).map_err(serde::de::Error::custom)
+        InventoryXmlName::new(namespace, name, extensions).map_err(serde::de::Error::custom)
     }
 }
 
@@ -899,9 +904,28 @@ pub struct SetEqualityValidatorConfig {
     /// the attribute under another prefix, and read an example inside a comment
     /// or a Markdown file as a citation. Same lifecycle and `severity_inventory`
     /// as the two prefix axes, and the orphan ledger suppresses its citations —
-    /// not an unreadable document, which names no id. Empty = axis disabled.
+    /// not an unreadable document, which names no id. Empty = no such reader.
     #[serde(default)]
-    pub inventory_attributes: Vec<InventoryAttribute>,
+    pub inventory_attributes: Vec<InventoryXmlName>,
+
+    /// Inventory citation ELEMENTS — the XML elements whose TEXT lists the
+    /// inventory ids a document cites (Round 1328).
+    ///
+    /// `inventory_elements = [{ namespace = "http://example/ext", name = "req",
+    /// extensions = ["scxml"] }]` reads `<req>REQ-1 REQ-2</req>` as two
+    /// citations. Everything the attribute reader answers to holds here — named
+    /// by namespace rather than prefix, the text as XML defines it, a document
+    /// that does not parse reported with the parser's reason — and only the
+    /// place the ids sit differs.
+    ///
+    /// IT EXISTS BECAUSE THE PORT MADE IT CHEAP. Round 1325 recorded "this axis
+    /// reads attributes, not element text" as a decision, and it was a fair one
+    /// while a second shape meant a second axis inside the gate. Behind
+    /// [`mnemosyne_core::CitationExtractor`] it is one more reader, and a
+    /// decision whose whole price is one reader is not worth keeping. Empty =
+    /// no such reader.
+    #[serde(default)]
+    pub inventory_elements: Vec<InventoryXmlName>,
 
     /// Section-ID namespace scope for this workspace's `§<id>` axis.
     ///
@@ -2821,7 +2845,7 @@ section_namespace = "scxml"
                 "is the text after a file name's last dot",
             ),
         ] {
-            let built = InventoryAttribute::new(namespace.clone(), name, extensions.clone())
+            let built = InventoryXmlName::new(namespace.clone(), name, extensions.clone())
                 .expect_err("the constructor refuses the declaration");
             assert!(built.contains(reason), "constructor: {built}");
             let namespace_key = namespace

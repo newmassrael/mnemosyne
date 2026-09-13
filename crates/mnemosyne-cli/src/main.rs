@@ -6863,7 +6863,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // Round 1327 — one walk, both answers: the judgments and what the inventory
     // attribute axis reached while making them, so the report cannot be about a
     // different reading of the tree than the verdicts are.
-    let (violations, inventory_attribute_axis) = validator
+    let (violations, inventory_reader_axis) = validator
         .scan_and_reach(&attribution, &snapshot)
         .with_context(|| "SetEqualityValidator scan failed".to_string())?;
     // What this run judged, by axis — the same map the scan took every one of
@@ -7066,7 +7066,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "severity_inventory": severity_inventory,
             "filter_id": filter_id,
             "symbol_axis": symbol_axis,
-            "inventory_attribute_axis": inventory_attribute_axis,
+            "inventory_reader_axis": inventory_reader_axis,
             "vcs_axis": vcs_axis,
             "numbering_origin": numbering_origin,
             "violations": view,
@@ -7289,7 +7289,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         // not only on the wire. An attribute declared for documents that carry
         // it nowhere judges nothing, and judging nothing looks exactly like
         // judging everything clean.
-        for row in &inventory_attribute_axis {
+        for row in &inventory_reader_axis {
             // Round 1327 — the bare documents by NAME, not only by count: a
             // count says the annotation is written some other way, and a name
             // says where to look. Capped, with the remainder counted.
@@ -7308,9 +7308,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 )
             };
             println!(
-                "inventory attribute {} (.{}) — {} document(s), {} carrying, {} citation(s), \
+                "citation reader {} (.{}) — {} document(s), {} carrying, {} citation(s), \
                  {} unreadable{}{}",
-                row.attribute,
+                row.reader,
                 row.extensions.join(" ."),
                 row.documents,
                 row.carrying,
