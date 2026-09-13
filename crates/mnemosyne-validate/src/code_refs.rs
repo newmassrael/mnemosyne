@@ -2909,6 +2909,19 @@ pub fn extract_inventory_attribute_citations(
     if declared.is_empty() {
         return read;
     }
+    // WHAT EACH DECLARED ATTRIBUTE REACHED HERE, WHATEVER THAT IS (Round 1326).
+    // A row per attribute this document is declared for, carried even when the
+    // document turns out to hold none of it: a document read and found to carry
+    // nothing and a document never opened are different facts, and an axis that
+    // cannot tell them apart prints the same silence for both.
+    read.reach = declared
+        .iter()
+        .map(|attribute| InventoryAttributeReach {
+            attribute: attribute.expanded_name(),
+            citations: 0,
+            unreadable: false,
+        })
+        .collect();
     // A DOCTYPE IS ORDINARY XML AND IS READ (Round 1325). `roxmltree` refuses a
     // DTD by default, which Round 1324 accepted because the adopter's own parser
     // is called the same way — but this axis is not that adopter's, and a
@@ -2932,18 +2945,22 @@ pub fn extract_inventory_attribute_citations(
                     reason: error.to_string(),
                 });
             }
+            for row in &mut read.reach {
+                row.unreadable = true;
+            }
             return read;
         }
     };
     let mut cites: BTreeSet<(usize, String)> = BTreeSet::new();
     for element in document.descendants().filter(roxmltree::Node::is_element) {
         for found in element.attributes() {
-            let is_declared = declared
+            let Some(matched) = declared
                 .iter()
-                .any(|a| a.name() == found.name() && a.namespace() == found.namespace());
-            if !is_declared {
+                .find(|a| a.name() == found.name() && a.namespace() == found.namespace())
+            else {
                 continue;
-            }
+            };
+            let mut read_here = 0usize;
             let value_range = found.range_value();
             let raw_value = &raw[value_range.clone()];
             let mut cursor = 0usize;
@@ -2969,7 +2986,13 @@ pub fn extract_inventory_attribute_citations(
                     }
                 };
                 let line = line_of(document.text_pos_at(value_range.start + at));
-                cites.insert((line, id.to_string()));
+                if cites.insert((line, id.to_string())) {
+                    read_here += 1;
+                }
+            }
+            let name = matched.expanded_name();
+            if let Some(row) = read.reach.iter_mut().find(|row| row.attribute == name) {
+                row.citations += read_here;
             }
         }
     }
@@ -3002,6 +3025,45 @@ pub struct InventoryCitations {
     /// Every declared document that did not parse, once per attribute it was
     /// to be read for. Only the attribute axis can leave one.
     pub unreadable: Vec<UnreadableDocument>,
+    /// What each attribute DECLARED for this document reached in it, including
+    /// the attributes that reached nothing (Round 1326).
+    pub reach: Vec<InventoryAttributeReach>,
+}
+
+/// What one declared attribute reached in ONE document (Round 1326).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InventoryAttributeReach {
+    /// The attribute's expanded name.
+    pub attribute: String,
+    /// Distinct citations it carried here; zero when the document carries none.
+    pub citations: usize,
+    /// Whether the document did not parse, so nothing could be read for it.
+    pub unreadable: bool,
+}
+
+/// What one declared inventory attribute reached across the read set (Round
+/// 1326), published every run by
+/// [`SetEqualityValidator::inventory_attribute_coverage`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct InventoryAttributeCoverage {
+    /// The attribute's expanded name: `{namespace}local`, or the local name for
+    /// an attribute in no namespace.
+    pub attribute: String,
+    /// The extensions it is declared for.
+    pub extensions: Vec<String>,
+    /// Documents in the read set carrying one of those extensions.
+    pub documents: usize,
+    /// Of those, the ones that did not parse, so nothing could be read in them.
+    pub unreadable: usize,
+    /// Of those, the ones that actually carry the attribute.
+    ///
+    /// ZERO WITH `documents` ABOVE ZERO IS THE ANSWER THIS REPORT EXISTS FOR:
+    /// the documents are there and not one is annotated the way the config says
+    /// — an annotation written as element text, a namespace URI that differs by
+    /// a character — and every other surface of the run reports that as silence.
+    pub carrying: usize,
+    /// Citations read under it: distinct `(line, id)` pairs.
+    pub citations: usize,
 }
 
 /// The inventory citation axes a workspace declares, read as ONE thing.
@@ -5162,6 +5224,67 @@ impl SetEqualityValidator {
             }
         }
         Ok(cov)
+    }
+
+    /// What each declared inventory ATTRIBUTE reached across the read set
+    /// (Round 1326).
+    ///
+    /// # Why
+    ///
+    /// An attribute declared for documents that do not carry it reads nothing,
+    /// and an axis that reads nothing prints exactly what an axis that found
+    /// everything in order prints: no violation. An adopter who writes the
+    /// annotation as element text, or binds the namespace to a URI differing by
+    /// a character, or declares extensions the read set does not reach, gets a
+    /// green gate and no hint. So the counts go out every run — Round 855's
+    /// shape for the symbol axis, applied to this one.
+    ///
+    /// REPORTED, NOT REJECTED, for Round 819's reason: an adopter mid-adoption
+    /// legitimately has documents with no annotation yet, and a gate that
+    /// refused that would refuse the first day of every adoption. What a report
+    /// may not do is stay silent.
+    ///
+    /// # Errors
+    ///
+    /// Whatever the directory walk fails with.
+    pub fn inventory_attribute_coverage(
+        &self,
+        attribution: &CitationAttribution,
+    ) -> std::io::Result<Vec<InventoryAttributeCoverage>> {
+        let declared = &self.config.inventory_attributes;
+        if declared.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut rows: Vec<InventoryAttributeCoverage> = declared
+            .iter()
+            .map(|attribute| InventoryAttributeCoverage {
+                attribute: attribute.expanded_name(),
+                extensions: attribute.extensions().to_vec(),
+                ..InventoryAttributeCoverage::default()
+            })
+            .collect();
+        for abs in self.read_set(attribution.root())? {
+            let Ok(raw) = std::fs::read_to_string(&abs) else {
+                continue;
+            };
+            // THE SAME READER THE GATE USES, by calling it rather than by
+            // repeating it: a coverage report free to disagree with the gate
+            // about what this axis reads would be reporting some other tool's.
+            for reach in extract_inventory_attribute_citations(declared, &abs, &raw).reach {
+                let Some(row) = rows.iter_mut().find(|row| row.attribute == reach.attribute) else {
+                    continue;
+                };
+                row.documents += 1;
+                if reach.unreadable {
+                    row.unreadable += 1;
+                }
+                if reach.citations > 0 {
+                    row.carrying += 1;
+                }
+                row.citations += reach.citations;
+            }
+        }
+        Ok(rows)
     }
 }
 
@@ -8616,6 +8739,11 @@ mod tests {
                     (5, "REQ-9".to_string()),
                 ],
                 unreadable: vec![],
+                reach: vec![InventoryAttributeReach {
+                    attribute: "{http://example/ext}req".to_string(),
+                    citations: 4,
+                    unreadable: false,
+                }],
             }
         );
     }
@@ -8715,6 +8843,58 @@ mod tests {
                 (3, "B".to_string()),
                 (3, "C".to_string()),
             ]
+        );
+    }
+
+    /// Round 1326 — the axis publishes WHAT IT REACHED: the documents it was
+    /// declared for, how many of them carry the attribute, how many citations it
+    /// read and how many documents did not parse. A declaration whose documents
+    /// carry it nowhere is a row of zeroes rather than an absence, because an
+    /// absence is what a clean run also prints.
+    #[test]
+    fn the_attribute_axis_publishes_what_it_reached() {
+        let tmp = TempDir::new().unwrap();
+        let doc = tmp.path().join("doc");
+        std::fs::create_dir_all(&doc).unwrap();
+        std::fs::write(
+            doc.join("carrying.scxml"),
+            "<scxml xmlns:s=\"http://example/ext\"><state s:req=\"REQ-1 REQ-2\"/></scxml>\n",
+        )
+        .unwrap();
+        // Annotated as element text, which this axis does not read.
+        std::fs::write(
+            doc.join("bare.scxml"),
+            "<scxml><state><req>REQ-3</req></state></scxml>\n",
+        )
+        .unwrap();
+        std::fs::write(doc.join("broken.scxml"), "<scxml><state></scxml>\n").unwrap();
+        std::fs::write(doc.join("README.md"), "s:req=\"REQ-4\"\n").unwrap();
+
+        let validator = SetEqualityValidator {
+            config: SetEqualityValidatorConfig {
+                paths: vec!["doc/".to_string()],
+                inventory_attributes: req_attribute(),
+                ..SetEqualityValidatorConfig::default()
+            },
+            entry_id_prefix: "Round ".to_string(),
+            orphan_ledger: vec![],
+            symbol_resolvers: BTreeMap::new(),
+            filter_id: None,
+            path_scope: None,
+        };
+        let attribution = no_foreign_subtree(tmp.path(), &validator.config);
+        assert_eq!(
+            validator
+                .inventory_attribute_coverage(&attribution)
+                .expect("the walk"),
+            vec![InventoryAttributeCoverage {
+                attribute: "{http://example/ext}req".to_string(),
+                extensions: vec!["scxml".to_string()],
+                documents: 3,
+                unreadable: 1,
+                carrying: 1,
+                citations: 2,
+            }]
         );
     }
 

@@ -49,6 +49,7 @@
     "an_attribute_is_read_only_in_its_declared_extensions",
     "an_attribute_in_no_namespace_is_the_unprefixed_one",
     "inventory_citation_axes_read_every_declared_axis",
+    "the_attribute_axis_publishes_what_it_reached",
     "every_citation_axis_publishes_what_it_read",
     "every_axis_that_reads_something_publishes_it_through_the_binary",
     "inventory_marker_smoke::"
@@ -63,8 +64,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                .any(|a| a.name() == found.name() && a.namespace() == found.namespace());\n",
-          "to": "                .any(|a| a.name() == found.name());\n"
+          "from": "                .find(|a| a.name() == found.name() && a.namespace() == found.namespace())\n",
+          "to": "                .find(|a| a.name() == found.name())\n"
         }
       ],
       "expect_red": [
@@ -184,9 +185,68 @@
       ],
       "expect_red": [
         "an_attribute_is_read_only_in_its_declared_extensions",
+        "the_attribute_axis_publishes_what_it_reached",
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
+      ]
+    },
+    {
+      "name": "every-document-is-reported-as-carrying-the-attribute",
+      "why": "the coverage report says every document it read carries the attribute, so an adopter whose documents carry none of it is told the opposite of the truth",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                if reach.citations > 0 {\n                    row.carrying += 1;\n                }\n",
+          "to": "                row.carrying += 1;\n"
+        }
+      ],
+      "expect_red": [
+        "the_attribute_axis_publishes_what_it_reached",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ]
+    },
+    {
+      "name": "a-document-that-carries-nothing-is-not-counted-as-read",
+      "why": "only documents that carry the attribute are counted as read, so `0 of 0` replaces `0 of N` and the report stops distinguishing a document read and found bare from a document never opened",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                row.documents += 1;\n",
+          "to": "                row.documents += usize::from(reach.citations > 0);\n"
+        }
+      ],
+      "expect_red": [
+        "the_attribute_axis_publishes_what_it_reached",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ]
+    },
+    {
+      "name": "the-line-a-person-reads-omits-the-reach",
+      "why": "the wire says an attribute reached nothing and the line a person reads does not — the Round 1045 defect, one axis over",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "                    \" — NO DOCUMENT CARRIES IT, so this axis judged nothing\"\n",
+          "to": "                    \"\"\n"
+        }
+      ],
+      "expect_red": [
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ]
+    },
+    {
+      "name": "the-report-omits-the-attribute-axis",
+      "why": "the coverage is computed and never published, which is the silence this round exists to remove",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "            \"inventory_attribute_axis\": inventory_attribute_axis,\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
     {

@@ -289,7 +289,12 @@ you `informative`, it is older than R422 — the store will refuse it.
  prefixed or non-XML `name`, an empty or whitespace-holding `namespace`, and an
  empty or malformed `extensions` list are refused when the config loads. Same
  lifecycle and severity as the other two axes; the orphan ledger suppresses its
- citations but not an unreadable document, which names no id.
+ citations but not an unreadable document, which names no id. Every run
+ publishes what the axis REACHED (`inventory_attribute_axis` in `--json`, and a
+ line of its own in the plain report): the documents it was declared for, how
+ many carry the attribute, how many citations it read and how many did not
+ parse. An attribute no document carries reads nothing, and a run that read
+ nothing otherwise prints exactly what a clean run prints.
 - **`[plugins.set_equality_validator].external_section_prefixes`** — single-token prefix
  list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
  of external-standard `§` skip (Round 277). Citation form:

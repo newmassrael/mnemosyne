@@ -188,6 +188,49 @@ fn a_document_that_does_not_parse_is_reported_with_the_reason() {
     );
 }
 
+/// Round 1326 — the adopter writes the annotation as element text instead of an
+/// attribute: nothing is cited, so nothing is violated and the gate passes. The
+/// REPORT is what must not be silent, because a run that judged nothing prints
+/// what a run that found everything in order prints.
+#[test]
+fn an_attribute_no_document_carries_is_reported_rather_than_silent() {
+    let ws = workspace(
+        REQ_ATTRIBUTE,
+        &[(
+            "model.scxml",
+            "<scxml xmlns:x=\"http://example/ext\">\n\
+             <state><req>REQ-4.2.1</req></state>\n\
+             </scxml>\n",
+        )],
+    );
+    let (passed, report) = report(ws.path());
+    assert!(passed, "nothing is cited, so nothing is violated: {report}");
+    assert_eq!(violations(&report), vec![]);
+
+    let axis = &report["inventory_attribute_axis"][0];
+    assert_eq!(
+        (
+            axis["attribute"].as_str(),
+            axis["documents"].as_u64(),
+            axis["carrying"].as_u64(),
+            axis["citations"].as_u64(),
+        ),
+        (Some("{http://example/ext}req"), Some(1), Some(0), Some(0)),
+        "the report must say the document was read and carries none of it: {report}"
+    );
+
+    let plain = run(ws.path(), &["validate-code-refs"]);
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&plain.stdout),
+        String::from_utf8_lossy(&plain.stderr)
+    );
+    assert!(
+        text.contains("NO DOCUMENT CARRIES IT"),
+        "the line a person reads must carry it too: {text}"
+    );
+}
+
 /// CONTROL: the same annotation under the path axis keeps the attribute's
 /// syntax in the id, so even the active entry is reported — the shape the
 /// attribute axis exists for.

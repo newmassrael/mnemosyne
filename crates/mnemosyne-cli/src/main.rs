@@ -6873,6 +6873,10 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // `severity_binding = reject` reads as symbol-level enforcement, and for
     // an unreachable file it is file-level, silently.
     let symbol_axis = validator.symbol_axis_coverage(&attribution, &snapshot)?;
+    // Round 1326 — what the inventory attribute axis reached, published every
+    // run: an attribute no document carries reads nothing, and nothing is what
+    // a clean run prints too.
+    let inventory_attribute_axis = validator.inventory_attribute_coverage(&attribution)?;
 
     // What this run read, once, for every axis that reports coverage below —
     // narrowed by `--paths` where one was given, because a coverage report that
@@ -7063,6 +7067,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "severity_inventory": severity_inventory,
             "filter_id": filter_id,
             "symbol_axis": symbol_axis,
+            "inventory_attribute_axis": inventory_attribute_axis,
             "vcs_axis": vcs_axis,
             "numbering_origin": numbering_origin,
             "violations": view,
@@ -7281,6 +7286,27 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
              (before Round 1141 it was one parse per citation)",
             symbol_axis.checked_citations, symbol_axis.checked_files, symbol_axis.checked_files,
         );
+        // Round 1326 — the attribute axis's REACH on the surface a person reads,
+        // not only on the wire. An attribute declared for documents that carry
+        // it nowhere judges nothing, and judging nothing looks exactly like
+        // judging everything clean.
+        for row in &inventory_attribute_axis {
+            println!(
+                "inventory attribute {} (.{}) — {} document(s), {} carrying, {} citation(s), \
+                 {} unreadable{}",
+                row.attribute,
+                row.extensions.join(" ."),
+                row.documents,
+                row.carrying,
+                row.citations,
+                row.unreadable,
+                if row.carrying == 0 {
+                    " — NO DOCUMENT CARRIES IT, so this axis judged nothing"
+                } else {
+                    ""
+                }
+            );
+        }
         if !cfg.inventory_path_prefixes.is_empty() {
             println!(
                 "inventory_path_prefixes={:?} (Round 302 section-path axis)",

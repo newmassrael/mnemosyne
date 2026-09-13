@@ -30,6 +30,7 @@
       ],
       "expect_red": [
         "an_attribute_is_read_only_in_its_declared_extensions",
+        "the_attribute_axis_publishes_what_it_reached",
         "an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "every_citation_axis_publishes_what_it_read",
         "every_axis_that_reads_something_publishes_it_through_the_binary"
@@ -37,8 +38,26 @@
       "tests": [
         "code_refs::tests::an_attribute_is_read_only_in_its_declared_extensions",
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
+        "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
         "inventory_marker_smoke::an_attribute_cites_every_id_its_value_lists_as_xml_reads_it",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
+      ]
+    },
+    "a-document-that-carries-nothing-is-not-counted-as-read": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                row.documents += 1;\n",
+          "to": "                row.documents += usize::from(reach.citations > 0);\n"
+        }
+      ],
+      "expect_red": [
+        "the_attribute_axis_publishes_what_it_reached",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ],
+      "tests": [
+        "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
+        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
     "a-value-is-read-as-raw-text": {
@@ -66,8 +85,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-validate/src/code_refs.rs",
-          "from": "                .any(|a| a.name() == found.name() && a.namespace() == found.namespace());\n",
-          "to": "                .any(|a| a.name() == found.name());\n"
+          "from": "                .find(|a| a.name() == found.name() && a.namespace() == found.namespace())\n",
+          "to": "                .find(|a| a.name() == found.name())\n"
         }
       ],
       "expect_red": [
@@ -123,6 +142,23 @@
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
       ]
     },
+    "every-document-is-reported-as-carrying-the-attribute": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                if reach.citations > 0 {\n                    row.carrying += 1;\n                }\n",
+          "to": "                row.carrying += 1;\n"
+        }
+      ],
+      "expect_red": [
+        "the_attribute_axis_publishes_what_it_reached",
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ],
+      "tests": [
+        "code_refs::tests::the_attribute_axis_publishes_what_it_reached",
+        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ]
+    },
     "the-attribute-axis-reads-what-comment-stripping-left": {
       "edits": [
         {
@@ -136,6 +172,21 @@
       ],
       "tests": [
         "code_refs::tests::inventory_citation_axes_read_every_declared_axis"
+      ]
+    },
+    "the-line-a-person-reads-omits-the-reach": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "                    \" — NO DOCUMENT CARRIES IT, so this axis judged nothing\"\n",
+          "to": "                    \"\"\n"
+        }
+      ],
+      "expect_red": [
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ],
+      "tests": [
+        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
     "the-one-reader-skips-the-attribute-axis": {
@@ -178,6 +229,21 @@
         "code_refs::tests::every_citation_axis_publishes_what_it_read",
         "inventory_marker_smoke::a_document_that_does_not_parse_is_reported_with_the_reason",
         "symbol_axis_reach::every_axis_that_reads_something_publishes_it_through_the_binary"
+      ]
+    },
+    "the-report-omits-the-attribute-axis": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "            \"inventory_attribute_axis\": inventory_attribute_axis,\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "an_attribute_no_document_carries_is_reported_rather_than_silent"
+      ],
+      "tests": [
+        "inventory_marker_smoke::an_attribute_no_document_carries_is_reported_rather_than_silent"
       ]
     },
     "the-scan-drops-an-unreadable-document": {
