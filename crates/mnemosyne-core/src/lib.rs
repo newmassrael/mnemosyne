@@ -578,6 +578,103 @@ impl std::str::FromStr for InventoryStatus {
     }
 }
 
+/// The verbal form a requirement is stated in — the requirement, the
+/// recommendation and the permission of ISO/IEC Directives Part 2, each with its
+/// negative. RFC 2119's key words fall inside it (MUST/SHALL, SHOULD, MAY).
+///
+/// The form decides what can satisfy the requirement. A requirement or
+/// recommendation stated affirmatively is met by something PRESENT, which an
+/// annotation can point at; one stated as a prohibition is met by something
+/// ABSENT, which only a test can show — ask [`VerbalForm::is_prohibition`]
+/// rather than matching spellings. The negatives of permission and of a
+/// recommendation are here because a real specification uses them: the W3C
+/// SCXML mirror this repository carries says `should not` four times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(rename_all = "snake_case")]
+pub enum VerbalForm {
+    Shall,
+    ShallNot,
+    Should,
+    ShouldNot,
+    May,
+    NeedNot,
+}
+
+crate::closed_vocabulary!(VerbalForm {
+    Shall => "shall",
+    ShallNot => "shall_not",
+    Should => "should",
+    ShouldNot => "should_not",
+    May => "may",
+    NeedNot => "need_not",
+});
+
+impl VerbalForm {
+    /// Whether the form forbids something (`shall_not`, `should_not`) — met by
+    /// an absence. `need_not` is not one: it permits leaving something out.
+    #[must_use]
+    pub fn is_prohibition(self) -> bool {
+        // Every form is spelled out, so a form added later is a compile error
+        // here instead of silently not being a prohibition.
+        match self {
+            VerbalForm::ShallNot | VerbalForm::ShouldNot => true,
+            VerbalForm::Shall | VerbalForm::Should | VerbalForm::May | VerbalForm::NeedNot => false,
+        }
+    }
+}
+
+/// A measured bound on a requirement — `shall respond within 2000 ms`.
+///
+/// The amount is an exact positive integer and the unit a key of the store's
+/// `units` registry: the shape `TypedObject::Quantity` and `EdgeCost` already
+/// use, so a unit typo fails loud the same way and no unit is enumerated here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct ModalityBound {
+    /// The amount; must be positive.
+    pub n: i64,
+    /// A key of the store's `units` registry.
+    pub unit: UnitId,
+}
+
+/// How an inventory entry's requirement is stated: its verbal form and, when
+/// it has one, the bound it must be met within.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct RequirementModality {
+    /// The verbal form.
+    pub form: VerbalForm,
+    /// The bound, when the requirement is stated with one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub within: Option<ModalityBound>,
+}
+
+/// WHERE an inventory entry's requirement is satisfied — an axis separate from
+/// [`InventoryStatus`], which is lifecycle.
+///
+/// Scoping a requirement out is not deprecating it: `deprecated` rejects every
+/// citation at cite time, while an out-of-scope requirement is still a
+/// requirement of the document it came from. `Implemented` is a struct variant
+/// with no fields rather than a unit variant, because an internally tagged
+/// unit variant reads past any other key and this one must refuse them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum InventoryDisposition {
+    /// Satisfied by this workspace's own artifacts.
+    Implemented {},
+    /// Satisfied by requirement `to_id` of another document, `to_doc`. Neither
+    /// resolves here: a store has no cross-workspace reference.
+    Delegated { to_doc: String, to_id: String },
+    /// Outside what this toolchain answers for, and why.
+    OutOfScope { reason: String },
+    /// Met by a deployment or system property rather than a behaviour here.
+    SystemLevel { realised_by: String },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VersionSurface {
@@ -965,6 +1062,7 @@ output_parser = "gopls_v0_15""#;
         DecisionStatus::assert_vocabulary_parity("DecisionStatus");
         DisclosureMode::assert_vocabulary_parity("DisclosureMode");
         InventoryStatus::assert_vocabulary_parity("InventoryStatus");
+        VerbalForm::assert_vocabulary_parity("VerbalForm");
         PayoffExpectation::assert_vocabulary_parity("PayoffExpectation");
         PredicateObjectKind::assert_vocabulary_parity("PredicateObjectKind");
     }

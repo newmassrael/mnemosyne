@@ -1,0 +1,89 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS AN INVENTORY ENTRY'S MODALITY AND DISPOSITION ARE CHECKED",
+    "BY EVERY WRITER — run it from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-atomic/sweeps/inventory-axes.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. An inventory entry states how its requirement is phrased",
+    "(a verbal form and an optional bound in a registered unit) and where it is",
+    "satisfied (implemented, delegated, out of scope, system level). Each axis has",
+    "two writers — `add_inventory_entry` and a `set_inventory_*` peer — and the",
+    "scan boundary re-checks an out-of-band edit; all three ask the same function,",
+    "so they cannot hold different invariants.",
+    "",
+    "THREE INJECTIONS, one per check that has no other guard. A bound of zero, a",
+    "bound in an unregistered unit, and a delegated `to_id` with whitespace in it",
+    "must each be refused by every writer; switching the check off must turn the",
+    "parity test red, and where the CLI smoke asks the same case, that too. The",
+    "blank-payload check is not injected: a blank payload is also refused by the",
+    "edge-whitespace check beside it, so switching one off alone proves nothing.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-atomic",
+    "-p",
+    "mnemosyne-cli",
+    "--no-fail-fast",
+    "--",
+    "an_inventory_entry_carries_its_modality_and_disposition",
+    "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs",
+    "inventory_axes_smoke::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-bound-of-nothing-is-accepted",
+      "why": "a requirement `within 0 ms` or `within -1 ms` states nothing a system could meet, and without the check both writers and the gate would store it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    if bound.n <= 0 {\n",
+          "to": "    if false {\n"
+        }
+      ],
+      "expect_red": [
+        "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs",
+        "both_writers_of_each_axis_refuse_the_same_inputs"
+      ]
+    },
+    {
+      "name": "an-unregistered-unit-is-accepted",
+      "why": "the bound's unit is a units-registry ref; accepting one the registry does not name is the `min`/`minute` drift the registry exists to stop",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    if !unit_registered(store, bound.unit.as_str()) {\n",
+          "to": "    if false {\n"
+        }
+      ],
+      "expect_red": [
+        "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs",
+        "both_writers_of_each_axis_refuse_the_same_inputs"
+      ]
+    },
+    {
+      "name": "a-delegated-id-with-a-space-is-accepted",
+      "why": "`to_id` names a requirement id in another document; an id carrying whitespace is a phrase, and only this check refuses it — it is non-empty and has no whitespace at its edges",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        if to_id.chars().any(char::is_whitespace) {\n",
+          "to": "        if false {\n"
+        }
+      ],
+      "expect_red": [
+        "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs"
+      ]
+    }
+  ]
+}

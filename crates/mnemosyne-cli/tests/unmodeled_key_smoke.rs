@@ -7,6 +7,9 @@
 //! exited 0 and wrote the store back WITHOUT it. A refusal inside `load` is only
 //! half of the property — the half a caller sees is that no command reads past
 //! the key and no command writes over it, so these run the real binary.
+//!
+//! `modality` itself became a field in Round 1321, so the key injected here is
+//! one the entry still does not model.
 
 use std::fs;
 use std::path::Path;
@@ -52,7 +55,10 @@ fn an_undeclared_key_is_refused_by_the_read_and_survives_the_write() {
     store["inventory_entries"]["REQ-1"]
         .as_object_mut()
         .expect("fixture: REQ-1 is an object")
-        .insert("modality".to_string(), serde_json::json!("shall_not"));
+        .insert(
+            "acceptance_criteria".to_string(),
+            serde_json::json!("responds within two seconds"),
+        );
     let injected = serde_json::to_vec_pretty(&store).unwrap();
     fs::write(&store_path, &injected).unwrap();
 
@@ -64,7 +70,8 @@ fn an_undeclared_key_is_refused_by_the_read_and_survives_the_write() {
         String::from_utf8_lossy(&query.stdout)
     );
     assert!(
-        said.contains("unknown field `modality`") && said.contains("inventory_entries.REQ-1"),
+        said.contains("unknown field `acceptance_criteria`")
+            && said.contains("inventory_entries.REQ-1"),
         "the refusal names the key and the entry it sits on: {said}"
     );
 

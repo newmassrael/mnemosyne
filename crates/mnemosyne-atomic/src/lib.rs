@@ -889,6 +889,15 @@ pub struct InventoryEntry {
     /// when `status = Deprecated` (Round 275 wiring).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// How the requirement is stated — its verbal form and optional bound.
+    /// Modality belongs to a requirement and not to a section: a section can
+    /// state `must` and `must not` at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modality: Option<mnemosyne_core::RequirementModality>,
+    /// Where the requirement is satisfied — a separate axis from `status`, so
+    /// scoping a requirement out never trips the `deprecated` cite-time reject.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disposition: Option<mnemosyne_core::InventoryDisposition>,
 }
 
 /// Workspace-wide atomic store. Keys = canonical `section_id` / `entry_id` /
@@ -5184,16 +5193,23 @@ fn validate_section_ref_input(raw: &str) -> Result<&str, AtomicMutateError> {
 /// `section_ref` / `source` / `reason` are all optional and pass through
 /// after a trust-boundary shape check (no whitespace edges, no embedded
 /// leading `§` in `section_ref`). Empty strings reject — callers should
-/// pass `None` to indicate "no value".
+/// pass `None` to indicate "no value". `modality` and `disposition` are checked
+/// by the same functions `set_inventory_modality` / `set_inventory_disposition`
+/// and the scan boundary use.
 pub fn add_inventory_entry(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     inventory_id: &str,
-    status: InventoryStatus,
-    section_ref: Option<&str>,
-    source: Option<&str>,
-    reason: Option<&str>,
+    entry: NewInventoryEntry<'_>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    let NewInventoryEntry {
+        status,
+        section_ref,
+        source,
+        reason,
+        modality,
+        disposition,
+    } = entry;
     validate_inventory_id(inventory_id)?;
     if store.inventory_entries.contains_key(inventory_id) {
         return Err(AtomicMutateError::Validation(format!(
@@ -5213,11 +5229,19 @@ pub fn add_inventory_entry(
         Some(s) if !s.trim().is_empty() => Some(s.to_string()),
         _ => None,
     };
+    if let Some(modality) = &modality {
+        check_inventory_modality(store, modality)?;
+    }
+    if let Some(disposition) = &disposition {
+        check_inventory_disposition(disposition)?;
+    }
     let entry = InventoryEntry {
         status,
         section_ref: section_ref_clean,
         source: source_clean,
         reason: reason_clean,
+        modality,
+        disposition,
     };
     store
         .inventory_entries
@@ -5349,6 +5373,189 @@ pub fn remove_inventory_entry(
         inventory_id,
         reason,
     )
+}
+
+/// Everything a new inventory entry is registered with except its id.
+///
+/// A STRUCT RATHER THAN NINE POSITIONAL ARGUMENTS: the entry grew two optional
+/// axes in Round 1321, and two more `Option` positions beside four others is
+/// how a caller swaps two of them without the compiler noticing.
+#[derive(Debug, Clone, Default)]
+pub struct NewInventoryEntry<'a> {
+    pub status: InventoryStatus,
+    pub section_ref: Option<&'a str>,
+    pub source: Option<&'a str>,
+    pub reason: Option<&'a str>,
+    pub modality: Option<mnemosyne_core::RequirementModality>,
+    pub disposition: Option<mnemosyne_core::InventoryDisposition>,
+}
+
+/// What is wrong with a modality, or `None` — a bound must be a positive amount
+/// of a registered unit.
+///
+/// ONE DEFINITION FOR THREE READERS: `add_inventory_entry`,
+/// `set_inventory_modality` and the scan boundary all ask this, so the two write
+/// paths and the gate cannot hold different invariants for one field.
+fn inventory_modality_problem(
+    store: &AtomicStore,
+    modality: &mnemosyne_core::RequirementModality,
+) -> Option<String> {
+    let bound = modality.within.as_ref()?;
+    if bound.n <= 0 {
+        return Some(format!(
+            "modality bound must be a positive amount (got {})",
+            bound.n
+        ));
+    }
+    if !unit_registered(store, bound.unit.as_str()) {
+        return Some(format!(
+            "modality bound unit `{}` is not in the units registry (add-unit first)",
+            bound.unit
+        ));
+    }
+    None
+}
+
+/// What is wrong with a disposition, or `None` — every payload is non-blank with
+/// no whitespace at its edges, and `to_id` names an id, so it carries none at
+/// all. The same three readers as [`inventory_modality_problem`].
+fn inventory_disposition_problem(
+    disposition: &mnemosyne_core::InventoryDisposition,
+) -> Option<String> {
+    use mnemosyne_core::InventoryDisposition as Disposition;
+    let payload: Vec<(&str, &str)> = match disposition {
+        Disposition::Implemented {} => Vec::new(),
+        Disposition::Delegated { to_doc, to_id } => {
+            vec![("to_doc", to_doc.as_str()), ("to_id", to_id.as_str())]
+        }
+        Disposition::OutOfScope { reason } => vec![("reason", reason.as_str())],
+        Disposition::SystemLevel { realised_by } => vec![("realised_by", realised_by.as_str())],
+    };
+    for (name, value) in payload {
+        if value.trim().is_empty() {
+            return Some(format!("disposition `{name}` must be non-empty"));
+        }
+        if value.trim() != value {
+            return Some(format!(
+                "disposition `{name}`: leading or trailing whitespace not allowed (`{value}`)"
+            ));
+        }
+    }
+    if let Disposition::Delegated { to_id, .. } = disposition {
+        if to_id.chars().any(char::is_whitespace) {
+            return Some(format!(
+                "disposition `to_id` names an id and carries no whitespace (`{to_id}`)"
+            ));
+        }
+    }
+    None
+}
+
+fn check_inventory_modality(
+    store: &AtomicStore,
+    modality: &mnemosyne_core::RequirementModality,
+) -> Result<(), AtomicMutateError> {
+    match inventory_modality_problem(store, modality) {
+        Some(problem) => Err(AtomicMutateError::Validation(problem)),
+        None => Ok(()),
+    }
+}
+
+fn check_inventory_disposition(
+    disposition: &mnemosyne_core::InventoryDisposition,
+) -> Result<(), AtomicMutateError> {
+    match inventory_disposition_problem(disposition) {
+        Some(problem) => Err(AtomicMutateError::Validation(problem)),
+        None => Ok(()),
+    }
+}
+
+/// Set or clear an inventory entry's `modality` (Round 1321). `None` clears it.
+/// NotFound on an unregistered id; the value is checked by the same function
+/// `add_inventory_entry` uses.
+pub fn set_inventory_modality(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    inventory_id: &str,
+    modality: Option<mnemosyne_core::RequirementModality>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    validate_inventory_id(inventory_id)?;
+    if let Some(modality) = &modality {
+        check_inventory_modality(store, modality)?;
+    }
+    let entry = store
+        .inventory_entries
+        .get_mut(inventory_id)
+        .ok_or_else(|| {
+            AtomicMutateError::NotFound(format!(
+                "inventory_id `{inventory_id}` not present in atomic store"
+            ))
+        })?;
+    entry.modality = modality;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_inventory_modality",
+        "inventory_entry",
+        inventory_id,
+    )
+}
+
+/// Set or clear an inventory entry's `disposition` (Round 1321). `None` clears
+/// it. NotFound on an unregistered id; the value is checked by the same function
+/// `add_inventory_entry` uses.
+pub fn set_inventory_disposition(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    inventory_id: &str,
+    disposition: Option<mnemosyne_core::InventoryDisposition>,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    validate_inventory_id(inventory_id)?;
+    if let Some(disposition) = &disposition {
+        check_inventory_disposition(disposition)?;
+    }
+    let entry = store
+        .inventory_entries
+        .get_mut(inventory_id)
+        .ok_or_else(|| {
+            AtomicMutateError::NotFound(format!(
+                "inventory_id `{inventory_id}` not present in atomic store"
+            ))
+        })?;
+    entry.disposition = disposition;
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "set_inventory_disposition",
+        "inventory_entry",
+        inventory_id,
+    )
+}
+
+/// Round 1321 — an inventory entry's modality bound or disposition payload that
+/// breaks what both writers enforce, re-checked at the scan boundary. The write
+/// paths refuse both, so this fires only on an out-of-band edit — the parity the
+/// edge-cost unit check keeps for its own unit ref.
+pub fn inventory_axis_violations(store: &AtomicStore) -> Vec<String> {
+    let mut out = Vec::new();
+    for (id, entry) in &store.inventory_entries {
+        let problems = [
+            entry
+                .modality
+                .as_ref()
+                .and_then(|modality| inventory_modality_problem(store, modality)),
+            entry
+                .disposition
+                .as_ref()
+                .and_then(inventory_disposition_problem),
+        ];
+        for problem in problems.into_iter().flatten() {
+            out.push(format!(
+                "inventory `{id}`: {problem} (out-of-band edit; the write path enforces this)"
+            ));
+        }
+    }
+    out
 }
 
 // ============================================================================
@@ -8304,6 +8511,10 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
     // entry whose fact is gone or whose unit is unregistered). The write path
     // (`add_edge_cost`) + the cascade-drop (`retract_fact`) cannot produce these.
     out.extend(edge_cost_violations(store));
+    // Round 1321 — an inventory entry's modality bound (a units-registry ref)
+    // and disposition payload, re-checked at the scan boundary with the same
+    // functions both inventory writers use.
+    out.extend(inventory_axis_violations(store));
     // Round 720 — the edge-GUARD side-table's out-of-band integrity (a key whose
     // edge fact is gone, or a value whose condition fact is gone). The write path
     // (`add_edge_guard`) + the cascade-drop / condition-refuse (`retract_fact`)
@@ -13446,6 +13657,8 @@ mod tests {
                 section_ref: Some("4.2.4".into()),
                 source: Some("tc8_p041-p060.pdf#row=12".to_string()),
                 reason: None,
+                modality: None,
+                disposition: None,
             },
         );
         store.inventory_entries.insert(
@@ -13455,6 +13668,8 @@ mod tests {
                 section_ref: Some("4.8.6.11".into()),
                 source: None,
                 reason: Some("superseded by RETRANSMISSION_TO_05 in TC8 v2.3".to_string()),
+                modality: None,
+                disposition: None,
             },
         );
         store.save(&path).unwrap();
@@ -13481,10 +13696,11 @@ mod tests {
             &mut store,
             &path,
             "ARP_07",
-            InventoryStatus::Active,
-            Some("4.2.4"),
-            Some("tc8_p041-p060.pdf#row=12"),
-            None,
+            NewInventoryEntry {
+                section_ref: Some("4.2.4"),
+                source: Some("tc8_p041-p060.pdf#row=12"),
+                ..Default::default()
+            },
         )
         .unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
@@ -13500,24 +13716,15 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        add_inventory_entry(
-            &mut store,
-            &path,
-            "ARP_07",
-            InventoryStatus::Active,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
+        add_inventory_entry(&mut store, &path, "ARP_07", NewInventoryEntry::default()).unwrap();
         let err = add_inventory_entry(
             &mut store,
             &path,
             "ARP_07",
-            InventoryStatus::Deprecated,
-            None,
-            None,
-            None,
+            NewInventoryEntry {
+                status: InventoryStatus::Deprecated,
+                ..Default::default()
+            },
         )
         .unwrap_err();
         match err {
@@ -13535,41 +13742,17 @@ mod tests {
         let mut store = AtomicStore::new();
         // empty
         assert!(matches!(
-            add_inventory_entry(
-                &mut store,
-                &path,
-                "",
-                InventoryStatus::Active,
-                None,
-                None,
-                None
-            ),
+            add_inventory_entry(&mut store, &path, "", NewInventoryEntry::default()),
             Err(AtomicMutateError::Validation(_))
         ));
         // whitespace edges
         assert!(matches!(
-            add_inventory_entry(
-                &mut store,
-                &path,
-                " ARP_07",
-                InventoryStatus::Active,
-                None,
-                None,
-                None
-            ),
+            add_inventory_entry(&mut store, &path, " ARP_07", NewInventoryEntry::default()),
             Err(AtomicMutateError::Validation(_))
         ));
         // internal whitespace
         assert!(matches!(
-            add_inventory_entry(
-                &mut store,
-                &path,
-                "ARP 07",
-                InventoryStatus::Active,
-                None,
-                None,
-                None
-            ),
+            add_inventory_entry(&mut store, &path, "ARP 07", NewInventoryEntry::default()),
             Err(AtomicMutateError::Validation(_))
         ));
     }
@@ -13585,10 +13768,10 @@ mod tests {
             &mut store,
             &path,
             "ARP_07",
-            InventoryStatus::Active,
-            Some("§4.2.4"),
-            None,
-            None,
+            NewInventoryEntry {
+                section_ref: Some("§4.2.4"),
+                ..Default::default()
+            },
         )
         .unwrap_err();
         match err {
@@ -13627,10 +13810,10 @@ mod tests {
             &mut store,
             &path,
             "TCP_X",
-            InventoryStatus::Active,
-            Some("sc-01"),
-            None,
-            None,
+            NewInventoryEntry {
+                section_ref: Some("sc-01"),
+                ..Default::default()
+            },
         )
         .unwrap();
         set_inventory_section_ref(&mut store, &path, "TCP_X", Some("sc-01")).unwrap();
@@ -13639,10 +13822,10 @@ mod tests {
             &mut store,
             &path,
             "TCP_Y",
-            InventoryStatus::Active,
-            Some("sc-99"),
-            None,
-            None,
+            NewInventoryEntry {
+                section_ref: Some("sc-99"),
+                ..Default::default()
+            },
         )
         .expect_err("add_inventory_entry must refuse an unregistered section_ref");
         let at_set = set_inventory_section_ref(&mut store, &path, "TCP_X", Some("sc-99"))
@@ -13679,21 +13862,217 @@ mod tests {
         );
     }
 
+    /// AN INVENTORY ENTRY CARRIES HOW ITS REQUIREMENT IS STATED AND WHERE IT IS
+    /// SATISFIED, THROUGH BOTH WRITERS, AND THE STORE READS BOTH BACK.
+    #[test]
+    fn an_inventory_entry_carries_its_modality_and_disposition() {
+        use mnemosyne_core::{
+            InventoryDisposition, ModalityBound, RequirementModality, VerbalForm,
+        };
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        add_unit(&mut store, &path, "ms", "").unwrap();
+        let modality = RequirementModality {
+            form: VerbalForm::Shall,
+            within: Some(ModalityBound {
+                n: 2000,
+                unit: "ms".into(),
+            }),
+        };
+        let disposition = InventoryDisposition::SystemLevel {
+            realised_by: "the gateway's watchdog".to_string(),
+        };
+        add_inventory_entry(
+            &mut store,
+            &path,
+            "REQ-4.2.1",
+            NewInventoryEntry {
+                modality: Some(modality.clone()),
+                disposition: Some(disposition.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        let entry = loaded.inventory("REQ-4.2.1").unwrap();
+        assert_eq!(entry.modality.as_ref(), Some(&modality));
+        assert_eq!(entry.disposition.as_ref(), Some(&disposition));
+        assert_eq!(
+            entry.status,
+            InventoryStatus::Active,
+            "a disposition is not a status"
+        );
+
+        set_inventory_modality(&mut store, &path, "REQ-4.2.1", None).unwrap();
+        set_inventory_disposition(
+            &mut store,
+            &path,
+            "REQ-4.2.1",
+            Some(InventoryDisposition::Implemented {}),
+        )
+        .unwrap();
+        let loaded = AtomicStore::load(&path).unwrap();
+        let entry = loaded.inventory("REQ-4.2.1").unwrap();
+        assert!(entry.modality.is_none(), "a cleared modality stayed");
+        assert_eq!(
+            entry.disposition,
+            Some(InventoryDisposition::Implemented {})
+        );
+
+        // `implemented` refuses a key it does not carry — which is why it is a
+        // struct variant with no fields and not a unit variant.
+        let err = serde_json::from_value::<InventoryDisposition>(serde_json::json!({
+            "kind": "implemented", "realised_by": "the gateway"
+        }))
+        .expect_err("an extra key on `implemented` must be refused")
+        .to_string();
+        assert!(err.contains("unknown field `realised_by`"), "{err}");
+    }
+
+    /// EVERY WRITER OF EACH INVENTORY AXIS AND THE GATE REFUSE THE SAME INPUTS.
+    ///
+    /// `add_inventory_entry` and `set_inventory_modality` both write `modality`;
+    /// `add_inventory_entry` and `set_inventory_disposition` both write
+    /// `disposition`; and the scan boundary re-checks what an out-of-band edit
+    /// could have stored. A value one of the three admits and another refuses is
+    /// an invariant that does not exist, so every case is asked of all three —
+    /// and the valid values are asked first, so a check that refuses everything
+    /// cannot pass.
+    #[test]
+    fn every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs() {
+        use mnemosyne_core::{
+            InventoryDisposition as Disposition, ModalityBound, RequirementModality, VerbalForm,
+        };
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let base = {
+            let mut store = AtomicStore::new();
+            add_unit(&mut store, &path, "ms", "").unwrap();
+            add_inventory_entry(&mut store, &path, "REQ-1", NewInventoryEntry::default()).unwrap();
+            store
+        };
+        let bound = |n: i64, unit: &str| RequirementModality {
+            form: VerbalForm::Shall,
+            within: Some(ModalityBound {
+                n,
+                unit: unit.into(),
+            }),
+        };
+
+        let mut store = base.clone();
+        set_inventory_modality(&mut store, &path, "REQ-1", Some(bound(2000, "ms"))).unwrap();
+        set_inventory_disposition(
+            &mut store,
+            &path,
+            "REQ-1",
+            Some(Disposition::Delegated {
+                to_doc: "transport-spec".into(),
+                to_id: "REQ-7".into(),
+            }),
+        )
+        .unwrap();
+        assert!(
+            inventory_axis_violations(&store).is_empty(),
+            "control: the gate refused values both writers accepted: {:?}",
+            inventory_axis_violations(&store)
+        );
+
+        let modality_cases = [
+            ("a bound in an unregistered unit", bound(5, "sec"), "`sec`"),
+            ("a bound of zero", bound(0, "ms"), "positive"),
+            ("a negative bound", bound(-1, "ms"), "positive"),
+        ];
+        for (label, modality, needle) in modality_cases {
+            let mut store = base.clone();
+            let at_add = add_inventory_entry(
+                &mut store,
+                &path,
+                "REQ-2",
+                NewInventoryEntry {
+                    modality: Some(modality.clone()),
+                    ..Default::default()
+                },
+            )
+            .expect_err(label)
+            .to_string();
+            let at_set = set_inventory_modality(&mut store, &path, "REQ-1", Some(modality.clone()))
+                .expect_err(label)
+                .to_string();
+            let mut edited = base.clone();
+            edited.inventory_entries.get_mut("REQ-1").unwrap().modality = Some(modality);
+            let at_gate = store_registry_violations(&edited).join("\n");
+            for (who, said) in [("add", &at_add), ("set", &at_set), ("gate", &at_gate)] {
+                assert!(
+                    said.contains(needle),
+                    "{label}: `{who}` did not refuse it by name: {said}"
+                );
+            }
+        }
+
+        let disposition_cases = [
+            (
+                "a blank reason",
+                Disposition::OutOfScope {
+                    reason: "  ".into(),
+                },
+                "reason",
+            ),
+            (
+                "a padded realiser",
+                Disposition::SystemLevel {
+                    realised_by: " the gateway".into(),
+                },
+                "realised_by",
+            ),
+            (
+                "a to_id with a space in it",
+                Disposition::Delegated {
+                    to_doc: "transport-spec".into(),
+                    to_id: "REQ 7".into(),
+                },
+                "to_id",
+            ),
+        ];
+        for (label, disposition, needle) in disposition_cases {
+            let mut store = base.clone();
+            let at_add = add_inventory_entry(
+                &mut store,
+                &path,
+                "REQ-2",
+                NewInventoryEntry {
+                    disposition: Some(disposition.clone()),
+                    ..Default::default()
+                },
+            )
+            .expect_err(label)
+            .to_string();
+            let at_set =
+                set_inventory_disposition(&mut store, &path, "REQ-1", Some(disposition.clone()))
+                    .expect_err(label)
+                    .to_string();
+            let mut edited = base.clone();
+            edited
+                .inventory_entries
+                .get_mut("REQ-1")
+                .unwrap()
+                .disposition = Some(disposition);
+            let at_gate = store_registry_violations(&edited).join("\n");
+            for (who, said) in [("add", &at_add), ("set", &at_set), ("gate", &at_gate)] {
+                assert!(
+                    said.contains(needle),
+                    "{label}: `{who}` did not refuse it by name: {said}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn set_inventory_status_active_to_deprecated_with_reason() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        add_inventory_entry(
-            &mut store,
-            &path,
-            "TCP_X",
-            InventoryStatus::Active,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
+        add_inventory_entry(&mut store, &path, "TCP_X", NewInventoryEntry::default()).unwrap();
         set_inventory_status(
             &mut store,
             &path,
@@ -13717,10 +14096,11 @@ mod tests {
             &mut store,
             &path,
             "TCP_X",
-            InventoryStatus::Deprecated,
-            None,
-            None,
-            Some("initial reason"),
+            NewInventoryEntry {
+                status: InventoryStatus::Deprecated,
+                reason: Some("initial reason"),
+                ..Default::default()
+            },
         )
         .unwrap();
         set_inventory_status(&mut store, &path, "TCP_X", InventoryStatus::Active, None).unwrap();
@@ -13739,10 +14119,11 @@ mod tests {
             &mut store,
             &path,
             "TCP_X",
-            InventoryStatus::Deprecated,
-            None,
-            None,
-            Some("initial reason"),
+            NewInventoryEntry {
+                status: InventoryStatus::Deprecated,
+                reason: Some("initial reason"),
+                ..Default::default()
+            },
         )
         .unwrap();
         set_inventory_status(
@@ -13774,16 +14155,7 @@ mod tests {
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         add_section(&mut store, &path, "4.2.4", "docs/tc8.md", "ARP", None).unwrap();
-        add_inventory_entry(
-            &mut store,
-            &path,
-            "ARP_07",
-            InventoryStatus::Active,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
+        add_inventory_entry(&mut store, &path, "ARP_07", NewInventoryEntry::default()).unwrap();
         set_inventory_section_ref(&mut store, &path, "ARP_07", Some("4.2.4")).unwrap();
         assert_eq!(
             AtomicStore::load(&path)
@@ -13818,16 +14190,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        add_inventory_entry(
-            &mut store,
-            &path,
-            "ARP_07",
-            InventoryStatus::Active,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
+        add_inventory_entry(&mut store, &path, "ARP_07", NewInventoryEntry::default()).unwrap();
         remove_inventory_entry(
             &mut store,
             &path,
@@ -13844,16 +14207,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        add_inventory_entry(
-            &mut store,
-            &path,
-            "ARP_07",
-            InventoryStatus::Active,
-            None,
-            None,
-            None,
-        )
-        .unwrap();
+        add_inventory_entry(&mut store, &path, "ARP_07", NewInventoryEntry::default()).unwrap();
         let err = remove_inventory_entry(&mut store, &path, "ARP_07", "  ").unwrap_err();
         assert!(matches!(err, AtomicMutateError::Validation(_)));
     }
@@ -21322,10 +21676,10 @@ mod tests {
             &mut store,
             &path,
             "REQ-1",
-            InventoryStatus::Active,
-            Some("ch-1"),
-            None,
-            None,
+            NewInventoryEntry {
+                section_ref: Some("ch-1"),
+                ..Default::default()
+            },
         )
         .unwrap();
 
@@ -21346,11 +21700,14 @@ mod tests {
                 .pointer_mut(pointer)
                 .and_then(serde_json::Value::as_object_mut)
                 .unwrap_or_else(|| panic!("the fixture has no object at `{pointer}`"))
-                .insert("modality".to_string(), serde_json::json!("shall_not"));
+                .insert(
+                    "acceptance_criteria".to_string(),
+                    serde_json::json!("responds within two seconds"),
+                );
             fs::write(&path, serde_json::to_vec_pretty(&injected).unwrap()).unwrap();
             let err = AtomicStore::load(&path).expect_err(shape).to_string();
             assert!(
-                err.contains("unknown field `modality`"),
+                err.contains("unknown field `acceptance_criteria`"),
                 "{shape}: the refusal names the key: {err}"
             );
             let segments = pointer.split('/').filter(|s| !s.is_empty());

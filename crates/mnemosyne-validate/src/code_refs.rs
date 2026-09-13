@@ -8424,6 +8424,8 @@ mod tests {
                 section_ref: None,
                 source: None,
                 reason: None,
+                modality: None,
+                disposition: None,
             },
         );
         let path_prefixes = vec!["W3C SCXML ".to_string()];
@@ -8529,6 +8531,8 @@ mod tests {
                 section_ref: None,
                 source: None,
                 reason: Some("superseded".to_string()),
+                modality: None,
+                disposition: None,
             },
         );
         let prefixes = vec!["ARP_".to_string()];

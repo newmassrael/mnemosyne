@@ -1,0 +1,59 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-bound-of-nothing-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    if bound.n <= 0 {\n",
+          "to": "    if false {\n"
+        }
+      ],
+      "expect_red": [
+        "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs",
+        "both_writers_of_each_axis_refuse_the_same_inputs"
+      ],
+      "tests": [
+        "inventory_axes_smoke::both_writers_of_each_axis_refuse_the_same_inputs",
+        "tests::every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs"
+      ]
+    },
+    "a-delegated-id-with-a-space-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        if to_id.chars().any(char::is_whitespace) {\n",
+          "to": "        if false {\n"
+        }
+      ],
+      "expect_red": [
+        "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs"
+      ],
+      "tests": [
+        "tests::every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs"
+      ]
+    },
+    "an-unregistered-unit-is-accepted": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "    if !unit_registered(store, bound.unit.as_str()) {\n",
+          "to": "    if false {\n"
+        }
+      ],
+      "expect_red": [
+        "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs",
+        "both_writers_of_each_axis_refuse_the_same_inputs"
+      ],
+      "tests": [
+        "inventory_axes_smoke::both_writers_of_each_axis_refuse_the_same_inputs",
+        "tests::every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs"
+      ]
+    }
+  },
+  "forgotten": {}
+}

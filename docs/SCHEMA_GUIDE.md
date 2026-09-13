@@ -802,12 +802,13 @@ A key the store does not model is REFUSED, at every depth, by every command
 that loads the store — and the refusal says where it is:
 
 ```
-json shape at `inventory_entries.REQ-1`: unknown field `modality`, expected one of …
+json shape at `inventory_entries.REQ-1`: unknown field `acceptance_criteria`, expected one of …
 ```
 
 Before that was true, such a key loaded, was invisible to every read, and was
 erased by the next unrelated write at exit 0 — measured by an adopter who had
-added a `modality` to an inventory entry. So a store cannot be extended with a
+added a `modality` to an inventory entry (which is a real field now; see
+"Inventory citation defense"). So a store cannot be extended with a
 field of your own: a field it should hold is a schema change, and gets
 proposed as one. A store written by an older build reaches this build through
 the schema ladder's migrations, and a store from a newer build is refused by
@@ -875,6 +876,40 @@ mnemosyne-cli add-inventory-entry \
 cite time (with an optional cascade scan surfacing existing cite-sites
 when a mutate flips status). Lookup via `query --list-inventory` or
 `query --inventory <id>`.
+
+An entry can also say HOW its requirement is stated and WHERE it is
+satisfied — two axes separate from `--status`:
+
+```bash
+mnemosyne-cli add-unit --unit ms
+mnemosyne-cli add-inventory-entry \
+ --id REQ-4.2.1 --status active \
+ --modality shall --within-n 2000 --within-unit ms \
+ --disposition out_of_scope --disposition-reason "a property of the deployment"
+
+mnemosyne-cli set-inventory-modality --id REQ-4.2.1 --modality shall_not
+mnemosyne-cli set-inventory-disposition --id REQ-4.2.1 \
+ --disposition delegated --to-doc transport-spec --to-id REQ-7
+```
+
+- **modality** — `shall`, `shall_not`, `should`, `should_not`, `may` or
+ `need_not`, optionally bounded (`--within-n` / `--within-unit`; the unit
+ must already be registered). A prohibition is met by an absence, which only
+ a test can show — the form is what tells a tool which evidence to ask for.
+ Modality belongs to a requirement, not to a section: one section can say
+ `must` and `must not`.
+- **disposition** — `implemented`, `delegated` (`--to-doc`, `--to-id`; neither
+ resolves in this store), `out_of_scope` (`--disposition-reason`) or
+ `system_level` (`--realised-by`). Scoping a requirement out is not
+ deprecating it: a `deprecated` id rejects every citation, an out-of-scope
+ one does not.
+
+Both writers of each axis — `add-inventory-entry` and the `set-inventory-*`
+peer — refuse the same values, `--clear` removes either, `validate-workspace`
+re-checks an out-of-band edit, and both appear in
+`query --inventory <id> --json`. The MCP twins are `set_inventory_modality`,
+`set_inventory_disposition` and the `modality` / `disposition` arguments of
+`add_inventory_entry`.
 
 ### External adopter — redirect the store to avoid `docs/` collision
 

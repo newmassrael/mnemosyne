@@ -4692,6 +4692,102 @@ fn parse_inventory_status(raw: &str) -> Result<InventoryStatus> {
         .map_err(|e| anyhow!("--status {}", e))
 }
 
+/// The payload flags a `--disposition` may carry, as the serde field each one
+/// fills. The disposition itself is parsed by `InventoryDisposition`'s own
+/// deserializer from these fields, so which kinds exist and which fields a kind
+/// requires or refuses have ONE definition — the type's — rather than a second
+/// one written out here.
+const DISPOSITION_PAYLOAD_FLAGS: [(&str, &str); 4] = [
+    ("--to-doc", "to_doc"),
+    ("--to-id", "to_id"),
+    ("--disposition-reason", "reason"),
+    ("--realised-by", "realised_by"),
+];
+
+/// The disposition payload flags a command was given, by serde field.
+#[derive(Debug, Default)]
+struct DispositionPayload(std::collections::BTreeMap<&'static str, String>);
+
+impl DispositionPayload {
+    fn takes(flag: &str) -> bool {
+        DISPOSITION_PAYLOAD_FLAGS.iter().any(|(f, _)| *f == flag)
+    }
+
+    fn set(&mut self, flag: &str, value: String) {
+        if let Some((_, field)) = DISPOSITION_PAYLOAD_FLAGS.iter().find(|(f, _)| *f == flag) {
+            self.0.insert(field, value);
+        }
+    }
+}
+
+/// `--modality <form> [--within-n <n> --within-unit <unit>]` as a modality, or
+/// `None` when no `--modality` was given. ONE PARSER for every verb that writes
+/// the field, so two verbs cannot accept different spellings of one value.
+fn modality_from_flags(
+    form: Option<&str>,
+    within_n: Option<&str>,
+    within_unit: Option<&str>,
+) -> Result<Option<mnemosyne_core::RequirementModality>> {
+    let Some(form) = form else {
+        if within_n.is_some() || within_unit.is_some() {
+            return Err(anyhow!(
+                "--within-n / --within-unit bound a modality; give --modality as well"
+            ));
+        }
+        return Ok(None);
+    };
+    let form = mnemosyne_core::VerbalForm::from_tag(form).ok_or_else(|| {
+        anyhow!(
+            "--modality `{form}` invalid (expected {})",
+            mnemosyne_core::VerbalForm::vocabulary()
+        )
+    })?;
+    let within = match (within_n, within_unit) {
+        (None, None) => None,
+        (Some(n), Some(unit)) => Some(mnemosyne_core::ModalityBound {
+            n: n.parse::<i64>()
+                .map_err(|_| anyhow!("--within-n expects an integer (got `{n}`)"))?,
+            unit: unit.into(),
+        }),
+        _ => return Err(anyhow!("--within-n and --within-unit are given together")),
+    };
+    Ok(Some(mnemosyne_core::RequirementModality { form, within }))
+}
+
+/// `--disposition <kind>` with its payload flags as a disposition, or `None`
+/// when no `--disposition` was given. A payload flag without a `--disposition`
+/// is refused, and so is one the kind does not take — by the type's own
+/// `deny_unknown_fields`, not by a list kept here.
+fn disposition_from_flags(
+    kind: Option<&str>,
+    payload: &DispositionPayload,
+) -> Result<Option<mnemosyne_core::InventoryDisposition>> {
+    let Some(kind) = kind else {
+        if let Some((flag, _)) = DISPOSITION_PAYLOAD_FLAGS
+            .iter()
+            .find(|(_, field)| payload.0.contains_key(field))
+        {
+            return Err(anyhow!(
+                "{flag} is a disposition payload; give --disposition as well"
+            ));
+        }
+        return Ok(None);
+    };
+    let mut object = serde_json::Map::new();
+    object.insert("kind".to_string(), kind.into());
+    for (field, value) in &payload.0 {
+        object.insert((*field).to_string(), value.as_str().into());
+    }
+    serde_json::from_value(serde_json::Value::Object(object))
+        .map(Some)
+        .map_err(|e| {
+            anyhow!(
+                "--disposition {kind}: {e} (payload flags: --to-doc, --to-id, \
+                 --disposition-reason, --realised-by)"
+            )
+        })
+}
+
 /// `add-inventory-entry --id <ID> --status active|deprecated|reserved \
 ///   [--section §<N>] [--source <text>] [--reason <text>] \
 ///   [--sidecar <path>] [--json]`
@@ -4701,6 +4797,11 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
     let mut section_ref: Option<String> = None;
     let mut source: Option<String> = None;
     let mut reason: Option<String> = None;
+    let mut modality_form: Option<String> = None;
+    let mut within_n: Option<String> = None;
+    let mut within_unit: Option<String> = None;
+    let mut disposition_kind: Option<String> = None;
+    let mut payload = DispositionPayload::default();
     let mut sidecar: Option<String> = None;
     let mut json = false;
     let mut iter = args.iter();
@@ -4722,6 +4823,41 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
                         .ok_or_else(|| anyhow!("--section missing"))?
                         .clone(),
                 )
+            }
+            "--modality" => {
+                modality_form = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--modality missing"))?
+                        .clone(),
+                )
+            }
+            "--within-n" => {
+                within_n = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--within-n missing"))?
+                        .clone(),
+                )
+            }
+            "--within-unit" => {
+                within_unit = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--within-unit missing"))?
+                        .clone(),
+                )
+            }
+            "--disposition" => {
+                disposition_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--disposition missing"))?
+                        .clone(),
+                )
+            }
+            flag if DispositionPayload::takes(flag) => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("{flag} missing"))?
+                    .clone();
+                payload.set(flag, value);
             }
             "--source" => {
                 source = Some(
@@ -4755,16 +4891,26 @@ pub fn cmd_add_inventory_entry(workspace_root: &Path, args: &[String]) -> Result
             .ok_or_else(|| anyhow!("--status arg required (active|deprecated|reserved)"))?,
     )?;
     let section_ref_clean = section_ref.as_deref().map(strip_section_prefix);
+    let modality = modality_from_flags(
+        modality_form.as_deref(),
+        within_n.as_deref(),
+        within_unit.as_deref(),
+    )?;
+    let disposition = disposition_from_flags(disposition_kind.as_deref(), &payload)?;
     let sidecar_path = resolve_sidecar(workspace_root, cli_path(sidecar.as_deref())?.as_ref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let mutate_result = add_inventory_entry(
         &mut store,
         &sidecar_path,
         &inventory_id,
-        status,
-        section_ref_clean.as_deref(),
-        source.as_deref(),
-        reason.as_deref(),
+        mnemosyne_atomic::NewInventoryEntry {
+            status,
+            section_ref: section_ref_clean.as_deref(),
+            source: source.as_deref(),
+            reason: reason.as_deref(),
+            modality,
+            disposition,
+        },
     );
 
     // Round 276 — cascade trigger when registering an already-Deprecated
@@ -4894,6 +5040,145 @@ pub fn cmd_set_inventory_section_ref(
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         set_inventory_section_ref(&mut store, &sidecar_path, &inventory_id, cleaned.as_deref()),
+        json,
+    )
+}
+
+/// `set-inventory-modality --id <ID> (--modality <form> [--within-n <n>
+///   --within-unit <unit>] | --clear) [--sidecar <path>] [--json]`
+///
+/// Exactly one of `--modality` or `--clear`; the flags are read by the parser
+/// `add-inventory-entry` uses.
+pub fn cmd_set_inventory_modality(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
+    let mut inventory_id: Option<String> = None;
+    let mut modality_form: Option<String> = None;
+    let mut within_n: Option<String> = None;
+    let mut within_unit: Option<String> = None;
+    let mut clear = false;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--id" => {
+                inventory_id = Some(iter.next().ok_or_else(|| anyhow!("--id missing"))?.clone())
+            }
+            "--modality" => {
+                modality_form = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--modality missing"))?
+                        .clone(),
+                )
+            }
+            "--within-n" => {
+                within_n = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--within-n missing"))?
+                        .clone(),
+                )
+            }
+            "--within-unit" => {
+                within_unit = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--within-unit missing"))?
+                        .clone(),
+                )
+            }
+            "--clear" => clear = true,
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
+    let modality = modality_from_flags(
+        modality_form.as_deref(),
+        within_n.as_deref(),
+        within_unit.as_deref(),
+    )?;
+    if modality.is_some() == clear {
+        return Err(anyhow!("exactly one of --modality or --clear must be supplied").into());
+    }
+    let sidecar_path = resolve_sidecar(workspace_root, cli_path(sidecar.as_deref())?.as_ref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::set_inventory_modality(
+            &mut store,
+            &sidecar_path,
+            &inventory_id,
+            modality,
+        ),
+        json,
+    )
+}
+
+/// `set-inventory-disposition --id <ID> (--disposition <kind> [payload flags]
+///   | --clear) [--sidecar <path>] [--json]`
+///
+/// Exactly one of `--disposition` or `--clear`; the flags are read by the
+/// parser `add-inventory-entry` uses.
+pub fn cmd_set_inventory_disposition(
+    workspace_root: &Path,
+    args: &[String],
+) -> Result<(), CliError> {
+    let mut inventory_id: Option<String> = None;
+    let mut disposition_kind: Option<String> = None;
+    let mut payload = DispositionPayload::default();
+    let mut clear = false;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--id" => {
+                inventory_id = Some(iter.next().ok_or_else(|| anyhow!("--id missing"))?.clone())
+            }
+            "--disposition" => {
+                disposition_kind = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--disposition missing"))?
+                        .clone(),
+                )
+            }
+            flag if DispositionPayload::takes(flag) => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| anyhow!("{flag} missing"))?
+                    .clone();
+                payload.set(flag, value);
+            }
+            "--clear" => clear = true,
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => return Err(anyhow!("unknown flag `{}`", other).into()),
+        }
+    }
+    let inventory_id = inventory_id.ok_or_else(|| anyhow!("--id arg required"))?;
+    let disposition = disposition_from_flags(disposition_kind.as_deref(), &payload)?;
+    if disposition.is_some() == clear {
+        return Err(anyhow!("exactly one of --disposition or --clear must be supplied").into());
+    }
+    let sidecar_path = resolve_sidecar(workspace_root, cli_path(sidecar.as_deref())?.as_ref())?;
+    let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
+    finalize_mutate(
+        mnemosyne_atomic::set_inventory_disposition(
+            &mut store,
+            &sidecar_path,
+            &inventory_id,
+            disposition,
+        ),
         json,
     )
 }

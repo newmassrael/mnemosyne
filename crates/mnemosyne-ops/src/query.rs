@@ -40,6 +40,27 @@ pub struct InventoryEntryView {
     pub section_ref: Option<String>,
     pub source: Option<String>,
     pub reason: Option<String>,
+    /// How the requirement is stated (Round 1321).
+    pub modality: Option<mnemosyne_core::RequirementModality>,
+    /// Where the requirement is satisfied (Round 1321).
+    pub disposition: Option<mnemosyne_core::InventoryDisposition>,
+}
+
+impl InventoryEntryView {
+    /// THE ONE PROJECTION of a stored entry, read by the list, the single
+    /// lookup, the CLI and the MCP surface alike — so no reader can show a field
+    /// another reader drops.
+    fn of(id: &str, entry: &mnemosyne_atomic::InventoryEntry) -> Self {
+        InventoryEntryView {
+            id: id.to_string(),
+            status: entry.status.as_str(),
+            section_ref: entry.section_ref.as_ref().map(ToString::to_string),
+            source: entry.source.clone(),
+            reason: entry.reason.clone(),
+            modality: entry.modality.clone(),
+            disposition: entry.disposition.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -232,13 +253,7 @@ pub fn list_inventory(workspace_root: &Path) -> Result<Vec<InventoryEntryView>, 
     Ok(store
         .inventory_entries
         .iter()
-        .map(|(id, e)| InventoryEntryView {
-            id: id.clone(),
-            status: e.status.as_str(),
-            section_ref: e.section_ref.as_ref().map(ToString::to_string),
-            source: e.source.clone(),
-            reason: e.reason.clone(),
-        })
+        .map(|(id, e)| InventoryEntryView::of(id, e))
         .collect())
 }
 
@@ -254,11 +269,5 @@ pub fn query_inventory(
             inventory_id
         ))
     })?;
-    Ok(InventoryEntryView {
-        id: inventory_id.to_string(),
-        status: entry.status.as_str(),
-        section_ref: entry.section_ref.as_ref().map(ToString::to_string),
-        source: entry.source.clone(),
-        reason: entry.reason.clone(),
-    })
+    Ok(InventoryEntryView::of(inventory_id, entry))
 }

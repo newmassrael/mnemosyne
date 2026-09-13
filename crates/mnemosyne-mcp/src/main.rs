@@ -1211,6 +1211,17 @@ pub struct AddInventoryEntryArgs {
     /// `"deprecated"` — explains the deprecation cause).
     #[serde(default)]
     pub reason: Option<String>,
+    /// How the requirement is stated: `{"form": "shall_not"}`, or with a bound
+    /// `{"form": "shall", "within": {"n": 2000, "unit": "ms"}}` — the unit must
+    /// already be registered.
+    #[serde(default)]
+    pub modality: Option<mnemosyne_core::RequirementModality>,
+    /// Where the requirement is satisfied: `{"kind": "implemented"}`,
+    /// `{"kind": "delegated", "to_doc": …, "to_id": …}`,
+    /// `{"kind": "out_of_scope", "reason": …}` or
+    /// `{"kind": "system_level", "realised_by": …}`. Separate from `status`.
+    #[serde(default)]
+    pub disposition: Option<mnemosyne_core::InventoryDisposition>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1234,6 +1245,34 @@ pub struct SetInventorySectionRefArgs {
     pub section_ref: Option<ExistingRef>,
     /// Set to `true` to explicitly unset the section_ref. Exactly one
     /// of `section_ref` or `clear` must be present.
+    #[serde(default)]
+    pub clear: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetInventoryModalityArgs {
+    pub inventory_id: ExistingRef,
+    /// The new modality, e.g. `{"form": "shall", "within": {"n": 2000, "unit":
+    /// "ms"}}`. Omit it AND set `clear: true` to remove the modality.
+    #[serde(default)]
+    pub modality: Option<mnemosyne_core::RequirementModality>,
+    /// Set to `true` to remove the modality. Exactly one of `modality` or
+    /// `clear` must be present.
+    #[serde(default)]
+    pub clear: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetInventoryDispositionArgs {
+    pub inventory_id: ExistingRef,
+    /// The new disposition, e.g. `{"kind": "out_of_scope", "reason": "…"}`.
+    /// Omit it AND set `clear: true` to remove the disposition.
+    #[serde(default)]
+    pub disposition: Option<mnemosyne_core::InventoryDisposition>,
+    /// Set to `true` to remove the disposition. Exactly one of `disposition` or
+    /// `clear` must be present.
     #[serde(default)]
     pub clear: bool,
 }
@@ -1952,6 +1991,8 @@ const ANSWERS_WITH_RECEIPT: &[&str] = &[
     "set_disclosure_reveal_threshold",
     "set_edge_guard_threshold",
     "set_entity_kind_parents",
+    "set_inventory_disposition",
+    "set_inventory_modality",
     "set_inventory_section_ref",
     "set_predicate",
     "set_section_alternatives",
@@ -3996,7 +4037,7 @@ impl MnemosyneServer {
     // Round 278 — Phase 1A inventory tool surface.
 
     #[tool(
-        description = "List every inventory entry in the atomic store, in id order. ANSWERS WITH: `entries`, each carrying `id`, `status`, `section_ref`, `source` and `reason`."
+        description = "List every inventory entry in the atomic store, in id order. ANSWERS WITH: `entries`, each carrying `id`, `status`, `section_ref`, `source`, `reason`, `modality` and `disposition`."
     )]
     async fn list_inventory(
         &self,
@@ -4009,7 +4050,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Look up a single inventory entry. Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite). ANSWERS WITH: `id` (the entry looked up), `status`, `section_ref`, `source`, `reason`."
+        description = "Look up a single inventory entry. Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite). ANSWERS WITH: `id` (the entry looked up), `status`, `section_ref`, `source`, `reason`, `modality` (how the requirement is stated) and `disposition` (where it is satisfied)."
     )]
     async fn query_inventory(
         &self,
@@ -4037,15 +4078,21 @@ impl MnemosyneServer {
             .map(|s| strip_section_marker(s).to_string());
         let source = args.0.source.clone();
         let reason = args.0.reason.clone();
+        let modality = args.0.modality.clone();
+        let disposition = args.0.disposition.clone();
         let outcome = self.run_mutate(|store, path| {
             atomic::add_inventory_entry(
                 store,
                 path,
                 &inventory_id,
-                status,
-                section_ref.as_deref(),
-                source.as_deref(),
-                reason.as_deref(),
+                atomic::NewInventoryEntry {
+                    status,
+                    section_ref: section_ref.as_deref(),
+                    source: source.as_deref(),
+                    reason: reason.as_deref(),
+                    modality: modality.clone(),
+                    disposition: disposition.clone(),
+                },
             )
         });
         self.finish_inventory_mutate(
@@ -4094,6 +4141,52 @@ impl MnemosyneServer {
         let inventory_id = args.0.inventory_id.clone();
         let outcome = self.run_mutate(|store, path| {
             atomic::set_inventory_section_ref(store, path, &inventory_id, cleaned.as_deref())
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Set or clear an inventory entry's modality — how its requirement is stated: `form` (shall, shall_not, should, should_not, may, need_not) and an optional `within` bound {n, unit} whose unit must be registered. Exactly one of modality or clear. NotFound on unregistered ids."
+    )]
+    async fn set_inventory_modality(
+        &self,
+        args: Parameters<SetInventoryModalityArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
+        let modality = match (&args.0.modality, args.0.clear) {
+            (Some(modality), false) => Some(modality.clone()),
+            (None, true) => None,
+            _ => {
+                return Err(Refused(
+                    "exactly one of modality or clear must be supplied".to_string(),
+                ));
+            }
+        };
+        let inventory_id = args.0.inventory_id.clone();
+        let outcome = self.run_mutate(|store, path| {
+            atomic::set_inventory_modality(store, path, &inventory_id, modality.clone())
+        });
+        self.finish_mutate(outcome)
+    }
+
+    #[tool(
+        description = "Set or clear an inventory entry's disposition — where its requirement is satisfied: {kind: implemented}, {kind: delegated, to_doc, to_id}, {kind: out_of_scope, reason} or {kind: system_level, realised_by}. A separate axis from status. Exactly one of disposition or clear. NotFound on unregistered ids."
+    )]
+    async fn set_inventory_disposition(
+        &self,
+        args: Parameters<SetInventoryDispositionArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
+        let disposition = match (&args.0.disposition, args.0.clear) {
+            (Some(disposition), false) => Some(disposition.clone()),
+            (None, true) => None,
+            _ => {
+                return Err(Refused(
+                    "exactly one of disposition or clear must be supplied".to_string(),
+                ));
+            }
+        };
+        let inventory_id = args.0.inventory_id.clone();
+        let outcome = self.run_mutate(|store, path| {
+            atomic::set_inventory_disposition(store, path, &inventory_id, disposition.clone())
         });
         self.finish_mutate(outcome)
     }
@@ -5041,12 +5134,18 @@ mod tests {
     /// the server actually answers `tools/list` from.
     #[test]
     fn an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so() {
+        // `modality` is an argument since Round 1321; the key sent here is one
+        // the tool still does not model.
         let refused = serde_json::from_value::<AddInventoryEntryArgs>(serde_json::json!({
-            "inventory_id": "REQ-1", "status": "active", "modality": "shall_not"
+            "inventory_id": "REQ-1", "status": "active",
+            "acceptance_criteria": "responds within two seconds"
         }))
         .expect_err("an unmodeled argument must be refused, not dropped")
         .to_string();
-        assert!(refused.contains("unknown field `modality`"), "{refused}");
+        assert!(
+            refused.contains("unknown field `acceptance_criteria`"),
+            "{refused}"
+        );
         serde_json::from_value::<AddInventoryEntryArgs>(serde_json::json!({
             "inventory_id": "REQ-1", "status": "active"
         }))
@@ -6951,9 +7050,10 @@ mod tests {
         // R1226 did the four that assembled their answer with a `json!` literal.
         // What is left is named in the ledger rather than counted here: three
         // tools that answer PROSE, and whether they get a shape is a decision.
+        // R1321 added two inventory setters, born answering the write envelope.
         assert_eq!(
             typed.len(),
-            102,
+            104,
             "[output schema] {} of {} routed tools publish one. The arc converts in groups and \
              this number is its ledger — if a group just landed, raise it; if it FELL, a tool \
              lost its schema and the agent lost the contract. Typed: {typed:?}",
@@ -8639,6 +8739,28 @@ mod tests {
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active", "section_ref": "40"}]
             set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-1"}
             ."clear" = true seen "inv-1" in outcome;
+        add_inventory_entry_modality_reaches_the_store:
+            add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}
+            ."modality" = {"form": "shall_not"} seen "shall_not" in store;
+        add_inventory_entry_disposition_reaches_the_store:
+            add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}
+            ."disposition" = {"kind": "out_of_scope", "reason": "not this toolchain's"} seen "out_of_scope" in store;
+        set_inventory_modality_modality_reaches_the_store:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}]
+            set_inventory_modality(SetInventoryModalityArgs) {"inventory_id": "inv-1", "modality": {"form": "shall"}}
+            ."modality" = {"form": "need_not"} seen "need_not" in store;
+        set_inventory_modality_clear_reaches_the_store:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active", "modality": {"form": "shall"}}]
+            set_inventory_modality(SetInventoryModalityArgs) {"inventory_id": "inv-1"}
+            ."clear" = true seen "inv-1" in outcome;
+        set_inventory_disposition_disposition_reaches_the_store:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}]
+            set_inventory_disposition(SetInventoryDispositionArgs) {"inventory_id": "inv-1", "disposition": {"kind": "implemented"}}
+            ."disposition" = {"kind": "system_level", "realised_by": "the gateway"} seen "system_level" in store;
+        set_inventory_disposition_clear_reaches_the_store:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active", "disposition": {"kind": "implemented"}}]
+            set_inventory_disposition(SetInventoryDispositionArgs) {"inventory_id": "inv-1"}
+            ."clear" = true seen "inv-1" in outcome;
         set_section_decision_status_superseding_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "superseded"}
@@ -9672,6 +9794,12 @@ mod tests {
             @branch_story
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
             set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-lamp", "section_ref": "sc-01"};
+        set_inventory_modality_probed:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
+            set_inventory_modality(SetInventoryModalityArgs) {"inventory_id": "inv-lamp", "modality": {"form": "shall"}};
+        set_inventory_disposition_probed:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
+            set_inventory_disposition(SetInventoryDispositionArgs) {"inventory_id": "inv-lamp", "disposition": {"kind": "implemented"}};
         remove_inventory_entry_probed:
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
             remove_inventory_entry(RemoveInventoryEntryArgs) {"inventory_id": "inv-lamp", "reason": "the lamp was never carried"};

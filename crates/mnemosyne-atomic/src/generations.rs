@@ -993,6 +993,23 @@ pub const GENERATIONS: &[Generation] = &[
         migrate: None,
         probe: Probe::NotBreaking,
     },
+    // v47→v48 adds `InventoryEntry.modality` and `InventoryEntry.disposition`
+    // (Round 1321 — an adopter's requirement layer needs to say how a
+    // requirement is stated and where it is satisfied, and the store had no
+    // slot for either). Additive: both are `Option` under `#[serde(default,
+    // skip_serializing_if = "Option::is_none")]`, so a pre-v48 entry has neither
+    // key, loads as `None`, and re-serializes byte-identically. No migration arm
+    // — there is nothing to derive a modality from. A pre-R1321 binary reading a
+    // v48 store hits the monotone `> CURRENT` guard; before Round 1317 it would
+    // have dropped both keys on save.
+    Generation {
+        to: 48,
+        cost: Cost::Additive,
+        round: 1321,
+        what: "adds InventoryEntry.modality and InventoryEntry.disposition",
+        migrate: None,
+        probe: Probe::NotBreaking,
+    },
 ];
 
 /// The store schema generation the current binary writes and validates against
@@ -1126,7 +1143,7 @@ mod tests {
         // and this says which number the ladder currently reaches, so a reader
         // comparing it with a store's `schema_version` is comparing two things
         // that were derived the same way.
-        assert_eq!(CURRENT_SCHEMA_VERSION, 47);
+        assert_eq!(CURRENT_SCHEMA_VERSION, 48);
     }
 
     #[test]
@@ -1141,14 +1158,14 @@ mod tests {
         let crossing = crossed_by(44);
         assert_eq!(
             crossing.iter().map(|g| g.to).collect::<Vec<_>>(),
-            vec![45, 46, 47]
+            vec![45, 46, 47, 48]
         );
         assert!(crossed_by(1).len() == GENERATIONS.len());
     }
 
-    /// THE ANSWER R1247 COULD NOT GIVE. A store at generation 23 is 24
+    /// THE ANSWER R1247 COULD NOT GIVE. A store at generation 23 is 25
     /// generations behind, and that number is an upper bound: what it actually
-    /// costs is four rungs out of twenty-four, and this is where a reader
+    /// costs is four rungs out of twenty-five, and this is where a reader
     /// learns which — and, since R1255, which of the two ways each one bites.
     ///
     /// BOTH NUMBERS MOVE WITH THE LADDER, and this sentence is a count stated
@@ -1158,7 +1175,7 @@ mod tests {
     #[test]
     fn the_note_names_what_costs_something_and_counts_the_rest() {
         let note = crossing_note(23);
-        assert!(note.contains("crossing 24 generation(s)"), "{note}");
+        assert!(note.contains("crossing 25 generation(s)"), "{note}");
         // v29, v32 and v33 refuse to open; v24 OPENS and refuses the write,
         // which is the distinction a probe found rather than a paragraph.
         assert!(note.contains("3 that may refuse to open"), "{note}");

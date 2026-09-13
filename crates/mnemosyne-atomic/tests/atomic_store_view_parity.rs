@@ -61,6 +61,8 @@ fn build_store() -> AtomicStore {
             section_ref: None,
             source: None,
             reason: None,
+            modality: None,
+            disposition: None,
         },
     );
     store.inventory_entries.insert(
@@ -70,6 +72,8 @@ fn build_store() -> AtomicStore {
             section_ref: None,
             source: None,
             reason: None,
+            modality: None,
+            disposition: None,
         },
     );
 

@@ -623,7 +623,7 @@ const CHANGELOG_FIELDS: &[&str] = &[
     "impact_refs",
     "carry_forward_bullets",
 ];
-const INVENTORY_FIELDS: &[&str] = &["inventory_id", "source", "reason"];
+const INVENTORY_FIELDS: &[&str] = &["inventory_id", "source", "reason", "disposition"];
 
 /// Validate a field filter against the kinds the scope will scan. A field
 /// name outside the scanned kinds' rosters can never produce a hit — that
@@ -1057,6 +1057,27 @@ fn scan_inventory_entry(
                 inv_id,
                 "reason".to_string(),
                 r,
+                m,
+                out,
+            );
+        }
+    }
+    // Round 1321 — a disposition's payload is authored text too (why a
+    // requirement is out of scope, what realises it, where it is delegated).
+    if field_allowed(filter, "disposition") {
+        use mnemosyne_core::InventoryDisposition as Disposition;
+        let payload: Vec<&str> = match &inv.disposition {
+            None | Some(Disposition::Implemented {}) => Vec::new(),
+            Some(Disposition::Delegated { to_doc, to_id }) => vec![to_doc, to_id],
+            Some(Disposition::OutOfScope { reason }) => vec![reason],
+            Some(Disposition::SystemLevel { realised_by }) => vec![realised_by],
+        };
+        for text in payload {
+            push_simple_hit(
+                TermTargetKind::Inventory,
+                inv_id,
+                "disposition".to_string(),
+                text,
                 m,
                 out,
             );
@@ -1654,6 +1675,9 @@ mod tests {
             InventoryEntry {
                 source: Some("zz src".to_string()),
                 reason: Some("zz reason".to_string()),
+                disposition: Some(mnemosyne_core::InventoryDisposition::OutOfScope {
+                    reason: "zz disposition".to_string(),
+                }),
                 ..Default::default()
             },
         );
@@ -1784,6 +1808,8 @@ mod tests {
                 section_ref: None,
                 source: Some("PDF p.42 internal-doc XYZ".to_string()),
                 reason: None,
+                modality: None,
+                disposition: None,
             },
         );
         let hits = query_term(&store, &literal_q("XYZ")).expect("ok");

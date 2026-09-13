@@ -1424,7 +1424,7 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_INVENTORY),
         blank_before: false,
-        usage: &["add-inventory-entry --id <ID> --status active|deprecated|reserved [--section §<N>] [--source <text>] [--reason <text>] [--sidecar <path>] [--json]"],
+        usage: &["add-inventory-entry --id <ID> --status active|deprecated|reserved [--section §<N>] [--source <text>] [--reason <text>] [--modality shall|shall_not|should|should_not|may|need_not [--within-n <n> --within-unit <unit>]] [--disposition implemented|delegated|out_of_scope|system_level [--to-doc <doc> --to-id <id> | --disposition-reason <text> | --realised-by <text>]] [--sidecar <path>] [--json]"],
         notes: &[],
         run: |c| atomic_cli::cmd_add_inventory_entry(&c.anchor()?, c.rest()),
     },
@@ -1445,6 +1445,24 @@ static COMMANDS: &[Command] = &[
         usage: &["set-inventory-section-ref --id <ID> (--section §<N> | --clear) [--sidecar <path>] [--json]"],
         notes: &[],
         run: |c| atomic_cli::cmd_set_inventory_section_ref(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-inventory-modality",
+        aliases: &[],
+        group: Some(&GROUP_INVENTORY),
+        blank_before: false,
+        usage: &["set-inventory-modality --id <ID> (--modality shall|shall_not|should|should_not|may|need_not [--within-n <n> --within-unit <unit>] | --clear) [--sidecar <path>] [--json]"],
+        notes: &["   Round 1321 — how the requirement is stated; a bound's unit must be registered (add-unit)"],
+        run: |c| atomic_cli::cmd_set_inventory_modality(&c.anchor()?, c.rest()),
+    },
+    Command {
+        name: "set-inventory-disposition",
+        aliases: &[],
+        group: Some(&GROUP_INVENTORY),
+        blank_before: false,
+        usage: &["set-inventory-disposition --id <ID> (--disposition implemented|delegated|out_of_scope|system_level [--to-doc <doc> --to-id <id> | --disposition-reason <text> | --realised-by <text>] | --clear) [--sidecar <path>] [--json]"],
+        notes: &["   Round 1321 — where the requirement is satisfied; a separate axis from --status, so scoping out never trips the deprecated reject"],
+        run: |c| atomic_cli::cmd_set_inventory_disposition(&c.anchor()?, c.rest()),
     },
     Command {
         name: "remove-inventory-entry",
@@ -1862,19 +1880,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
     // Round 278 — Phase 1A inventory query surface.
     if qargs.list_inventory {
         if qargs.json {
-            let view: Vec<_> = atomic_store
-                .inventory_entries
-                .iter()
-                .map(|(id, e)| {
-                    serde_json::json!({
-                    "id": id,
-                    "status": e.status,
-                    "section_ref": e.section_ref,
-                    "source": e.source,
-                    "reason": e.reason,
-                    })
-                })
-                .collect();
+            let view = mnemosyne_ops::list_inventory(&root).map_err(|e| anyhow!("{e}"))?;
             println!("{}", serde_json::to_string_pretty(&view)?);
         } else {
             for (id, entry) in &atomic_store.inventory_entries {
@@ -1898,13 +1904,8 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
             .inventory(&inv_id)
             .ok_or_else(|| anyhow!("inventory_id `{}` not present in atomic store", inv_id))?;
         if qargs.json {
-            let view = serde_json::json!({
-            "id": inv_id,
-            "status": entry.status,
-            "section_ref": entry.section_ref,
-            "source": entry.source,
-            "reason": entry.reason,
-            });
+            let view =
+                mnemosyne_ops::query_inventory(&root, &inv_id).map_err(|e| anyhow!("{e}"))?;
             println!("{}", serde_json::to_string_pretty(&view)?);
         } else {
             let status_label = entry.status.as_str();
@@ -1918,6 +1919,20 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
             }
             if let Some(s) = entry.reason.as_deref() {
                 println!("reason: {}", s);
+            }
+            if let Some(modality) = entry.modality.as_ref() {
+                match &modality.within {
+                    Some(bound) => println!(
+                        "modality: {} within {} {}",
+                        modality.form.as_str(),
+                        bound.n,
+                        bound.unit
+                    ),
+                    None => println!("modality: {}", modality.form.as_str()),
+                }
+            }
+            if let Some(disposition) = entry.disposition.as_ref() {
+                println!("disposition: {}", serde_json::to_string(disposition)?);
             }
         }
         return Ok(());
