@@ -474,6 +474,15 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
     for file in sources.values() {
         collect_constants(file, &mut constants);
     }
+    // A constant re-exported under another name (`pub use crate::X as Y;`) is
+    // the same variable read through a different spelling. pinion reads
+    // `var_os(REGEN)` where `REGEN` renames `REGEN_ADDRESS_PIN`, and without
+    // this the walk refused a verdict for every workspace depending on it.
+    let mut renames: BTreeSet<(String, String)> = BTreeSet::new();
+    for file in sources.values() {
+        collect_renames(file, &mut renames);
+    }
+    follow_renames(&renames, &mut constants);
     // And what every function is CALLED with, so a read whose name is a
     // parameter resolves through the call sites of the function that takes it.
     let mut arguments: BTreeMap<(String, usize), BTreeSet<String>> = BTreeMap::new();
@@ -1005,6 +1014,54 @@ fn collect_constants(file: &syn::File, into: &mut BTreeMap<String, BTreeSet<Stri
         }
     }
     syn::visit::visit_file(&mut Constants(into), file);
+}
+
+/// Every `use … as ALIAS` a source declares, as `(original, alias)`.
+fn collect_renames(file: &syn::File, into: &mut BTreeSet<(String, String)>) {
+    fn walk(tree: &syn::UseTree, into: &mut BTreeSet<(String, String)>) {
+        match tree {
+            syn::UseTree::Path(path) => walk(&path.tree, into),
+            syn::UseTree::Rename(rename) => {
+                into.insert((rename.ident.to_string(), rename.rename.to_string()));
+            }
+            syn::UseTree::Group(group) => {
+                for item in &group.items {
+                    walk(item, into);
+                }
+            }
+            syn::UseTree::Name(_) | syn::UseTree::Glob(_) => {}
+        }
+    }
+    struct Uses<'a>(&'a mut BTreeSet<(String, String)>);
+    impl<'ast> syn::visit::Visit<'ast> for Uses<'_> {
+        fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+            walk(&item.tree, self.0);
+        }
+    }
+    syn::visit::visit_file(&mut Uses(into), file);
+}
+
+/// Give every alias the values of the constant it renames — to a fixpoint,
+/// because a rename can itself be renamed.
+fn follow_renames(
+    renames: &BTreeSet<(String, String)>,
+    constants: &mut BTreeMap<String, BTreeSet<String>>,
+) {
+    loop {
+        let mut grew = false;
+        for (original, alias) in renames {
+            let Some(values) = constants.get(original).cloned() else {
+                continue;
+            };
+            let entry = constants.entry(alias.clone()).or_default();
+            let before = entry.len();
+            entry.extend(values);
+            grew |= entry.len() != before;
+        }
+        if !grew {
+            return;
+        }
+    }
 }
 
 /// What every plain function call is passed, by name and position, for the

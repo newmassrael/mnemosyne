@@ -1,0 +1,25 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-rename-is-not-followed": {
+      "edits": [
+        {
+          "file": "tools/named-environment/src/lib.rs",
+          "from": "    follow_renames(&renames, &mut constants);\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_variable_named_by_a_renamed_constant_resolves"
+      ],
+      "tests": [
+        "a_variable_named_by_a_renamed_constant_resolves"
+      ]
+    }
+  },
+  "forgotten": {}
+}

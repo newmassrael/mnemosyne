@@ -1,0 +1,49 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS A RENAMED CONSTANT IS FOLLOWED — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        tools/named-environment/renamed-constant.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. pinion reads `std::env::var_os(REGEN)` where `REGEN` is",
+    "`pub use crate::REGEN_ADDRESS_PIN as REGEN`. The walk collected constants by",
+    "name and never followed a `use ... as`, so it answered NO VERDICT for `studio`",
+    "and the side-workspace gate exited 1 on a tree nothing in this repository had",
+    "changed. The walk now gives every alias the values of what it renames.",
+    "",
+    "THE ONE INJECTION removes that step. The renamed-constant law must go red and",
+    "the plain-constant law beside it, selected by the same filter, must not — it",
+    "is the control that says the red is about the rename and not about constants.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--manifest-path",
+    "tools/named-environment/Cargo.toml",
+    "--no-fail-fast",
+    "--",
+    "a_variable_named_by_a_"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-rename-is-not-followed",
+      "why": "the state the walk was in until this round: a constant is resolved and the same constant read through `use ... as` is not, so a workspace depending on pinion gets NO VERDICT and the side gate goes red for a reason no author here can fix in their own code",
+      "edits": [
+        {
+          "file": "tools/named-environment/src/lib.rs",
+          "from": "    follow_renames(&renames, &mut constants);\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_variable_named_by_a_renamed_constant_resolves"]
+    }
+  ]
+}

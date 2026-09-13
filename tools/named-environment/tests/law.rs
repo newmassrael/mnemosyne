@@ -103,6 +103,29 @@ fn a_variable_named_by_a_constant_resolves_on_both_sides() {
     );
 }
 
+/// A constant re-exported under another name is the same name. pinion reads
+/// `std::env::var_os(REGEN)` where `REGEN` is `pub use crate::REGEN_ADDRESS_PIN
+/// as REGEN`, and a walk that knew constants but not renames refused a verdict
+/// for every workspace that depends on it.
+#[test]
+fn a_variable_named_by_a_renamed_constant_resolves() {
+    let at = workspace(
+        "mod names { pub const REAL: &str = \"MNEMOSYNE_RANGE_FROM\"; }\n\
+         use names::REAL as WHICH;\n\
+         fn main() { let _ = std::env::var(WHICH); }",
+        "#[test]\nfn spawns() {\n    \
+         let _ = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\"))\n        \
+         .env_remove(\"MNEMOSYNE_RANGE_FROM\")\n        .output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert!(report.findings.is_empty(), "{report:?}");
+    assert!(
+        report.read_by["probe"].contains("MNEMOSYNE_RANGE_FROM"),
+        "the rename did not resolve on the reading side: {report:?}"
+    );
+}
+
 /// A name inside a macro body is a name. Syn does not walk macro bodies, and a
 /// fixture that builds its environment with `vec![..]` — which is what this
 /// repository's tidiest one does — would otherwise read as naming nothing.
