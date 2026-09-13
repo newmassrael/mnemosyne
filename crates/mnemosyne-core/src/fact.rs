@@ -23,6 +23,7 @@ use crate::DecisionStatus;
 /// Relations (e.g. CrossRef) use a distinct key shape (source/target entity
 /// ids) and intentionally do not carry a `FactKey`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FactKey {
     pub branch_id: u64,
     pub entity_id: u64,
@@ -95,6 +96,7 @@ pub struct SectionSkeleton {
 /// first-class [`CrossRefFact`] relation rows, never an inline list (Round 326
 /// boundary).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SectionFact {
     pub key: FactKey,
     /// String section identity (the JSON store's map key). Kept explicit
@@ -113,6 +115,7 @@ pub struct SectionFact {
 /// not a denormalized fact field; `round_number` already orders entries
 /// (Round 330 — Convergence B2, dropped the unsourced field).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChangelogEntryFact {
     pub key: FactKey,
     pub round_number: u64,
@@ -121,6 +124,7 @@ pub struct ChangelogEntryFact {
 
 /// FrozenList entity instance.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FrozenListFact {
     pub key: FactKey,
     /// Owner section entity_id — EntityRef target = Section.
@@ -132,6 +136,7 @@ pub struct FrozenListFact {
 /// CrossRef relation instance (Section → Section). Uses a distinct key shape
 /// (source/target entity ids), so it carries no [`FactKey`] envelope.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CrossRefFact {
     pub branch_id: u64,
     /// Source section entity_id.

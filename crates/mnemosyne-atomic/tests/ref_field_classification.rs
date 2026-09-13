@@ -41,6 +41,7 @@
 //! change; that defect had no such line anywhere.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 /// Which gate covers a String-bearing field — the question the table answers.
 ///
@@ -154,67 +155,121 @@ struct TypeDecl {
     body: Vec<(String, String)>,
 }
 
-fn type_decls() -> BTreeMap<String, TypeDecl> {
-    let mut out: BTreeMap<String, TypeDecl> = BTreeMap::new();
-    for (_label, src) in SOURCES {
-        let lines: Vec<&str> = src.lines().collect();
-        let mut i = 0;
-        while i < lines.len() {
-            let line = lines[i].trim_end();
-            let name = line
-                .strip_prefix("pub struct ")
-                .or_else(|| line.strip_prefix("pub enum "))
-                .filter(|rest| rest.ends_with('{'))
-                .map(|rest| rest.trim_end_matches('{').trim().to_string());
-            let Some(name) = name else {
-                i += 1;
-                continue;
-            };
-            let attributes = preamble_attributes(&lines, i);
-            let mut body: Vec<(String, String)> = Vec::new();
+/// Which type headers a scan recognises.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Headers {
+    /// `pub struct Name {` / `pub enum Name {` at column 0 — the store's shape,
+    /// and the only one the two store laws were measured against.
+    TopLevelPub,
+    /// Any `struct` / `enum` header at any indentation, public or not, because
+    /// an input wire's type is often declared inside the function that parses it.
+    Anywhere,
+}
+
+/// The indentation and bare name of a type header, or `None` when `line` is not
+/// one `headers` recognises. Generic parameters are not part of the name.
+fn type_header(line: &str, headers: Headers) -> Option<(&str, String)> {
+    let line = line.trim_end();
+    let code = line.trim_start();
+    let indent = &line[..line.len() - code.len()];
+    let code = match headers {
+        Headers::TopLevelPub if indent.is_empty() => code.strip_prefix("pub ")?,
+        Headers::TopLevelPub => return None,
+        Headers::Anywhere => code
+            .strip_prefix("pub(crate) ")
+            .or_else(|| code.strip_prefix("pub "))
+            .unwrap_or(code),
+    };
+    let rest = code
+        .strip_prefix("struct ")
+        .or_else(|| code.strip_prefix("enum "))?
+        .strip_suffix('{')?;
+    let name: String = rest
+        .trim()
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!name.is_empty()).then_some((indent, name))
+}
+
+/// Every type declared in `src` whose header `headers` recognises, in order.
+fn decls_in(src: &str, headers: Headers) -> Vec<(String, TypeDecl)> {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let Some((indent, name)) = type_header(lines[i], headers) else {
             i += 1;
-            // A type block ends at the first column-0 `}` — nested braces are
-            // indented, the same shape the detector-wiring tripwire relies on.
-            while i < lines.len() && !lines[i].starts_with('}') {
-                let t = lines[i].trim();
-                if !t.starts_with("//") && !t.starts_with("#[") {
-                    // Order matters: an inline struct-variant (`Entity { id:
-                    // String },`) also contains a `:` and would otherwise be
-                    // read as one malformed field and dropped. It was, on the
-                    // first run — `TypedObject::Entity.id` is an entity ref and
-                    // went missing, which is this file's own failure mode
-                    // appearing inside the file that exists to prevent it.
-                    let inline = inline_struct_variant(t);
-                    if !inline.is_empty() {
-                        body.extend(inline);
-                    } else if let Some((place, ty)) = named_field(t) {
-                        body.push((place, ty));
-                    } else if let Some((place, ty)) = tuple_variant(t) {
-                        body.push((place, ty));
-                    }
+            continue;
+        };
+        let attributes = preamble_attributes(&lines, i);
+        let mut body: Vec<(String, String)> = Vec::new();
+        i += 1;
+        // A type block ends at the `}` standing at its header's own indentation
+        // — for a column-0 type the first column-0 `}`, since nested braces are
+        // indented (the shape the detector-wiring tripwire relies on).
+        while i < lines.len()
+            && !lines[i]
+                .strip_prefix(indent)
+                .is_some_and(|rest| rest.starts_with('}'))
+        {
+            let t = lines[i].trim();
+            if !t.starts_with("//") && !t.starts_with("#[") {
+                // Order matters: an inline struct-variant (`Entity { id:
+                // String },`) also contains a `:` and would otherwise be read
+                // as one malformed field and dropped. It was, on the first run
+                // — `TypedObject::Entity.id` is an entity ref and went missing,
+                // which is this file's own failure mode appearing inside the
+                // file that exists to prevent it.
+                let inline = inline_struct_variant(t);
+                if !inline.is_empty() {
+                    body.extend(inline);
+                } else if let Some((place, ty)) = named_field(t) {
+                    body.push((place, ty));
+                } else if let Some((place, ty)) = tuple_variant(t) {
+                    body.push((place, ty));
                 }
-                i += 1;
             }
-            out.insert(name, TypeDecl { attributes, body });
+            i += 1;
         }
+        out.push((name, TypeDecl { attributes, body }));
     }
     out
 }
 
-/// The attribute lines directly above line `header`, back to the blank line or
-/// column-0 `}` that ends the previous item — comment lines skipped (see
-/// [`TypeDecl`] for why).
+/// The store's candidate types, by name, from the files the store laws list.
+fn type_decls() -> BTreeMap<String, TypeDecl> {
+    SOURCES
+        .iter()
+        .flat_map(|(_label, src)| decls_in(src, Headers::TopLevelPub))
+        .collect()
+}
+
+/// The attribute lines directly above line `header` — comment lines skipped (see
+/// [`TypeDecl`] for why) — stopping at the first line that is neither. A
+/// multi-line attribute is read upward from its closing `]` to its `#[`.
+///
+/// It stops at CODE, not only at a blank line: a type declared inside a function
+/// sits directly under that function's signature, and reading the signature as
+/// an attribute would credit the type with whatever the signature mentions.
 fn preamble_attributes(lines: &[&str], header: usize) -> String {
     let mut attributes: Vec<&str> = Vec::new();
+    let mut inside = false;
     let mut j = header;
     while j > 0 {
         j -= 1;
         let t = lines[j].trim();
-        if t.is_empty() || lines[j].starts_with('}') {
-            break;
+        if t.starts_with("//") {
+            continue;
         }
-        if !t.starts_with("//") {
+        if t.starts_with("#[") {
             attributes.push(t);
+            inside = false;
+        } else if inside || t.ends_with(']') {
+            attributes.push(t);
+            inside = true;
+        } else {
+            break;
         }
     }
     attributes.reverse();
@@ -348,6 +403,145 @@ fn is_map_shaped(decl: &TypeDecl) -> bool {
     decl.body.iter().any(|(place, _)| {
         place.contains('.') || place.starts_with(|c: char| c.is_ascii_lowercase())
     })
+}
+
+/// A `Deserialize` type that reads past an unknown key ON PURPOSE, and why.
+///
+/// Every row is a decision somebody can defend in review. A row that stops
+/// matching a lenient map-shaped type is refused as stale, and a row naming a
+/// type the store reaches is refused outright — the store's refusal has no
+/// exemption.
+const LENIENT_BY_DESIGN: &[(&str, &str, &str)] = &[
+    ("crates/mnemosyne-cli/src/atomic_cli.rs", "AnchorEntry", "medium-forge's `epub-anchor-map` is one file read by two verbs, each taking only the keys it needs — `import-epub-anchors` the locators, `import-epub-excerpts` the text — so each reader must pass over the other's"),
+    ("crates/mnemosyne-cli/src/atomic_cli.rs", "AnchorMap", "the root of that shared `epub-anchor-map`, as `import-epub-anchors` reads it; `tools/medium-forge/convert.py` also writes a `schema` key there"),
+    ("crates/mnemosyne-cli/src/atomic_cli.rs", "EpubExcerptEntry", "the other reader of the same shared `epub-anchor-map` (see `AnchorEntry`)"),
+    ("crates/mnemosyne-cli/src/atomic_cli.rs", "ExcerptAnchorMap", "the root of that shared `epub-anchor-map`, as `import-epub-excerpts` reads it; `tools/medium-forge/convert.py` also writes a `schema` key there"),
+    ("crates/mnemosyne-server/src/audit.rs", "AuditRecord", "append-only records written by every past build are read back; a field a later build retires must not make that history unreadable, and the log has no migration ladder"),
+    ("crates/mnemosyne-validate/src/verifies_linkage.rs", "CatalogEntry", "a consumer-generated `verifies-catalog/v1`, documented lenient on extra fields since its first round"),
+    ("crates/mnemosyne-validate/src/verifies_linkage.rs", "VerifiesCatalog", "the root of that consumer-generated catalog"),
+];
+
+/// Every Rust source under this workspace's `crates/*/src`, keyed by its
+/// repository-relative path.
+fn crate_sources() -> Vec<(String, String)> {
+    fn walk(dir: &Path, into: &mut Vec<PathBuf>) {
+        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+            .map(|entry| entry.expect("a directory entry").path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                walk(&path, into);
+            } else if path.extension().is_some_and(|x| x == "rs") {
+                into.push(path);
+            }
+        }
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut sources: Vec<PathBuf> = std::fs::read_dir(root.join("crates"))
+        .expect("the workspace has a crates/ directory")
+        .map(|entry| entry.expect("a directory entry").path().join("src"))
+        .filter(|src| src.is_dir())
+        .collect();
+    sources.sort();
+    let mut files = Vec::new();
+    for src in sources {
+        walk(&src, &mut files);
+    }
+    files
+        .into_iter()
+        .map(|path| {
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            let relative = path
+                .strip_prefix(&root)
+                .expect("every source is under the root")
+                .to_string_lossy()
+                .into_owned();
+            (relative, text)
+        })
+        .collect()
+}
+
+/// EVERY TYPE READ FROM JSON REFUSES A KEY IT DOES NOT MODEL — not only the store's.
+///
+/// The store refusing an unknown key closed the loss AT REST. The same loss was
+/// still open on every wire into the store: an agent calling
+/// `add_inventory_entry` with a `"modality"` got success and the key was dropped
+/// before any store saw it, and a manifest key an importer does not model
+/// vanished the same way. So the population here is every map-shaped
+/// `Deserialize` type in every crate's sources, declared anywhere — including
+/// inside the function that parses it — and an exception is a written decision
+/// in [`LENIENT_BY_DESIGN`], never an omission.
+#[test]
+fn every_type_read_from_json_refuses_a_key_it_does_not_model() {
+    let store_types = reachable_types(&type_decls());
+    let mut map_shaped = 0usize;
+    let mut lenient: Vec<String> = Vec::new();
+    let mut exempted: BTreeSet<(String, String)> = BTreeSet::new();
+    for (file, src) in crate_sources() {
+        for (name, decl) in decls_in(&src, Headers::Anywhere) {
+            if !decl.attributes.contains("Deserialize") || !is_map_shaped(&decl) {
+                continue;
+            }
+            map_shaped += 1;
+            if decl.attributes.contains("deny_unknown_fields") {
+                continue;
+            }
+            if LENIENT_BY_DESIGN
+                .iter()
+                .any(|(f, t, _)| *f == file && *t == name)
+            {
+                exempted.insert((file.clone(), name));
+            } else {
+                lenient.push(format!("{file}: {name}"));
+            }
+        }
+    }
+
+    // NON-VACUITY FLOOR — a scan that stops matching headers finds nothing, and
+    // nothing lacks the attribute.
+    assert!(
+        map_shaped >= 150,
+        "only {map_shaped} map-shaped `Deserialize` types across crates/*/src — the \
+         scan has stopped reaching the sources rather than the sources having shrunk"
+    );
+    assert!(
+        lenient.is_empty(),
+        "{} of {map_shaped} map-shaped `Deserialize` type(s) read past a key they do not \
+         model, and none is a written decision. Add `#[serde(deny_unknown_fields)]` — \
+         or, only where reading past keys IS the design, a LENIENT_BY_DESIGN row with \
+         the reason:\n    {}",
+        lenient.len(),
+        lenient.join("\n    ")
+    );
+    let stale: Vec<String> = LENIENT_BY_DESIGN
+        .iter()
+        .filter(|(f, t, _)| !exempted.contains(&((*f).to_string(), (*t).to_string())))
+        .map(|(f, t, _)| format!("{f}: {t}"))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "LENIENT_BY_DESIGN rows that match no lenient map-shaped `Deserialize` type — \
+         stale, or strict after all:\n    {}",
+        stale.join("\n    ")
+    );
+    let store_exempt: Vec<&str> = LENIENT_BY_DESIGN
+        .iter()
+        .map(|(_, t, _)| *t)
+        .filter(|t| store_types.contains(*t))
+        .collect();
+    assert!(
+        store_exempt.is_empty(),
+        "a type the store reaches cannot be lenient by design: {store_exempt:?}"
+    );
+    for (file, name, why) in LENIENT_BY_DESIGN {
+        assert!(
+            !why.trim().is_empty(),
+            "{file}: {name} is exempt with no reason; the reason IS the row"
+        );
+    }
 }
 
 /// A FIELD NAME MAY CARRY A DIGIT, AND THE WALK MUST READ IT.

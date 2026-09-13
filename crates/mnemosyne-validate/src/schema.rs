@@ -522,13 +522,12 @@ fn manifest_overview(kinds: &[KindWire]) -> String {
          {}. Later kinds may reference earlier ones (an entity names an entity_kind; a Quantity \
          object names a unit; a fact names a frame/branch/entity/section; a disclosure override \
          names a fact), so order matters — registries first, then facts, then disclosure. Any \
-         array may be omitted (defaults to empty). UNKNOWN KEYS ARE IGNORED, DELIBERATELY: every \
-         field is optional and the parser neither rejects nor reports a key it does not know, so a \
-         MISSPELLED kind (or a key from a shape this manifest never had) parses cleanly and builds \
-         NOTHING — `exit 0`, zero rows. That leniency is load-bearing (a reader can ask \"does this \
-         file parse\" separately from \"does it build anything\"), which is exactly why the roster \
-         above is authoritative: a correct guess and a typo are byte-identical at the parse, so the \
-         only way to know a kind exists is that it is named here. Sections are NOT in this manifest \
+         array may be omitted (defaults to empty). A KEY THE MANIFEST DOES NOT MODEL IS REFUSED, \
+         at the root and inside every row, and the refusal names it: a MISSPELLED kind (or a key \
+         from a shape this manifest never had) is an error, never a clean parse that builds \
+         nothing. Whether a file parses and whether it builds anything are still separate \
+         questions — a manifest of empty arrays parses and builds nothing — and the roster above \
+         is the list of kinds the refusal checks against. Sections are NOT in this manifest \
          — see the sections wire; author them first, since facts name them.",
         names.len(),
         names.join(", ")
@@ -2877,31 +2876,33 @@ mod tests {
              held eight",
             arrays.len()
         );
-        // The leniency that makes the roster load-bearing (see the test below).
+        // The refusal the roster is checked by (see the test below).
         assert!(
-            overview.contains("UNKNOWN KEYS ARE IGNORED"),
-            "an author cannot discover a misspelled kind from the parser, so the contract must say \
-             the parse is silent"
+            overview.contains("A KEY THE MANIFEST DOES NOT MODEL IS REFUSED"),
+            "a misspelled kind is refused by name, so the contract must say the parse refuses \
+             rather than describe the silent parse that preceded it"
         );
     }
 
-    /// Round 906 — the manifest's unknown-key tolerance is INTENDED, not a bug,
-    /// and this pins it as behaviour rather than leaving it as prose. It is the
-    /// reason the roster above is the only way to learn a kind exists: a correct
-    /// guess and a typo produce byte-identical results at the parse (R904 gap 3).
-    /// `evidence_replay_smoke::classify` depends on this to separate "does the
-    /// file parse" from "does the file build anything".
+    /// A MISSPELLED KIND IS REFUSED BY NAME — the reversal of Round 906.
+    ///
+    /// Round 906 pinned the opposite as intended: a manifest key the parser did
+    /// not know parsed cleanly and built nothing, so a correct guess and a typo
+    /// were byte-identical at the parse and the roster was the only way to learn
+    /// a kind existed. The cost it named was the defect — `exit 0`, zero rows,
+    /// and nothing saying why. A manifest now refuses the key and names it, and
+    /// the pair below keeps the one discriminating input that test held: the
+    /// spelling is still the ONLY difference.
     #[test]
-    fn manifest_tolerates_unknown_keys_and_builds_nothing() {
-        let typo = r#"{ "unti": [ { "unit_id": "minute" } ], "no_such_kind": 3 }"#;
-        let m: mnemosyne_atomic::FactsManifest = serde_json::from_str(typo)
-            .expect("unknown keys are ignored — the documented, load-bearing leniency");
-        // Parsed cleanly AND built nothing: the two questions the contract must
-        // keep separate.
-        assert!(m.units.is_empty(), "a misspelled kind builds no rows");
-        assert!(m.frames.is_empty() && m.facts.is_empty() && m.entities.is_empty());
-        // The correctly-spelled key is what differs — the discriminating input
-        // this pair exists to hold (without it the assertion above is vacuous).
+    fn a_misspelled_manifest_kind_is_refused_by_name() {
+        let typo = r#"{ "unti": [ { "unit_id": "minute" } ] }"#;
+        let err = serde_json::from_str::<mnemosyne_atomic::FactsManifest>(typo)
+            .expect_err("a misspelled kind is refused, not parsed into nothing")
+            .to_string();
+        assert!(
+            err.contains("unknown field `unti`"),
+            "the refusal names the key: {err}"
+        );
         let correct = r#"{ "units": [ { "unit_id": "minute" } ] }"#;
         let m: mnemosyne_atomic::FactsManifest =
             serde_json::from_str(correct).expect("the real key parses");

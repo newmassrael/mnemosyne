@@ -2517,6 +2517,7 @@ pub fn mutation_reason_report(
 /// of what the store holds (the Round 854 rule these gates keep re-learning).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct MutationReasonReport {
     pub target: Option<String>,
     pub total: usize,

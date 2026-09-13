@@ -217,11 +217,13 @@ mod tests {
     #[test]
     fn a_ref_id_is_wire_identical_to_the_string_it_replaces() {
         #[derive(Serialize, Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Before {
             unit: String,
             by_unit: BTreeMap<String, i64>,
         }
         #[derive(Serialize, Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct After {
             unit: UnitId,
             by_unit: BTreeMap<UnitId, i64>,

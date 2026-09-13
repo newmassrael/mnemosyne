@@ -426,6 +426,7 @@ pub struct PluginsSection {
 /// variant set as the runtime trait.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "transport", rename_all = "kebab-case")]
+#[serde(deny_unknown_fields)]
 pub enum SymbolResolverConfig {
     InProcess {
         backend: String,

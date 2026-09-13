@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub enum ProposalKind {
     /// Create a new entity instance.
     EntityCreate {
@@ -52,6 +53,7 @@ pub enum ProposalKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Proposal {
     /// Caller-supplied identifier (idempotency / audit trace).
     pub proposal_id: String,
@@ -60,6 +62,7 @@ pub struct Proposal {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProposalResult {
     pub proposal_id: String,
     pub accepted: bool,

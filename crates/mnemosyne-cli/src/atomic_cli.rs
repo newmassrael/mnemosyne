@@ -2497,12 +2497,14 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
 /// `sha256(text)` so `validate-content-drift` catches later out-of-band edits.
 pub fn cmd_import_content_excerpts(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct ExcerptEntry {
         section_id: String,
         anchor: mnemosyne_core::ContentAnchor,
         text: String,
     }
     #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct ExcerptMap {
         excerpts: Vec<ExcerptEntry>,
     }
@@ -2666,6 +2668,7 @@ pub fn cmd_import_evidence_reviews(workspace_root: &Path, args: &[String]) -> Re
 /// by section (each section's `scene_cast` is replaced).
 pub fn cmd_import_scene_cast(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct PresenceEntry {
         section_id: String,
         entity: String,
@@ -2676,6 +2679,7 @@ pub fn cmd_import_scene_cast(workspace_root: &Path, args: &[String]) -> Result<(
         text: String,
     }
     #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct SceneCastMap {
         presences: Vec<PresenceEntry>,
     }
@@ -2740,6 +2744,7 @@ pub fn cmd_import_scene_cast(workspace_root: &Path, args: &[String]) -> Result<(
 /// exists before saving. Each section's ladder is REPLACED by its entry.
 pub fn cmd_import_ladders(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct LadderEntry {
         section_id: String,
         #[serde(default)]
@@ -2747,6 +2752,7 @@ pub fn cmd_import_ladders(workspace_root: &Path, args: &[String]) -> Result<(), 
         rungs: Vec<mnemosyne_atomic::LadderRung>,
     }
     #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct LadderMap {
         ladders: Vec<LadderEntry>,
     }
@@ -4304,7 +4310,7 @@ pub fn cmd_set_section_decision_status(
 /// deleted hand-authoring `set-section-normative-excerpt` verb.
 pub fn cmd_import_epub_excerpts(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     #[derive(serde::Deserialize)]
-    struct ExcerptEntry {
+    struct EpubExcerptEntry {
         id: String,
         #[serde(default)]
         text: Option<String>,
@@ -4313,7 +4319,7 @@ pub fn cmd_import_epub_excerpts(workspace_root: &Path, args: &[String]) -> Resul
     }
     #[derive(serde::Deserialize)]
     struct ExcerptAnchorMap {
-        anchors: Vec<ExcerptEntry>,
+        anchors: Vec<EpubExcerptEntry>,
     }
     let mut anchors_path: Option<String> = None;
     let mut sidecar: Option<String> = None;

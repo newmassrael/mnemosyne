@@ -49,9 +49,11 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EmptyArgs {}
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ValidateProjectionArgs {
     /// Force a re-sync from the current log before validating. The warm
     /// projection already re-syncs automatically after every successful mutate
@@ -63,6 +65,7 @@ pub struct ValidateProjectionArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct QuerySectionArgs {
     /// Section ID without the leading `§` (e.g. `"39"`, `"39.1"`,
     /// `"changelog"`). Pass `--list-sections` form via `list_sections`
@@ -78,6 +81,7 @@ pub struct QuerySectionArgs {
 
 // Round 638 — the single-entry changelog read + the citation check.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct QueryChangelogEntryArgs {
     /// The citation to verify and read — a round, e.g. `Round 625`. The
     /// exact stored key (with its title) also resolves.
@@ -86,6 +90,7 @@ pub struct QueryChangelogEntryArgs {
 
 // Round 467/470 — whole-ledger changelog listing (R410 read model exposed).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ListChangelogArgs {
     /// Keep only the newest N entries (the returned `total` still reports
     /// the full ledger size — a bounded read is never mistaken for the
@@ -99,6 +104,7 @@ pub struct ListChangelogArgs {
 // mutate primitive but useful standalone for verifying a term's footprint
 // before mutating.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct QueryTermArgs {
     /// Pattern to search. Literal by default; set `regex = true` to
     /// interpret as a regex (`regex` crate syntax).
@@ -126,6 +132,7 @@ pub struct QueryTermArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct StyleCheckArgs {
     /// Optional doc path relative to workspace root. Omit to check
     /// every doc listed in `mnemosyne.toml`.
@@ -145,6 +152,7 @@ pub struct StyleCheckArgs {
 /// struct can only say one thing, so it said the intent's rule to the title and
 /// the parent doc as well, and named none of them.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionTitleArgs {
     /// Section ID to mutate. Pass `"39"`, not `"§39"`.
     pub section_id: ExistingRef,
@@ -153,6 +161,7 @@ pub struct SetSectionTitleArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionParentDocArgs {
     /// Section ID to mutate. Pass `"39"`, not `"§39"`.
     pub section_id: ExistingRef,
@@ -161,6 +170,7 @@ pub struct SetSectionParentDocArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionIntentArgs {
     /// Section ID to mutate. Pass `"39"`, not `"§39"`.
     pub section_id: ExistingRef,
@@ -171,6 +181,7 @@ pub struct SetSectionIntentArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionBulletsArgs {
     pub section_id: ExistingRef,
     /// Ordered list of bullets. Each ≤ 100 chars per T3 default.
@@ -183,6 +194,7 @@ pub struct SetSectionBulletsArgs {
 /// it in the handler. One struct for both meant the schema described the free
 /// case and the constrained one identically.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionAlternativesArgs {
     pub section_id: ExistingRef,
     /// Ordered list of rejected alternatives. Replaces the existing list; an
@@ -191,6 +203,7 @@ pub struct SetSectionAlternativesArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddSectionCaveatArgs {
     pub section_id: ExistingRef,
     /// Single caveat bullet to append.
@@ -198,6 +211,7 @@ pub struct AddSectionCaveatArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetImpactScopeArgs {
     pub section_id: ExistingRef,
     /// Cross-ref targets without the `§` prefix, e.g. `["39", "61.1"]`.
@@ -205,6 +219,7 @@ pub struct SetImpactScopeArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddSectionExampleArgs {
     pub section_id: ExistingRef,
     /// Code-fence language tag (e.g. `"rust"`, `"toml"`).
@@ -214,6 +229,7 @@ pub struct AddSectionExampleArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddSectionBindingArgs {
     /// Section ID without the `§` prefix.
     pub section_id: ExistingRef,
@@ -237,6 +253,7 @@ pub struct AddSectionBindingArgs {
 // Round 287/289 — Section creation + outline setter MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddSectionArgs {
     /// Section ID to create. No `§` prefix in the value; use the bare slug
     /// or numbered id (e.g. `"39"`, `"39.1"`, `"my-section"`).
@@ -253,6 +270,7 @@ pub struct AddSectionArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionParentSectionArgs {
     /// Section being re-parented.
     pub section_id: ExistingRef,
@@ -265,6 +283,7 @@ pub struct SetSectionParentSectionArgs {
 /// R678 — the section-mutate parity gap the cost-audit found: an MCP agent
 /// could add/edit a section but not REMOVE one, nor transition its lifecycle.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveSectionArgs {
     /// Section ID (the `§` prefix is stripped if present).
     pub section_id: ExistingRef,
@@ -275,6 +294,7 @@ pub struct RemoveSectionArgs {
 
 /// R678 — the section lifecycle transition (Active/Superseded/Removed/Open).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionDecisionStatusArgs {
     /// Section ID (the `§` prefix is stripped if present).
     pub section_id: ExistingRef,
@@ -290,6 +310,7 @@ pub struct SetSectionDecisionStatusArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveSectionBindingArgs {
     /// Section ID without the `§` prefix.
     pub section_id: ExistingRef,
@@ -306,6 +327,7 @@ pub struct RemoveSectionBindingArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionBindingKindArgs {
     /// Section ID without the `§` prefix.
     pub section_id: ExistingRef,
@@ -322,6 +344,7 @@ pub struct SetSectionBindingKindArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionCoverageExpectationArgs {
     /// Section ID without the `§` prefix.
     pub section_id: ExistingRef,
@@ -336,6 +359,7 @@ pub struct SetSectionCoverageExpectationArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetSectionVerificationExpectationArgs {
     /// Section ID without the `§` prefix.
     pub section_id: ExistingRef,
@@ -350,6 +374,7 @@ pub struct SetSectionVerificationExpectationArgs {
 
 /// Round 1024 — the reasoned-mutation ledger read.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportMutationReasonsArgs {
     /// Narrow to one record's rows — a section, fact, binding or entry id. A
     /// target that no longer exists is the interesting case, not an error:
@@ -362,6 +387,7 @@ pub struct ReportMutationReasonsArgs {
 /// VerifiesBinding claim, else a SectionCompleteness claim. Enum fields take the
 /// snake_case tag. The event_id is derived in-core (not supplied).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddConfirmationEventArgs {
     /// Claim section ID without the `§` prefix.
     pub section_id: ExistingRef,
@@ -403,6 +429,7 @@ pub struct AddConfirmationEventArgs {
 // an authoring AI's interface is MCP, the R127 mutate-gate).
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddFrameArgs {
     /// Frame id — the registry key every fact's `frame` must reference.
     pub frame_id: FreshId,
@@ -412,6 +439,7 @@ pub struct AddFrameArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddBranchArgs {
     /// Branch id — the registry key every non-default fact `branch` must
     /// reference. `main` is known by construction and never registered.
@@ -437,12 +465,14 @@ pub struct AddBranchArgs {
 /// world-line + the parent's merge coordinate (structure-section id).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(inline)]
+#[serde(deny_unknown_fields)]
 pub struct ConvergeEdgeArg {
     pub branch: String,
     pub at: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddEntityArgs {
     /// Entity id — the registry key fact `entities` refs must name.
     pub entity_id: FreshId,
@@ -461,6 +491,7 @@ pub struct AddEntityArgs {
 /// register verb an MCP-only agent could never declare a kind (the Phase-0
 /// AI-first north star). Mirrors `add_predicate` / `add_entity_kind` (CLI).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddEntityKindArgs {
     /// Entity-kind id — one member of the vocabulary `add_entity`'s `kind`
     /// refs (e.g. character / place / item). Fail-loud, load-bearing.
@@ -482,6 +513,7 @@ pub struct AddEntityKindArgs {
 /// an MCP-only agent could never re-parent a kind (fix a mis-declared parent,
 /// add a second super-kind), leaving only a hand-edit or a banned vN id.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetEntityKindParentsArgs {
     /// The EXISTING entity-kind whose super-kinds to replace (fail-loud if absent).
     pub kind_id: ExistingRef,
@@ -496,6 +528,7 @@ pub struct SetEntityKindParentsArgs {
 /// referenced (an Entity.kind, a child kind's parents, a predicate endpoint),
 /// so an MCP-only agent can un-declare a mistaken kind without orphaning a ref.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveEntityKindArgs {
     /// The entity-kind to remove (fail-loud if absent or still referenced).
     pub kind_id: ExistingRef,
@@ -506,6 +539,7 @@ pub struct RemoveEntityKindArgs {
 /// so no Quantity fact could pass the units-registry gate. Mirrors
 /// `add_entity_kind`.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddUnitArgs {
     /// Unit id — one member of the measurement vocabulary (e.g. day / minute /
     /// metre). Fail-loud: a Quantity whose unit is unregistered rejects.
@@ -518,6 +552,7 @@ pub struct AddUnitArgs {
 /// (affection / karma / gold). Mirrors `add_unit`. Without it an MCP-only agent
 /// could not declare a meter, so no parameter_delta could pass the gate.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddParameterArgs {
     /// Parameter id — one member of the meter vocabulary (e.g. affection).
     pub parameter_id: FreshId,
@@ -529,6 +564,7 @@ pub struct AddParameterArgs {
 /// side-table entry keyed by the beat fact id. The consumer accumulates the
 /// running sum; Mnemosyne never does.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddParameterDeltaArgs {
     /// The BEAT FACT ID the delta rides (must already exist).
     pub fact_id: ExistingRef,
@@ -541,6 +577,7 @@ pub struct AddParameterDeltaArgs {
 /// Remove one (fact, parameter) delta (Round 729) — the peer of
 /// `add_parameter_delta`.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveParameterDeltaArgs {
     /// The beat fact id whose delta to drop.
     pub fact_id: ExistingRef,
@@ -552,6 +589,7 @@ pub struct RemoveParameterDeltaArgs {
 /// side-table entry keyed by the choice fact id. The gate references the meter
 /// DIRECTLY (no boolean proxy); the consumer accumulates the meter and compares.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddParameterGateArgs {
     /// The CHOICE FACT ID the gate rides (must already exist; rides ANY fact — no
     /// map-edge check).
@@ -567,6 +605,7 @@ pub struct AddParameterGateArgs {
 /// Remove a choice's parameter gate (Round 730) — the peer of
 /// `add_parameter_gate`.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveParameterGateArgs {
     /// The choice fact id whose gate to drop (fail-loud if it has none).
     pub fact_id: ExistingRef,
@@ -576,6 +615,7 @@ pub struct RemoveParameterGateArgs {
 /// by the adjacent fact id, NOT a reified fact (the cost is frame-invariant edge
 /// metadata). Mirrors `add_unit`.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddEdgeCostArgs {
     /// The ADJACENT FACT ID the cost attaches to (must already exist).
     pub fact_id: ExistingRef,
@@ -589,6 +629,7 @@ pub struct AddEdgeCostArgs {
 /// Remove a map edge's cost (Round 711) — the peer of `add_edge_cost`. Drops a
 /// stray cost off a non-edge fact without retracting the fact.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveEdgeCostArgs {
     /// The fact id whose edge cost to drop (fail-loud if it has none).
     pub fact_id: ExistingRef,
@@ -597,6 +638,7 @@ pub struct RemoveEdgeCostArgs {
 /// Attach a multiset COUNT to a fact (Round 731 → DEBT-L) — a side-table entry
 /// keyed by the fact id, value = a positive count. Mirrors `add_edge_cost`.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddFactCountArgs {
     /// The FACT ID the count attaches to (must already exist).
     pub fact_id: ExistingRef,
@@ -608,6 +650,7 @@ pub struct AddFactCountArgs {
 /// Remove a fact's multiset count (Round 731) — the peer of `add_fact_count`.
 /// Drops a stray count off a fact without retracting the fact.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveFactCountArgs {
     /// The fact id whose multiset count to drop (fail-loud if it has none).
     pub fact_id: ExistingRef,
@@ -616,6 +659,7 @@ pub struct RemoveFactCountArgs {
 /// Attach a place-access guard to one map edge (Round 717 design → Round 720).
 /// Keyed by the edge fact id, value = the condition fact id; both must exist.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddEdgeGuardArgs {
     /// The ADJACENT (edge) FACT ID the guard attaches to (must already exist).
     pub fact_id: ExistingRef,
@@ -627,6 +671,7 @@ pub struct AddEdgeGuardArgs {
 /// Remove a map edge's whole guard set (Round 720) — the peer of `add_edge_guard`.
 /// Drops a stray guard off a non-edge fact without retracting the fact.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveEdgeGuardArgs {
     /// The fact id whose edge guard set to drop (fail-loud if it has none).
     pub fact_id: ExistingRef,
@@ -634,6 +679,7 @@ pub struct RemoveEdgeGuardArgs {
 
 /// Remove ONE condition from a map edge's guard set (Round 722).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveEdgeGuardConditionArgs {
     /// The edge fact id whose guard set to edit.
     pub fact_id: ExistingRef,
@@ -644,6 +690,7 @@ pub struct RemoveEdgeGuardConditionArgs {
 
 /// Set (or clear) a map edge guard's K-of-N threshold (Round 723).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetEdgeGuardThresholdArgs {
     /// The edge fact id whose guard threshold to set (must already have a guard).
     pub fact_id: ExistingRef,
@@ -654,12 +701,14 @@ pub struct SetEdgeGuardThresholdArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportEntityArgs {
     /// Entity id to assemble the dossier for.
     pub entity_id: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddPredicateArgs {
     /// Predicate id — the registry key every TypedClaim predicate must
     /// name. Load-bearing (narrative rules key off it), hence fail-loud.
@@ -690,6 +739,7 @@ pub struct AddPredicateArgs {
 /// `description` is mandatory here unlike `add_predicate`: omitting it on an
 /// update path would wipe it silently.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetPredicateArgs {
     /// Predicate id — must ALREADY be registered (`add_predicate` creates).
     pub predicate_id: ExistingRef,
@@ -716,12 +766,14 @@ pub struct SetPredicateArgs {
 
 /// R658 — remove a predicate from the registry.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemovePredicateArgs {
     /// Predicate id. Rejects while any typed leg still names it.
     pub predicate_id: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddDisclosurePlanArgs {
     /// Telling id — the registry key for this named telling over the fact base.
     pub telling_id: FreshId,
@@ -736,6 +788,7 @@ pub struct AddDisclosurePlanArgs {
 /// trigger-coordinate SET and an optional K-of-N threshold.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[schemars(inline)]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureRevealArg {
     /// World-line this reveal pins timing for (main or a registered branch).
     pub branch: String,
@@ -749,6 +802,7 @@ pub struct DisclosureRevealArg {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetDisclosureArgs {
     /// Telling id (add_disclosure_plan first).
     pub telling_id: ExistingRef,
@@ -772,6 +826,7 @@ pub struct SetDisclosureArgs {
 
 /// Round 626 — clear one telling's disclosure decision for one fact.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveDisclosureArgs {
     /// Telling id carrying the decision.
     pub telling_id: ExistingRef,
@@ -784,6 +839,7 @@ pub struct RemoveDisclosureArgs {
 /// Round 752 — add ONE trigger coordinate to a fact's per-world first-reveal SET
 /// (the granular peer of `set_disclosure`, mirroring `add_edge_guard`).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddDisclosureRevealCoordArgs {
     /// Telling id carrying the override (`set_disclosure` first).
     pub telling_id: ExistingRef,
@@ -799,6 +855,7 @@ pub struct AddDisclosureRevealCoordArgs {
 /// Round 752 — remove ONE trigger coordinate from a fact's per-world first-reveal
 /// SET (the granular peer of `add_disclosure_reveal_coord`).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveDisclosureRevealCoordArgs {
     /// Telling id carrying the override.
     pub telling_id: ExistingRef,
@@ -814,6 +871,7 @@ pub struct RemoveDisclosureRevealCoordArgs {
 /// Round 752 — set (or clear) a fact's per-world first-reveal K-of-N THRESHOLD
 /// (the granular peer of `set_edge_guard_threshold`).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetDisclosureRevealThresholdArgs {
     /// Telling id carrying the override.
     pub telling_id: ExistingRef,
@@ -836,6 +894,7 @@ pub struct SetDisclosureRevealThresholdArgs {
 /// this wrapper exists only because a JSON-RPC tool arg must be an object, not a
 /// bare array.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ImportSectionsArgs {
     /// The sections to create in one atomic transaction (the typed `SectionImport`
     /// shape the CLI `import-sections` manifest also reads).
@@ -852,6 +911,7 @@ pub struct ImportSectionsArgs {
 // via the enum's JsonSchema (the Quantity/Fact variants needed no MCP arg change).
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AmendFactArgs {
     /// The revised fact content (same shape as `add_fact`; `fact_id` names
     /// the existing fact to revise — the id never changes).
@@ -862,6 +922,7 @@ pub struct AmendFactArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RetractFactArgs {
     pub fact_id: ExistingRef,
     /// Mandatory rationale (audit safeguard).
@@ -869,12 +930,14 @@ pub struct RetractFactArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddFactConflictArgs {
     pub fact_id: ExistingRef,
     pub conflicts_with: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ValidateContinuityArgs {
     /// Canon-order declaration path override (workspace-relative; bypasses
     /// the configured sha256 pin — the R428 rule). Omit to use
@@ -889,6 +952,7 @@ pub struct ValidateContinuityArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProposeVerdictArgs {
     /// Path to the candidate `import-facts` manifest (a JSON object with
     /// `frames`/`branches`/`entities`/`predicates`/`facts`/`disclosure_plans`
@@ -906,6 +970,7 @@ pub struct ProposeVerdictArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportAuthoringFrontierArgs {
     /// Telling id — enables the quest + disclosure gap sections (unresolved
     /// quests, never-planned disclosures). Omit for the telling-independent
@@ -924,6 +989,7 @@ pub struct ReportAuthoringFrontierArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportTimelineGapsArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
@@ -935,6 +1001,7 @@ pub struct ReportTimelineGapsArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportTransitionMapArgs {
     /// `narrative-rules/v1` declaration path override (Round 875; the
     /// transition rules DECLARE which predicate names a map edge). Omit to use
@@ -945,6 +1012,7 @@ pub struct ReportTransitionMapArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportFrameViewArgs {
     /// Epistemic frame to project.
     pub frame: ExistingRef,
@@ -963,6 +1031,7 @@ pub struct ReportFrameViewArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportPayoffCoverageArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
@@ -970,6 +1039,7 @@ pub struct ReportPayoffCoverageArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportIronyIntervalsArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
@@ -977,6 +1047,7 @@ pub struct ReportIronyIntervalsArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportPlaythroughManuscriptArgs {
     /// Single-world filter (a registered branch id or `main`); omitted =
     /// every query world. Fail-loud on an unregistered id.
@@ -997,6 +1068,7 @@ pub struct ReportPlaythroughManuscriptArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportForkTreeArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
@@ -1004,12 +1076,14 @@ pub struct ReportForkTreeArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportDisclosureCoverageArgs {
     /// Telling id to classify (disclosed / hidden-by-design / never-planned).
     pub telling: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportPlayableWorldArgs {
     /// Telling id whose disclosure plan resolves the locators (required — a
     /// playable world IS a telling). Fail-loud on a typo'd id.
@@ -1025,6 +1099,7 @@ pub struct ReportPlayableWorldArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportQuestGraphArgs {
     /// Telling id whose disclosure plan resolves the giver-surface locators
     /// (required). Fail-loud on a typo'd id.
@@ -1040,6 +1115,7 @@ pub struct ReportQuestGraphArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureLeakArgs {
     /// Telling id whose plan is the gate's authored side.
     pub telling: ExistingRef,
@@ -1055,6 +1131,7 @@ pub struct DisclosureLeakArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RenderFidelityArgs {
     /// Path to the BLIND RE-EXTRACTED prose store to check.
     pub against: AgentPath,
@@ -1066,6 +1143,7 @@ pub struct RenderFidelityArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectWorldArgs {
     /// The world-line to project onto.
     pub world: ExistingRef,
@@ -1077,6 +1155,7 @@ pub struct ProjectWorldArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ImportTypingProposalsArgs {
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
@@ -1087,6 +1166,7 @@ pub struct ImportTypingProposalsArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReportEdgeCandidatesArgs {
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
@@ -1094,6 +1174,7 @@ pub struct ReportEdgeCandidatesArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ImportEdgeProposalsArgs {
     /// Path to an `edge-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
@@ -1106,12 +1187,14 @@ pub struct ImportEdgeProposalsArgs {
 // Round 278 — Phase 1A inventory MCP arg structs.
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct InventoryIdArgs {
     /// Inventory id (e.g. `"ARP_07"`, `"TCP_RETRANSMISSION_TO_04"`).
     pub inventory_id: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AddInventoryEntryArgs {
     /// Stable inventory id. Must be non-empty, no whitespace.
     pub inventory_id: FreshId,
@@ -1131,6 +1214,7 @@ pub struct AddInventoryEntryArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetInventoryStatusArgs {
     pub inventory_id: ExistingRef,
     /// Lifecycle state the entry moves to.
@@ -1141,6 +1225,7 @@ pub struct SetInventoryStatusArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetInventorySectionRefArgs {
     pub inventory_id: ExistingRef,
     /// New section_ref without `§`. Omit (or pass `null`) AND set
@@ -1154,6 +1239,7 @@ pub struct SetInventorySectionRefArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveInventoryEntryArgs {
     pub inventory_id: ExistingRef,
     /// Mandatory rationale recorded in the receipt (audit safeguard).
@@ -1167,6 +1253,7 @@ pub struct RemoveInventoryEntryArgs {
 // [[publishable_override_ledger]] row (R296 gate, automated by redact_term).
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetChangelogPublishableStringArgs {
     /// Existing entry_id whose publishable_decision_summary will be updated.
     /// NotFound if the entry has not been appended yet.
@@ -1176,6 +1263,7 @@ pub struct SetChangelogPublishableStringArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SetChangelogPublishableBulletsArgs {
     /// Existing entry_id whose publishable bullet list will be replaced.
     pub entry_id: ExistingRef,
@@ -1185,6 +1273,7 @@ pub struct SetChangelogPublishableBulletsArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EmitPublishableOverrideLedgerDraftArgs {
     /// Entry whose current publishable-vs-audit divergence is rendered as
     /// a `[[publishable_override_ledger]]` block. NotFound if entry_id is
@@ -1201,6 +1290,7 @@ pub struct EmitPublishableOverrideLedgerDraftArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RedactTermArgs {
     /// Pattern to search across the publishable half. Literal by default;
     /// set `regex = true` for `regex` crate syntax.
@@ -1232,6 +1322,7 @@ pub struct RedactTermArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AppendChangelogEntryArgs {
     /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
     /// monotonic (greater than the last entry's id).
@@ -4939,6 +5030,46 @@ mod tests {
         out
     }
 
+    /// AN ARGUMENT A TOOL DOES NOT MODEL IS REFUSED, AND EVERY SCHEMA SAYS SO.
+    ///
+    /// Before the argument types denied unknown fields, an agent that called
+    /// `add_inventory_entry` with a `"modality"` got success and the key was
+    /// dropped before any store saw it — the loss an adopter measured at rest,
+    /// one hop earlier. The refusal is half of the repair; the other half is that
+    /// the schema an agent reads says `additionalProperties: false`, so a caller
+    /// is told before it sends rather than after. Both are asked of the surface
+    /// the server actually answers `tools/list` from.
+    #[test]
+    fn an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so() {
+        let refused = serde_json::from_value::<AddInventoryEntryArgs>(serde_json::json!({
+            "inventory_id": "REQ-1", "status": "active", "modality": "shall_not"
+        }))
+        .expect_err("an unmodeled argument must be refused, not dropped")
+        .to_string();
+        assert!(refused.contains("unknown field `modality`"), "{refused}");
+        serde_json::from_value::<AddInventoryEntryArgs>(serde_json::json!({
+            "inventory_id": "REQ-1", "status": "active"
+        }))
+        .expect("control: the modeled arguments parse");
+
+        let tools = agent_facing_tools();
+        assert!(!tools.is_empty(), "the router answered no tools");
+        let open: Vec<String> = tools
+            .iter()
+            .filter(|tool| {
+                tool.input_schema.get("additionalProperties")
+                    != Some(&serde_json::Value::Bool(false))
+            })
+            .map(|tool| tool.name.to_string())
+            .collect();
+        assert!(
+            open.is_empty(),
+            "{} of {} tool schema(s) admit keys their arguments refuse: {open:?}",
+            open.len(),
+            tools.len()
+        );
+    }
+
     /// EVERY PATH AN AGENT CAN SEND SAYS WHAT IT IS RELATIVE TO.
     ///
     /// Round 998 wrote a canon order into the workspace, passed its name, and
@@ -8316,7 +8447,7 @@ mod tests {
         emit_publishable_override_ledger_draft_kind_reaches_the_answer:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             [set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line names Waits"}]
-            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1", "pattern": "Waits", "replacement": "lingers"}
+            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1"}
             ."kind" = "correction" seen "correction" in output;
         style_check_severity_reaches_the_answer:
             [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the section"}]
@@ -8501,16 +8632,16 @@ mod tests {
         set_inventory_section_ref_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}]
-            set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-1", "section_ref": "40", "reason": "filed"}
+            set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-1", "section_ref": "40"}
             ."section_ref" = "41" seen "41" in store;
         set_inventory_section_ref_clear_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active", "section_ref": "40"}]
-            set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-1", "reason": "unfiled"}
+            set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-1"}
             ."clear" = true seen "inv-1" in outcome;
         set_section_decision_status_superseding_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
-            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "superseded", "reason": "overtaken"}
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "superseded"}
             ."superseding" = "41" seen "superseding" in outcome;
         add_confirmation_event_file_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}]}]
@@ -8566,7 +8697,7 @@ mod tests {
             ."converges_from" = [{"branch": "b-other", "at": "sc-01"}, {"branch": "b-third", "at": "sc-01"}] seen "b-third" in store;
         set_section_decision_status_resolving_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}, {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
-            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "open", "reason": "reopened"}
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "open"}
             ."resolving" = "41" seen "41" in store;
         add_branch_description_reaches_the_store:
             add_branch(AddBranchArgs) {"branch_id": "b-what-if"}
@@ -8921,7 +9052,7 @@ mod tests {
         emit_publishable_override_ledger_draft_reason_reaches_the_answer:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             [set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line names Waits"}]
-            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1", "pattern": "Waits", "replacement": "lingers"}
+            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1"}
             ."reason" = "the name is a person's" seen "reason = \\\"the name is a person's\\\"" in output;
         // THE FOUR THE PROBE SWEEP CANNOT REACH. Its value comes from the
         // schema, and these four are the shapes the schema describes no value
@@ -9371,7 +9502,7 @@ mod tests {
             set_section_impact_scope(SetImpactScopeArgs) {"section_id": "sc-01", "refs": ["sc-02"]};
         set_section_parent_section_probed:
             @branch_story
-            set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "sc-02", "parent": "sc-01"};
+            set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "sc-02", "parent_section": "sc-01"};
         set_section_decision_status_probed:
             @branch_story
             set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "sc-01", "status": "active"}
@@ -9425,7 +9556,7 @@ mod tests {
         emit_publishable_override_ledger_draft_probed:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             [set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line names Waits"}]
-            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1", "pattern": "Waits", "replacement": "lingers"}
+            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1"}
             except "reason";
         add_fact_probed:
             @branch_story

@@ -490,6 +490,7 @@ impl Door {
 /// leak gate rejects a `reveals` the store does not offer, not that the rung is
 /// unconstructible.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rung {
     /// The authored question (the door label). The UN-ANCHORED fallback: when
     /// [`question_anchor`](Self::question_anchor) is `None` this string is the
@@ -532,6 +533,7 @@ pub struct Rung {
 /// so it is plainly constructible; the guarantee is that the gate rejects an
 /// undisclosed reference, not that the ref is unconstructible.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChoiceEntityRef {
     /// The section the choice is offered at.
     pub section: String,
@@ -549,6 +551,7 @@ pub struct ChoiceEntityRef {
 /// later phase. `Default` = no interactivity (only fork doors, all narrative
 /// shown directly).
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Interactivity {
     /// Section id -> the authored rung chain dug at that spot.
     pub ladders: HashMap<String, Vec<Rung>>,

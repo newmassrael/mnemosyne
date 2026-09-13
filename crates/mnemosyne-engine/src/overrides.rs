@@ -102,6 +102,7 @@ impl EngineOverrides for DefaultOverrides {
 /// }
 /// ```
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StaticOverrides {
     /// The authored interactive layer.
     #[serde(default)]

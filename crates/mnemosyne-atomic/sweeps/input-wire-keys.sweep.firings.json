@@ -1,0 +1,46 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-manifest-reads-past-a-key": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct FactsManifest {",
+          "to": "pub struct FactsManifest {"
+        }
+      ],
+      "expect_red": [
+        "every_type_read_from_json_refuses_a_key_it_does_not_model",
+        "a_manifest_key_the_importer_does_not_model_is_refused",
+        "an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so"
+      ],
+      "tests": [
+        "every_type_read_from_json_refuses_a_key_it_does_not_model",
+        "tests::a_manifest_key_the_importer_does_not_model_is_refused",
+        "tests::an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so"
+      ]
+    },
+    "an-agent-argument-reads-past-a-key": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-mcp/src/main.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct AddInventoryEntryArgs {",
+          "to": "pub struct AddInventoryEntryArgs {"
+        }
+      ],
+      "expect_red": [
+        "every_type_read_from_json_refuses_a_key_it_does_not_model",
+        "an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so"
+      ],
+      "tests": [
+        "every_type_read_from_json_refuses_a_key_it_does_not_model",
+        "tests::an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so"
+      ]
+    }
+  },
+  "forgotten": {}
+}

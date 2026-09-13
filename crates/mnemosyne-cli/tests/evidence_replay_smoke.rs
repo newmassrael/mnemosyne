@@ -463,10 +463,11 @@ fn classify(raw: &str) -> Option<(InputShape, bool)> {
     }
 
     // A facts manifest is an object that would BUILD something: at least one of
-    // the manifest's own arrays, non-empty. Presence alone is not enough — the
-    // manifest is deliberately lenient (every field `#[serde(default)]`, unknown
-    // keys ignored), so `{"schema": "canon-order/v1", "edges": [...]}` parses
-    // cleanly into a manifest that creates nothing.
+    // the manifest's own arrays, non-empty. Presence alone is not enough — every
+    // field is `#[serde(default)]`, so an object carrying none of those arrays is
+    // not a manifest at all, and since the manifest refuses a key it does not
+    // model, `{"schema": "canon-order/v1", "edges": [...]}` would be counted as a
+    // manifest that fails to parse if it were classified by keys alone.
     let builds = facts_manifest_keys().iter().any(|k| {
         obj.get(k)
             .and_then(|v| v.as_array())
@@ -4992,12 +4993,15 @@ fn the_ledger_census_claims_this_tree_can_recount_are_recounted() {
 /// SO THE AXIS IS REFUSED, AND THE REOPENING CONDITION IS THIS TEST RATHER THAN
 /// A SENTENCE IN A CARRY. It asserts the door is shut BY RUNNING THE WIRE, not
 /// by reading the struct: a manifest that declares a meter is imported through
-/// the real binary, and the store it produces registers none. Both halves of
-/// the non-vacuity are asserted with it — the manifest's FACTS do land, so the
-/// silence is about meters and not about a rejected import, and `add-parameter`
-/// does register one, so the zero belongs to the authoring path and not to the
-/// store. The day `FactsManifest` grows the slot, this fails; that is the day
-/// the census becomes worth building, and nothing else has to remember.
+/// the real binary and REFUSED, naming the meter key it does not model. (Until
+/// the manifest refused unknown keys, the same file imported cleanly and
+/// registered nothing, and that silence was the evidence.) Both halves of the
+/// non-vacuity are asserted with it — the same submission without its meter
+/// keys imports and its FACTS land, so the refusal is about meters and not
+/// about the rest of the file, and `add-parameter` does register one, so the
+/// zero belongs to the authoring path and not to the store. The day
+/// `FactsManifest` grows the slot, this fails; that is the day the census
+/// becomes worth building, and nothing else has to remember.
 #[test]
 fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused() {
     let tmp = TempDir::new().expect("tempdir");
@@ -5037,10 +5041,8 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
     );
 
     // A submission that tries every spelling an author might reach for. If any
-    // of them were a door, the registry below would not be empty.
-    std::fs::write(
-        ws.join("facts.json"),
-        serde_json::json!({
+    // of them were a door, the importer would take it.
+    let mut submission = serde_json::json!({
             "frames": [{"frame_id": "ground-truth", "description": "what is so"}],
             "entity_kinds": [
                 {"kind_id": "character", "description": "a person"},
@@ -5061,22 +5063,43 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
             }],
             "parameters": {"affection": {"description": "how warmly she reads him"}},
             "parameter_deltas": [{"fact": "f-1", "parameter": "affection", "delta": 1}],
-        })
-        .to_string(),
-    )
-    .expect("manifest");
+    });
+    std::fs::write(ws.join("facts.json"), submission.to_string()).expect("manifest");
 
     let import = cli()
         .args(["import-facts", "--manifest", "facts.json"])
         .current_dir(ws)
         .output()
         .expect("cli exec");
+    let refused = String::from_utf8_lossy(&import.stderr);
     assert!(
-        import.status.success(),
-        "the submission was rejected outright, so its silence about meters \
-         proves nothing about the manifest's slots: {}{}",
+        !import.status.success()
+            && (refused.contains("unknown field `parameters`")
+                || refused.contains("unknown field `parameter_deltas`")),
+        "a manifest declaring a meter must be refused BY NAME — a success, or a \
+         refusal about anything else, says nothing about a meter slot: {}{refused}",
         String::from_utf8_lossy(&import.stdout),
-        String::from_utf8_lossy(&import.stderr)
+    );
+
+    // CONTROL: the same submission without its meter keys is a manifest this
+    // importer takes, so the refusal above is about meters and not the rest.
+    let object = submission
+        .as_object_mut()
+        .expect("the submission is a JSON object");
+    object.remove("parameters");
+    object.remove("parameter_deltas");
+    std::fs::write(ws.join("facts.json"), submission.to_string()).expect("manifest");
+    let control = cli()
+        .args(["import-facts", "--manifest", "facts.json"])
+        .current_dir(ws)
+        .output()
+        .expect("cli exec");
+    assert!(
+        control.status.success(),
+        "control: the submission without its meter keys was refused too, so the \
+         refusal above may not be about meters at all: {}{}",
+        String::from_utf8_lossy(&control.stdout),
+        String::from_utf8_lossy(&control.stderr)
     );
 
     let store = |ws: &Path| -> serde_json::Value {

@@ -3074,6 +3074,7 @@ pub fn add_section(
 /// import unchanged even though the store now nests the excerpt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct NormativeExcerptImport {
     pub text: String,
     pub anchor_url: String,
@@ -3088,6 +3089,7 @@ pub struct NormativeExcerptImport {
 /// frozen-anchor moment IS its creation, per RFC-002 FR-1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct SectionImport {
     pub section_id: String,
     pub parent_doc: String,
@@ -5363,6 +5365,7 @@ pub fn remove_inventory_entry(
 /// One frame entry in the [`FactsManifest`] (and the `add_frame` shape).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct FrameImport {
     pub frame_id: String,
     #[serde(default)]
@@ -5373,6 +5376,7 @@ pub struct FrameImport {
 /// Round 436).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct BranchImport {
     pub branch_id: String,
     #[serde(default)]
@@ -5398,6 +5402,7 @@ pub struct BranchImport {
 /// merge coordinate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct BranchConvergeImport {
     pub branch: String,
     pub at: String,
@@ -5410,6 +5415,7 @@ pub struct BranchConvergeImport {
 /// then owns divergence — the R404 content-drift pattern).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct FactImport {
     pub fact_id: String,
     pub frame: String,
@@ -5454,6 +5460,7 @@ pub struct FactImport {
 /// `add_entity_kind` before it is named here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct EntityImport {
     pub entity_id: String,
     #[serde(default)]
@@ -5471,6 +5478,7 @@ pub struct EntityImport {
 /// parent-declared-first staging the write path enforces).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct EntityKindImport {
     pub kind_id: String,
     /// Direct super-kinds (0..N) — registered EARLIER in the array. A DAG:
@@ -5487,6 +5495,7 @@ pub struct EntityKindImport {
 /// registries-before-facts ordering this manifest already relies on).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct UnitImport {
     pub unit_id: String,
     #[serde(default)]
@@ -5505,6 +5514,7 @@ pub struct UnitImport {
 /// performed on the store, finally applied to the manifest wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct PredicateImport {
     pub predicate_id: String,
     pub object_kind: mnemosyne_core::PredicateObjectKind,
@@ -5533,6 +5543,7 @@ pub struct PredicateImport {
 /// header that a manifest array for these tables is a silent no-op.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct EdgeCostImport {
     /// The ADJACENT fact the cost attaches to (the `adjacent(a, b)` edge).
     pub fact_id: String,
@@ -5547,6 +5558,7 @@ pub struct EdgeCostImport {
 /// through those verbs' own cores.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct EdgeGuardImport {
     /// The ADJACENT fact this guard gates.
     pub fact_id: String,
@@ -5563,6 +5575,7 @@ pub struct EdgeGuardImport {
 /// flat manifest form of [`DisclosureSurface`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureSurfaceImport {
     pub scene: String,
     #[serde(default)]
@@ -5576,6 +5589,7 @@ pub struct DisclosureSurfaceImport {
 /// `FactImport` convention), so the write path has ONE reveal-input shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureRevealImport {
     /// The world-line this reveal pins timing for (`main` or a registered branch).
     pub branch: String,
@@ -5593,6 +5607,7 @@ pub struct DisclosureRevealImport {
 /// [`apply_disclosure_override`] the standalone setter uses (write-path parity).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct DisclosureOverrideImport {
     pub fact_id: String,
     /// Disclosure mode tag (`withhold`/`state`/`hint`/`imply`); parsed fail-loud.
@@ -5612,6 +5627,7 @@ pub struct DisclosureOverrideImport {
 /// `apply_disclosure_override` cores as the standalone primitives.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
+#[serde(deny_unknown_fields)]
 pub struct DisclosurePlanImport {
     pub telling_id: String,
     /// Default disclosure mode tag; omitted = `withhold` (the plan default).
@@ -5633,6 +5649,7 @@ pub struct DisclosurePlanImport {
 /// existing kinds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct FactsManifest {
     #[serde(default)]
     pub frames: Vec<FrameImport>,
@@ -21228,6 +21245,34 @@ mod tests {
             unmigrated.contains("unknown field `parent`"),
             "control: the refusal names the legacy key: {unmigrated}"
         );
+    }
+
+    /// A MANIFEST KEY THE IMPORTER DOES NOT MODEL IS REFUSED, NOT DROPPED.
+    ///
+    /// The store refuses such a key at rest; the import manifest is the other
+    /// write path into the same facts, and a key it read past was lost before
+    /// the store could refuse it. Refused at the manifest's root and inside a
+    /// row, against a control that parses.
+    #[test]
+    fn a_manifest_key_the_importer_does_not_model_is_refused() {
+        parse_facts_manifest(r#"{ "frames": [{ "frame_id": "gt" }] }"#)
+            .expect("control: a manifest carrying only modeled keys parses");
+        for (manifest, key) in [
+            (
+                r#"{ "frames": [{ "frame_id": "gt" }], "note": "x" }"#,
+                "note",
+            ),
+            (
+                r#"{ "frames": [{ "frame_id": "gt", "colour": "red" }] }"#,
+                "colour",
+            ),
+        ] {
+            let err = parse_facts_manifest(manifest).expect_err(key).to_string();
+            assert!(
+                err.contains(&format!("unknown field `{key}`")),
+                "{key}: the refusal names the key: {err}"
+            );
+        }
     }
 
     /// THE STORE REFUSES A KEY IT DOES NOT MODEL, AND SAYS WHERE.

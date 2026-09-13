@@ -193,6 +193,7 @@ pub trait AtomicStoreView: Send + Sync {
 /// consumers (`SetEqualityValidator` and future plugins) read the
 /// indices they need.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AtomicSnapshot {
     pub changelog_entry_ids: BTreeSet<String>,
     /// Section-id set including implied parent prefixes derived from
@@ -203,6 +204,7 @@ pub struct AtomicSnapshot {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SectionView {
     pub bindings: Vec<BindingRef>,
     pub decision_status: Option<DecisionStatus>,
@@ -239,6 +241,7 @@ crate::closed_vocabulary!(BindingKind {
 });
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BindingRef {
     pub file: String,
     pub symbol: Option<String>,
@@ -576,6 +579,7 @@ impl std::str::FromStr for InventoryStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VersionSurface {
     pub plugin_name: String,
     pub plugin_version: String,
@@ -611,6 +615,7 @@ pub enum PluginCategory {
 /// until sample backends land.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "transport", rename_all = "kebab-case")]
+#[serde(deny_unknown_fields)]
 pub enum Transport {
     InProcess {
         backend: String,

@@ -2040,6 +2040,7 @@ pub enum ContinuityViolation {
 /// engine's slicer call (Round 815).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub enum RungMiss {
     /// The prefix does not occur in the section's current prose — the shape a
     /// re-imported or edited excerpt produces.
@@ -2293,6 +2294,7 @@ pub struct ContinuityReport {
 /// One transition rule whose completeness class went unevaluated (Round 934).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct UnaskableCompleteness {
     /// The rule that declares the map.
     pub rule: String,

@@ -1,0 +1,75 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE WIRES INTO THE STORE REFUSE AN UNMODELED KEY — run it",
+    "from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-atomic/sweeps/input-wire-keys.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. The store refusing a key it does not model closed the",
+    "loss at rest. Every wire into the store could still drop one first: an agent",
+    "calling `add_inventory_entry` with a `\"modality\"` got success and the key was",
+    "gone, and a manifest key the importer does not model vanished the same way.",
+    "Every map-shaped `Deserialize` type in every crate now refuses, a workspace",
+    "law holds it with a written exemption table, and every MCP tool schema says",
+    "`additionalProperties: false`.",
+    "",
+    "TWO INJECTIONS, one per wire. Dropping the attribute from the MCP argument",
+    "type the adopter's case goes through must turn the workspace law red AND the",
+    "behavioural test that sends the key and reads the schema. Dropping it from the",
+    "facts manifest must turn the law red AND the manifest refusal test.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-atomic",
+    "-p",
+    "mnemosyne-mcp",
+    "--no-fail-fast",
+    "--",
+    "a_manifest_key_the_importer_does_not_model_is_refused",
+    "an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so",
+    "every_type_read_from_json_refuses_a_key_it_does_not_model"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "an-agent-argument-reads-past-a-key",
+      "why": "the adopter's failure on the MCP wire: `add_inventory_entry` accepts a `modality` it does not model and the key never reaches the store, while the schema an agent reads invites it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-mcp/src/main.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct AddInventoryEntryArgs {",
+          "to": "pub struct AddInventoryEntryArgs {"
+        }
+      ],
+      "expect_red": [
+        "every_type_read_from_json_refuses_a_key_it_does_not_model",
+        "an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so"
+      ]
+    },
+    {
+      "name": "a-manifest-reads-past-a-key",
+      "why": "the other write path into the same facts: a manifest carrying a key the importer does not model imports without it, at exit 0. The MCP `import_facts` tool takes this type as its argument, so its schema stops saying `additionalProperties: false` too — measured on the first run of this sweep, where that red arrived undeclared",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "#[serde(deny_unknown_fields)]\npub struct FactsManifest {",
+          "to": "pub struct FactsManifest {"
+        }
+      ],
+      "expect_red": [
+        "every_type_read_from_json_refuses_a_key_it_does_not_model",
+        "a_manifest_key_the_importer_does_not_model_is_refused",
+        "an_argument_a_tool_does_not_model_is_refused_and_every_schema_says_so"
+      ]
+    }
+  ]
+}
