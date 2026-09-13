@@ -203,6 +203,9 @@ mod mutate_error_output_smoke;
 #[path = "one_door_for_cargo.rs"]
 mod one_door_for_cargo;
 
+#[path = "one_gate_run.rs"]
+mod one_gate_run;
+
 #[path = "parameter_economy_smoke.rs"]
 mod parameter_economy_smoke;
 

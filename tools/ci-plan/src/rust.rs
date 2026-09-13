@@ -1024,7 +1024,20 @@ impl RustSpawns {
 /// same stance [`crate::parse_workflow`] takes: a file this walk skips is a file
 /// whose spawns are invisible, and the skip would be silent.
 #[must_use]
-pub fn cargo_commands(root: &Path) -> RustSpawns {
+/// Every tracked Rust file in this repository, sorted.
+///
+/// THE ONE ANSWER to "what Rust does this repository hold". Two walks asked it
+/// apart for one round — `type_sites` was written with a copy of this preamble —
+/// and the duplication was found the way the last one was: an injection anchored
+/// at the listing matched TWICE, which for a population is two write paths and
+/// therefore two populations waiting to differ.
+///
+/// # Panics
+///
+/// If `git ls-files` fails, or if the repository tracks no Rust at all — the
+/// empty answer that looks like a clean one.
+#[must_use]
+pub fn tracked_rust_sources(root: &Path) -> Vec<String> {
     let mut sources = tracked_files(root, &["ls-files", "*.rs"]);
     sources.sort();
     assert!(
@@ -1032,6 +1045,11 @@ pub fn cargo_commands(root: &Path) -> RustSpawns {
         "this repository tracks no Rust source at all — the empty answer that \
          looks like a clean one"
     );
+    sources
+}
+
+pub fn cargo_commands(root: &Path) -> RustSpawns {
+    let sources = tracked_rust_sources(root);
 
     // TWO PASSES, because a program is often named one hop away: `cli_binary()`
     // and `BIN` are what the spawn says, and what they ARE is a `fn` or a `const`
@@ -3287,4 +3305,151 @@ fn interpolated_shape(expression: &syn::Expr) -> Option<String> {
     out.push_str(rest);
     // A shape with no literal part at all says nothing a bare rendering does not.
     (out != "$" && !out.is_empty()).then_some(out)
+}
+
+/// One place a type is built or a method is called, as `<path>:<line>`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TypeSite {
+    /// Repository-relative path of the file it stands in.
+    pub file: String,
+    /// 1-based line.
+    pub line: usize,
+}
+
+impl TypeSite {
+    /// `<file>:<line>`, the spelling a failing law prints.
+    #[must_use]
+    pub fn rendered(&self) -> String {
+        format!("{}:{}", self.file, self.line)
+    }
+}
+
+/// Where a type is CONSTRUCTED and where one of its methods is CALLED, across
+/// this repository's production Rust.
+///
+/// # Why this is parsed and not searched
+///
+/// A text scan for `Foo {` finds `pub struct Foo {`, `impl Foo {` and
+/// `impl Trait for Foo {` — the type's own declarations, which build nothing —
+/// and the first law written on one reported all three as construction sites.
+/// Filtering those by their leading words then fails the other way: the filter
+/// is a guess about spelling, and every guess about spelling is a hole.
+///
+/// The same is true of the test question. A `#[cfg(test)]` module is where
+/// fixtures build whatever they need, and a law about production code has to
+/// skip it. A scan can only do that by ASSUMING the module is the file's last
+/// item — this repository's convention, enforced by nothing — so a production
+/// construction written below one is invisible. `syn` is told which items carry
+/// the attribute and skips exactly those, wherever they sit.
+///
+/// # What is still not claimed
+///
+/// A method call is matched by NAME. `x.scan_and_reach(..)` is counted whatever
+/// `x` is, because no reading of the syntax says which type a receiver has —
+/// the same limit `cargo_commands` states one function over. For a name this
+/// repository gives to one method that is exact; for a common one it would not
+/// be, and the caller chooses the name.
+#[derive(Debug, Clone, Default)]
+pub struct TypeSites {
+    /// Files parsed — the population, asserted before the findings are read.
+    pub files: usize,
+    /// Struct literals of the named type, outside `#[cfg(test)]`.
+    pub built: Vec<TypeSite>,
+    /// Calls of the named method, outside `#[cfg(test)]`.
+    pub called: Vec<TypeSite>,
+}
+
+/// Find every production construction of `type_name` and every production call
+/// of `method` under `root`.
+///
+/// The population is tracked `.rs` files outside `tests/` and `benches/`
+/// directories, with `#[cfg(test)]` items skipped wherever they stand.
+///
+/// # Panics
+///
+/// If `git ls-files` fails, if the repository tracks no Rust at all, or if a
+/// tracked file does not parse as Rust.
+#[must_use]
+pub fn type_sites(root: &Path, type_name: &str, method: &str) -> TypeSites {
+    let mut found = TypeSites::default();
+    for path in tracked_rust_sources(root) {
+        if path.contains("/tests/") || path.contains("/benches/") {
+            continue;
+        }
+        let text = std::fs::read_to_string(root.join(&path))
+            .unwrap_or_else(|why| panic!("read {path}: {why}"));
+        let file = syn::parse_file(&text)
+            .unwrap_or_else(|why| panic!("{path} does not parse as Rust: {why}"));
+        found.files += 1;
+        let mut walk = TypeWalk {
+            file: &path,
+            type_name,
+            method,
+            found: &mut found,
+        };
+        walk.visit_file(&file);
+    }
+    found.built.sort();
+    found.called.sort();
+    found
+}
+
+struct TypeWalk<'a> {
+    file: &'a str,
+    type_name: &'a str,
+    method: &'a str,
+    found: &'a mut TypeSites,
+}
+
+/// Whether any of `attrs` is `#[cfg(test)]`.
+fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("cfg")
+            && attr
+                .parse_args::<syn::Meta>()
+                .is_ok_and(|meta| meta.path().is_ident("test"))
+    })
+}
+
+impl<'ast> Visit<'ast> for TypeWalk<'_> {
+    // THE TEST SKIP, done where the compiler does it: an item carrying
+    // `#[cfg(test)]` is not production, wherever in the file it sits.
+    fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {
+        if is_cfg_test(&item.attrs) {
+            return;
+        }
+        syn::visit::visit_item_mod(self, item);
+    }
+
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+        if is_cfg_test(&item.attrs) {
+            return;
+        }
+        syn::visit::visit_item_fn(self, item);
+    }
+
+    fn visit_expr_struct(&mut self, expr: &'ast syn::ExprStruct) {
+        if expr
+            .path
+            .segments
+            .last()
+            .is_some_and(|last| last.ident == self.type_name)
+        {
+            self.found.built.push(TypeSite {
+                file: self.file.to_string(),
+                line: expr.path.span().start().line,
+            });
+        }
+        syn::visit::visit_expr_struct(self, expr);
+    }
+
+    fn visit_expr_method_call(&mut self, expr: &'ast syn::ExprMethodCall) {
+        if expr.method == self.method {
+            self.found.called.push(TypeSite {
+                file: self.file.to_string(),
+                line: expr.method.span().start().line,
+            });
+        }
+        syn::visit::visit_expr_method_call(self, expr);
+    }
 }

@@ -1,0 +1,152 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE CITATION GATE IS RUN FROM ONE PLACE — run it from",
+    "the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-cli/sweeps/one-gate-run.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. Round 1333 moved the construction of a citation-gate",
+    "run out of `cmd_validate_code_refs` and into `mnemosyne_ops::scan_citations`,",
+    "so that the agent-facing surface N295 asks for cannot grow a second one. Two",
+    "laws hold that: one names every production site that BUILDS the validator,",
+    "and one says the verdict-producing call has exactly one caller outside the",
+    "gate's own crate.",
+    "",
+    "WHY THIS SWEEP EXISTS AT ALL. Both laws are text scans over tracked files,",
+    "and a text scan that reads nothing produces an empty finding list — which is",
+    "exactly what a clean tree produces. `0 red` is the shape of a law that holds",
+    "AND of a law that never looked. These injections are what tells them apart.",
+    "",
+    "THE INJECTIONS COME IN TWO KINDS. Four break the WALK the law reads — its",
+    "population, its `#[cfg(test)]` skip, its type match, its caller filter's",
+    "polarity — and must redden it. Three break the THING THE LAW PROTECTS: a",
+    "second construction site, a second verdict caller, and the scope distinction",
+    "the op carries in its type.",
+    "",
+    "WHAT THE FIRST RUN TAUGHT, recorded so it is not re-learned: an injection",
+    "that WEAKENS an assertion which already passes can never go red. Three of",
+    "the first seven did that — `undeclared.is_empty() || true` on a tree with no",
+    "undeclared site is green either way — and the harness reported them as",
+    "misaimed, which they were. An assertion is proven load-bearing by making the",
+    "condition it guards FALSE, never by deleting the guard.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-cli",
+    "--no-fail-fast",
+    "--",
+    "one_gate_run::",
+    "validate_code_refs_path_scope::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-walk-reads-no-files",
+      "why": "a walk over an empty population finds no undeclared site and no second caller — the shape of a law that holds and of one that never looked, which is the whole reason this sweep exists",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if path.contains(\"/tests/\") || path.contains(\"/benches/\") {\n            continue;\n        }\n",
+          "to": "        if !path.contains(\"crates/mnemosyne-style/\") {\n            continue;\n        }\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names",
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ]
+    },
+    {
+      "name": "a-test-module-hides-a-production-construction",
+      "why": "THE HOLE A TEXT SCAN COULD NOT CLOSE, now closed and held: `#[cfg(test)]` is skipped because syn is told which items carry it, not because a scan assumed the module sits last. Stop skipping and every fixture's validator reads as a production surface — the same blindness with its sign flipped, which is what makes the skip load-bearing rather than convenient. It reddens the CONSTRUCTION law only: every `scan_and_reach` a test module calls stands inside the gate's own crate, which the verdict law already filters out for being the type talking to itself",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {\n        if is_cfg_test(&item.attrs) {\n            return;\n        }\n        syn::visit::visit_item_mod(self, item);\n    }\n",
+          "to": "    fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {\n        syn::visit::visit_item_mod(self, item);\n    }\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ]
+    },
+    {
+      "name": "every-struct-literal-is-the-gate",
+      "why": "the walk matches a struct literal by the type it names; without that check every literal in production Rust is reported as a citation gate, which is a law that finds everything and therefore says nothing",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if expr\n            .path\n            .segments\n            .last()\n            .is_some_and(|last| last.ident == self.type_name)\n        {\n",
+          "to": "        if expr.path.segments.last().is_some() {\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ]
+    },
+    {
+      "name": "a-second-surface-builds-its-own-gate-run",
+      "why": "THE THING THE LAW PROTECTS: a surface that assembles its own validator is free to disagree with every other one about which severities were in force and which store was read — the defect Rounds 1322-1324 paid for, one level up",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "pub fn validate_workspace(",
+          "to": "fn _a_second_gate_run(cfg: &mnemosyne_config::SetEqualityValidatorConfig) -> mnemosyne_validate::code_refs::SetEqualityValidator {\n    mnemosyne_validate::code_refs::SetEqualityValidator {\n        config: cfg.clone(),\n        entry_id_prefix: String::new(),\n        orphan_ledger: Vec::new(),\n        symbol_resolvers: std::collections::BTreeMap::new(),\n        filter_id: None,\n        path_scope: None,\n    }\n}\n\npub fn validate_workspace("
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ]
+    },
+    {
+      "name": "a-second-caller-asks-the-gate-for-a-verdict",
+      "why": "THE SECOND LAW'S OWN SUBJECT: another production site calling `scan_and_reach` is a second answer to `what is wrong with this tree`, free to disagree with the first about severities, store and scope — which is the whole reason Round 1333 moved the run",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "pub fn validate_workspace(",
+          "to": "fn _a_second_verdict(\n    v: &mnemosyne_validate::code_refs::SetEqualityValidator,\n    a: &mnemosyne_validate::code_refs::CitationAttribution,\n    s: &mnemosyne_core::AtomicSnapshot,\n) -> std::io::Result<()> {\n    let _ = v.scan_and_reach(a, s)?;\n    Ok(())\n}\n\npub fn validate_workspace("
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ]
+    },
+    {
+      "name": "the-gates-own-crate-is-counted-as-a-surface",
+      "why": "the filter's POLARITY: inverted, the law reads the gate's internal `scan` wrapper as the only caller and the real surface as none — a law that passes while measuring the opposite of what it says",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/one_gate_run.rs",
+          "from": "        .filter(|file| !file.starts_with(\"crates/mnemosyne-validate/src/\"))\n",
+          "to": "        .filter(|file| file.starts_with(\"crates/mnemosyne-validate/src/\"))\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ]
+    },
+    {
+      "name": "a-scope-that-names-nothing-is-widened",
+      "why": "THE THING THE LAW PROTECTS, second half: `--paths` with no value is a malformed invocation, and collapsing it into `no scope` returns a clean WHOLE-TREE report for a run the caller meant to narrow. Round 1333 introduced exactly this and the behaviour test caught it, which is why the distinction now lives in the op's signature",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/citations.rs",
+          "from": "        Some(requested) => Some(PathScope::new(&loaded.workspace_root, requested)?),\n",
+          "to": "        Some(requested) if requested.is_empty() => None,\n        Some(requested) => Some(PathScope::new(&loaded.workspace_root, requested)?),\n"
+        }
+      ],
+      "expect_red": [
+        "validate_code_refs_path_scope::an_empty_scope_is_refused"
+      ]
+    }
+  ]
+}

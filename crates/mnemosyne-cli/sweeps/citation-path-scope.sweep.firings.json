@@ -1,0 +1,41 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": false,
+  "fired": {
+    "an-axis-nobody-measured-publishes-a-zero": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/citations.rs",
+          "from": "                    Some(_) => None,",
+          "to": "                    Some(_) => Some(0),"
+        }
+      ],
+      "expect_red": [
+        "a_decay_filter_and_a_file_list_narrow_different_things",
+        "a_scoped_run_names_every_axis_it_does_not_judge",
+        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "an_axis_with_no_resolver_is_named_rather_than_called_clean",
+        "case_vii_filter_id_surfaces_decay_and_skips_others",
+        "detector_off_by_default_and_unconfirmed_surfaced",
+        "the_refusal_names_the_axis_it_did_not_judge_rather_than_pricing_it_at_zero",
+        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "verify_axis_is_opt_in_and_gates_then_exempts"
+      ],
+      "tests": [
+        "blanket_verifies_smoke::detector_off_by_default_and_unconfirmed_surfaced",
+        "path_scope_arguments::a_decay_filter_and_a_file_list_narrow_different_things",
+        "symbol_axis_reach::an_axis_with_no_resolver_is_named_rather_than_called_clean",
+        "symbol_axis_reach::the_refusal_names_the_axis_it_did_not_judge_rather_than_pricing_it_at_zero",
+        "validate_code_refs_path_scope::a_scoped_run_names_every_axis_it_does_not_judge",
+        "validate_code_refs_path_scope::a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "validate_code_refs_path_scope::the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "validate_code_refs_smoke::case_vii_filter_id_surfaces_decay_and_skips_others",
+        "verification_axis_smoke::verify_axis_is_opt_in_and_gates_then_exempts"
+      ]
+    }
+  },
+  "forgotten": {}
+}

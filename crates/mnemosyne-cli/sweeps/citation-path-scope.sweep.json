@@ -164,7 +164,7 @@
       "why": "this is the defect in its original form — three modes printed `0` for an axis they structurally skip, and `0` is the answer a judged-and-clean axis gives; the rejection message is downstream of the same map, so it goes back to printing the zero too",
       "edits": [
         {
-          "file": "crates/mnemosyne-cli/src/main.rs",
+          "file": "crates/mnemosyne-ops/src/citations.rs",
           "from": "                    Some(_) => None,",
           "to": "                    Some(_) => Some(0),"
         }

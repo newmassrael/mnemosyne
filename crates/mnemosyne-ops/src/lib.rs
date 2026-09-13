@@ -10,6 +10,7 @@
 //! server).
 
 pub mod cascade;
+pub mod citations;
 pub mod query;
 pub mod style;
 pub mod validate;
@@ -54,6 +55,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use cascade::{validate_atomic_store, AtomicValidationSummary};
+pub use citations::{
+    scan_citations, CitationScan, CitationScanReport, CitationScanRequest,
+    CitationSeverityOverrides, ResolvedSeverities,
+};
 /// The query crate's views, for the same reason as the validator's above: these
 /// reads return them, so a caller that must declare what it answers with has to
 /// be able to name them (Round 1223).

@@ -1,0 +1,154 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-scope-that-names-nothing-is-widened": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/citations.rs",
+          "from": "        Some(requested) => Some(PathScope::new(&loaded.workspace_root, requested)?),\n",
+          "to": "        Some(requested) if requested.is_empty() => None,\n        Some(requested) => Some(PathScope::new(&loaded.workspace_root, requested)?),\n"
+        }
+      ],
+      "expect_red": [
+        "validate_code_refs_path_scope::an_empty_scope_is_refused"
+      ],
+      "tests": [
+        "validate_code_refs_path_scope::an_empty_scope_is_refused"
+      ]
+    },
+    "a-second-caller-asks-the-gate-for-a-verdict": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "pub fn validate_workspace(",
+          "to": "fn _a_second_verdict(\n    v: &mnemosyne_validate::code_refs::SetEqualityValidator,\n    a: &mnemosyne_validate::code_refs::CitationAttribution,\n    s: &mnemosyne_core::AtomicSnapshot,\n) -> std::io::Result<()> {\n    let _ = v.scan_and_reach(a, s)?;\n    Ok(())\n}\n\npub fn validate_workspace("
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ],
+      "tests": [
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ]
+    },
+    "a-second-surface-builds-its-own-gate-run": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "pub fn validate_workspace(",
+          "to": "fn _a_second_gate_run(cfg: &mnemosyne_config::SetEqualityValidatorConfig) -> mnemosyne_validate::code_refs::SetEqualityValidator {\n    mnemosyne_validate::code_refs::SetEqualityValidator {\n        config: cfg.clone(),\n        entry_id_prefix: String::new(),\n        orphan_ledger: Vec::new(),\n        symbol_resolvers: std::collections::BTreeMap::new(),\n        filter_id: None,\n        path_scope: None,\n    }\n}\n\npub fn validate_workspace("
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ],
+      "tests": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ]
+    },
+    "a-test-module-hides-a-production-construction": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "    fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {\n        if is_cfg_test(&item.attrs) {\n            return;\n        }\n        syn::visit::visit_item_mod(self, item);\n    }\n",
+          "to": "    fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {\n        syn::visit::visit_item_mod(self, item);\n    }\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ],
+      "tests": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ]
+    },
+    "every-struct-literal-is-the-gate": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if expr\n            .path\n            .segments\n            .last()\n            .is_some_and(|last| last.ident == self.type_name)\n        {\n",
+          "to": "        if expr.path.segments.last().is_some() {\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ],
+      "tests": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+      ]
+    },
+    "the-gates-own-crate-is-counted-as-a-surface": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/one_gate_run.rs",
+          "from": "        .filter(|file| !file.starts_with(\"crates/mnemosyne-validate/src/\"))\n",
+          "to": "        .filter(|file| file.starts_with(\"crates/mnemosyne-validate/src/\"))\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ],
+      "tests": [
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ]
+    },
+    "the-walk-reads-no-files": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/rust.rs",
+          "from": "        if path.contains(\"/tests/\") || path.contains(\"/benches/\") {\n            continue;\n        }\n",
+          "to": "        if !path.contains(\"crates/mnemosyne-style/\") {\n            continue;\n        }\n"
+        }
+      ],
+      "expect_red": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names",
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ],
+      "tests": [
+        "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names",
+        "one_gate_run::the_verdict_is_produced_in_one_place"
+      ]
+    }
+  },
+  "forgotten": {
+    "a-type-declaration-counts-as-a-construction": {
+      "because": "R1333 replaced its subject rather than renaming it: the law stopped scanning text and now parses with syn, so a type's own declaration is never read as a construction and there is no leading-word filter left to disable. What has teeth in its place is every-struct-literal-is-the-gate, which proves the walk matches the type it names",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-cli/tests/one_gate_run.rs",
+            "from": "            if trimmed.starts_with(\"pub struct \")\n",
+            "to": "            if false && trimmed.starts_with(\"pub struct \")\n"
+          }
+        ],
+        "expect_red": [
+          "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+        ],
+        "tests": [
+          "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+        ]
+      }
+    },
+    "the-gate-is-searched-for-by-a-name-nothing-has": {
+      "because": "R1333 replaced its subject rather than renaming it: there is no needle any more. The walk matches a struct literal by the type its path names, so a name nothing has is not something the caller can pass. What has teeth in its place is every-struct-literal-is-the-gate, which drops that match and makes the law find everything",
+      "was": {
+        "edits": [
+          {
+            "file": "crates/mnemosyne-cli/tests/one_gate_run.rs",
+            "from": "    let sites = sites_naming(&files, &root, \"SetEqualityValidator {\");\n",
+            "to": "    let sites = sites_naming(&files, &root, \"SetEqualityValidatorThatIsNotAType {\");\n"
+          }
+        ],
+        "expect_red": [
+          "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+        ],
+        "tests": [
+          "one_gate_run::every_production_build_of_the_citation_gate_is_one_this_law_names"
+        ]
+      }
+    }
+  }
+}

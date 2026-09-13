@@ -64,7 +64,7 @@
     },
     {
       "name": "the-walk-stops-reading-rust-at-all",
-      "why": "an empty population holds every command it found to the law, which is also what a walk that read nothing does — and the direction it fails in reads as a clean repository",
+      "why": "an empty population holds every command it found to the law, which is also what a walk that read nothing does — and the direction it fails in reads as a clean repository. Round 1333: this anchor now sits in `tracked_rust_sources`, the one place this repository lists its Rust, so it reddens every law reading that population — which is what one write path means",
       "edits": [
         {
           "file": "tools/ci-plan/src/rust.rs",
