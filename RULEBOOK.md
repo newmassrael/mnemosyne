@@ -29,12 +29,14 @@ what that session does on its own.
 > (`feedback_north_star_autonomous_rounds`): north-star value order, pay the
 > debt this session creates immediately, no half-finished work, YAGNI defers
 > speculation, self-pace to ~80% context. Each round follows the per-round
-> checklist below and ends as one atomic-store changelog entry + one commit.
-> STOP and ask ONLY at a consent gate (push, experiment-execution,
+> checklist below and ends as one atomic-store changelog entry + one commit,
+> pushed through the hooks once its local lanes pass (the standing push grant
+> below). STOP and ask ONLY at a consent gate (experiment-execution,
 > irreversible/outward, foundation-deletion, genuine scope-fork) or genuine
-> ambiguity — never `git push` without an explicit push word, never improvise a
-> sha-pinned protocol. Finish at ~80% / a gate by summarizing what landed and
-> leaving the RESUME memory with one unambiguous next `NEXT`.
+> ambiguity — never push around the hooks (`--no-verify`, `--force*`, `--tags`,
+> another ref), never improvise a sha-pinned protocol. Finish at ~80% / a gate
+> by summarizing what landed and leaving the RESUME memory with one unambiguous
+> next `NEXT`.
 
 Run `/load` first only if the session needs to re-orient (git state +
 `validate-workspace`); the prompt above presumes the auto-loaded memory + this
@@ -118,21 +120,39 @@ until a gate.
 - **Bar** — textbook (cost no object) is the owner standard. A hack, a smell, or
   a silent-fail is a defect, not an acceptable carry.
 
-## Consent gates (STOP, name the gate, await the owner's word)
+## Standing push grant (NOT a stop)
 
-- **PUSH** — never `git push` (any variant) without an explicit push word in the
-  current turn. Autonomous running does NOT authorize it; push waits for the end
-  (the autonomous-rounds doctrine). **After a push lands, read the run it
-  started** and report the result — green is not the assumption, and a green
-  conclusion is not the whole of what the run said: read its annotations too
-  (R893). The pre-push
+- **PUSH IS PRE-AUTHORISED IN THIS REPOSITORY** (owner's word 2026-08-17,
+  restated 2026-09-13 when this file and the grant disagreed). A plain
+  `git push` of `main` needs no word in the current turn once ALL hold: the
+  hooks are the active `core.hooksPath`, `validate-workspace` is clean, and the
+  round's local lanes passed. The conditions in full live in the owner's
+  untracked grant beside this checkout (`CLAUDE.local.md`), which is what a
+  session reads; this line exists so the process file stops saying the
+  opposite. The push goes THROUGH the hooks — `--no-verify`, `--force`,
+  `--force-with-lease`, `--tags` and any other ref are outside the grant and
+  each still needs an explicit request.
+  - **Judge it from files, not from a wrapper**: `git push > log 2>&1; echo $? >
+    push.rc`, then `git ls-remote origin main` — the SSOT for push state.
+  - **Do not block a round on the hosted run**: push and continue. Report the
+    push in the round summary; pre-authorised is not unremarked.
+  - **origin is PUBLIC**: a push publishes the store's prose as well as code,
+    and deleting later does not un-publish.
+- **After a push lands, read the run it
+  started** at the start of the next round and report the result — green is
+  not the assumption, and a green conclusion is not the whole of what the run
+  said: read its annotations too (R893). The pre-push
   hook reports the state of the commit you are building ON, which by
   construction cannot include the push you just made; that last one is only
   ever seen by a person looking. Round 888 and Round 889 were both defects that
   a glance at `gh run list` found and nothing else did.
+## Consent gates (STOP, name the gate, await the owner's word)
+
 - **EXPERIMENT EXECUTION** — running a blind acceptance experiment. Trigger:
   the owner's `실험` / `experiment` word.
 - **IRREVERSIBLE / OUTWARD** — anything published, deleted, or hard to reverse.
+  The one publication that does not stop here is a push under the standing
+  grant above; everything else that leaves this machine still does.
 - **FOUNDATION DELETION** — removing a server / primitive / module: check
   `ARCHITECTURE.md` §6 (anti-drift invariants) first; "unused by dogfood" is not
   grounds.
@@ -143,8 +163,8 @@ until a gate.
 
 Run autonomously per the autonomous-rounds doctrine in memory
 (`feedback_north_star_autonomous_rounds` — the SSOT for the run discipline:
-north-star order, pay-debt-now, no-half-finished, ~80% self-pace, ask/push at
-the end). This file does not restate it. Derive choices from stated values +
+north-star order, pay-debt-now, no-half-finished, ~80% self-pace, ask at a
+gate; push each round under the standing grant rather than at the end). This file does not restate it. Derive choices from stated values +
 memory, not from A/B/C menus.
 
 ### Which debt a round takes — ask the instrument, do not choose
