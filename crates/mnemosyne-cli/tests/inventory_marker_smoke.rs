@@ -1,13 +1,15 @@
-//! An annotation inside a document cites an inventory entry by the id after its
-//! marker — through the real `validate-code-refs`.
+//! An annotation inside a document cites every inventory id its marker
+//! encloses — through the real `validate-code-refs`.
 //!
-//! The adopter's measurement this closes: with the annotation's prefix
-//! registered as a path prefix, the prefix stayed in the id, so all three
-//! citations came back missing — the active one included — and the deprecated
-//! one was never reported as deprecated. The same workspace under
-//! `inventory_marker_prefixes` must resolve the active entry, report the
-//! deprecated one and the missing one, and nothing else.
+//! Round 1322 read a marker as a prefix followed by the section-path tail
+//! class, so `req="REQ-4.2.1 REQ-7"` cited `REQ-4.2.1` and never `REQ-7`, while
+//! the adopter's own state-machine documents put two ids in one attribute on
+//! seven of twenty-five annotated lines. A marker is now a pair of delimiters
+//! and what it encloses is a list: a deprecated id second in its list is
+//! reported, an id on the line after its marker is reported on that line, and
+//! a marker that never closes is reported instead of read as citing nothing.
 
+use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -25,15 +27,19 @@ fn run(workspace: &Path, args: &[&str]) -> std::process::Output {
         .expect("cli exec")
 }
 
-/// A workspace whose document annotates three states with `req="…"`: one
-/// active entry, one deprecated entry, and one id nothing registers.
-fn workspace(axis_key: &str) -> TempDir {
+/// The declaration every marker test here uses: an XML attribute `req="…"`.
+const REQ_ATTRIBUTE: &str = r#"inventory_markers = [{ open = "req=\"", close = "\"" }]"#;
+
+/// A workspace declaring `axis` over `doc/model.scxml`, whose text is
+/// `document`, with one active entry (`REQ-4.2.1`) and one deprecated entry
+/// (`REQ-7`) registered.
+fn workspace(axis: &str, document: &str) -> TempDir {
     let ws = TempDir::new().expect("tempdir");
     fs::write(
         ws.path().join("mnemosyne.toml"),
         format!(
             "[workspace]\n\n[plugins.set_equality_validator]\npaths = [\"doc/\"]\n\
-             {axis_key} = [\"req=\\\"\"]\nseverity_inventory = \"reject\"\n"
+             {axis}\nseverity_inventory = \"reject\"\n"
         ),
     )
     .expect("config");
@@ -64,43 +70,106 @@ fn workspace(axis_key: &str) -> TempDir {
         );
     }
     fs::create_dir_all(ws.path().join("doc")).expect("doc dir");
-    fs::write(
-        ws.path().join("doc/model.scxml"),
-        "<scxml>\n  <state id=\"idle\" req=\"REQ-4.2.1\"/>\n  \
-         <state id=\"old\" req=\"REQ-7\"/>\n  <state id=\"new\" req=\"REQ-999\"/>\n</scxml>\n",
-    )
-    .expect("document");
+    fs::write(ws.path().join("doc/model.scxml"), document).expect("document");
     ws
 }
 
+/// Whether the gate passed, and every violation it reported as
+/// `(kind, entry_id, line)`, sorted.
+fn reported(workspace: &Path) -> (bool, Vec<(String, String, u64)>) {
+    let out = run(workspace, &["validate-code-refs", "--json"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let report: Value = stdout
+        .lines()
+        .find(|line| line.starts_with('{'))
+        .and_then(|line| serde_json::from_str(line).ok())
+        .unwrap_or_else(|| {
+            panic!(
+                "the gate prints one JSON report: stdout {stdout} stderr {}",
+                String::from_utf8_lossy(&out.stderr)
+            )
+        });
+    let mut violations: Vec<(String, String, u64)> = report["violations"]
+        .as_array()
+        .expect("a violations array")
+        .iter()
+        .map(|v| {
+            (
+                v["kind"].as_str().expect("a kind").to_string(),
+                v["entry_id"].as_str().expect("an entry_id").to_string(),
+                v["line"].as_u64().expect("a line"),
+            )
+        })
+        .collect();
+    violations.sort();
+    (out.status.success(), violations)
+}
+
 #[test]
-fn a_marker_prefix_cites_the_id_after_it() {
-    let ws = workspace("inventory_marker_prefixes");
-    let out = run(ws.path(), &["validate-code-refs", "--json"]);
-    let said = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        !out.status.success(),
-        "a deprecated and a missing citation at reject severity must fail the gate: {said}"
+fn a_marker_cites_every_id_it_encloses() {
+    let ws = workspace(
+        REQ_ATTRIBUTE,
+        "<scxml>\n  <state id=\"idle\" req=\"REQ-4.2.1 REQ-7\"/>\n  \
+         <state id=\"new\" req=\"\n    REQ-999\"/>\n</scxml>\n",
     );
+    let (passed, violations) = reported(ws.path());
     assert!(
-        said.contains("REQ-7") && said.contains("REQ-999"),
-        "the deprecated and the missing citation are both reported: {said}"
+        !passed,
+        "a deprecated and a missing citation at reject severity fail the gate: {violations:?}"
     );
-    assert!(
-        !said.contains("REQ-4.2.1"),
-        "the active entry resolved through its marker is not a violation: {said}"
+    assert_eq!(
+        violations,
+        vec![
+            ("inventory_deprecated".to_string(), "REQ-7".to_string(), 2),
+            ("inventory_missing".to_string(), "REQ-999".to_string(), 4),
+        ],
+        "the deprecated id second in its list and the missing id on the line after its marker \
+         are reported where they stand, and the active id is not"
     );
 }
 
-/// CONTROL: the same annotation under the path axis keeps its syntax in the id,
-/// so even the active entry is reported — the shape the marker axis exists for.
+/// A marker whose close never follows is reported at the line it opened on —
+/// and the deprecated id inside it is not, because an unclosed list has no end
+/// and none of its ids is read.
+#[test]
+fn a_marker_that_never_closes_is_reported() {
+    let ws = workspace(
+        REQ_ATTRIBUTE,
+        "<scxml>\n  <state id=\"idle\" req=\"REQ-7/>\n</scxml>\n",
+    );
+    let (passed, violations) = reported(ws.path());
+    assert!(
+        !passed,
+        "an unclosed marker at reject severity fails the gate: {violations:?}"
+    );
+    assert_eq!(
+        violations,
+        vec![(
+            "inventory_marker_unclosed".to_string(),
+            "req=\"".to_string(),
+            2
+        )],
+        "the marker is reported where it opened, not read as citing nothing"
+    );
+}
+
+/// CONTROL: the same annotation under the path axis keeps the attribute's
+/// syntax in the id, so even the active entry is reported — the shape a
+/// delimited marker exists for.
 #[test]
 fn the_same_annotation_under_the_path_axis_misses_the_active_entry() {
-    let ws = workspace("inventory_path_prefixes");
-    let out = run(ws.path(), &["validate-code-refs", "--json"]);
-    let said = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        said.contains("REQ-4.2.1"),
-        "control: the path axis should report the active entry, prefix and all: {said}"
+    let ws = workspace(
+        r#"inventory_path_prefixes = ["req=\""]"#,
+        "<scxml>\n  <state id=\"idle\" req=\"REQ-4.2.1\"/>\n</scxml>\n",
+    );
+    let (_, violations) = reported(ws.path());
+    assert_eq!(
+        violations,
+        vec![(
+            "inventory_missing".to_string(),
+            "req=\"REQ-4.2.1".to_string(),
+            2
+        )],
+        "control: the path axis reads the attribute's syntax into the id"
     );
 }

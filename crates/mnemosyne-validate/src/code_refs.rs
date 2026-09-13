@@ -73,7 +73,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use mnemosyne_config::{OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig};
+use mnemosyne_config::{
+    InventoryMarker, InventoryMarkers, OrphanKind, OrphanLedgerEntry, SetEqualityValidatorConfig,
+};
 use mnemosyne_core::DecisionStatus;
 use serde::Serialize;
 
@@ -646,6 +648,7 @@ audit_axes!(
     SymbolMismatch,
     InventoryMissing,
     InventoryDeprecated,
+    InventoryMarkerUnclosed,
     ProseFactAssertion,
     BindingUnbacked,
     ImplementationMissing,
@@ -680,6 +683,7 @@ impl AuditAxis {
             Self::SymbolMismatch => "symbol_mismatch",
             Self::InventoryMissing => "inventory_missing",
             Self::InventoryDeprecated => "inventory_deprecated",
+            Self::InventoryMarkerUnclosed => "inventory_marker_unclosed",
             Self::ProseFactAssertion => "prose_fact_assertion",
             Self::BindingUnbacked => "binding_unbacked",
             Self::ImplementationMissing => "impl_missing",
@@ -700,6 +704,7 @@ impl AuditAxis {
             | Self::SymbolMismatch
             | Self::InventoryMissing
             | Self::InventoryDeprecated
+            | Self::InventoryMarkerUnclosed
             | Self::ProseFactAssertion => AuditSide::Citation,
             Self::BindingUnbacked
             | Self::ImplementationMissing
@@ -739,6 +744,9 @@ impl AuditAxis {
             | Self::SectionMissing
             | Self::InventoryMissing
             | Self::InventoryDeprecated => EvidenceShape::Nothing,
+            // The marker that opened and never closed is `citation.entry_id`,
+            // and a list with no end has no id in it to read.
+            Self::InventoryMarkerUnclosed => EvidenceShape::Nothing,
             // Spec-side: not a citation variant at all.
             Self::BindingUnbacked
             | Self::ImplementationMissing
@@ -1032,6 +1040,7 @@ impl CodeRefViolation {
                 ViolationKind::CitationUnbound => AuditAxis::CitationUnbound,
                 ViolationKind::InventoryMissing => AuditAxis::InventoryMissing,
                 ViolationKind::InventoryDeprecated => AuditAxis::InventoryDeprecated,
+                ViolationKind::InventoryMarkerUnclosed => AuditAxis::InventoryMarkerUnclosed,
                 ViolationKind::SymbolMismatch => AuditAxis::SymbolMismatch,
                 ViolationKind::ProseFactAssertion => AuditAxis::ProseFactAssertion,
             },
@@ -1066,9 +1075,9 @@ impl CodeRefViolation {
                     DefectClass::Binding
                 }
                 ViolationKind::Decay => DefectClass::Decay,
-                ViolationKind::InventoryMissing | ViolationKind::InventoryDeprecated => {
-                    DefectClass::Inventory
-                }
+                ViolationKind::InventoryMissing
+                | ViolationKind::InventoryDeprecated
+                | ViolationKind::InventoryMarkerUnclosed => DefectClass::Inventory,
                 ViolationKind::ProseFactAssertion => DefectClass::ProseFactAssertion,
             },
             CodeRefViolation::BindingUnbacked { .. } => DefectClass::Binding,
@@ -1368,7 +1377,7 @@ pub enum DefectClass {
     /// Cascade scan informational surface (Decay).
     Decay,
     /// Round 275 — Inventory axis violations (InventoryMissing,
-    /// InventoryDeprecated). Distinct from Hallucination because the
+    /// InventoryDeprecated, and since Round 1323 InventoryMarkerUnclosed). Distinct from Hallucination because the
     /// inventory genre has a different lifecycle vocabulary (Active /
     /// Deprecated / Reserved) and a separate severity knob
     /// (`severity_inventory`) for per-project tuning.
@@ -1426,6 +1435,14 @@ pub enum ViolationKind {
     /// `Reserved` status does not trigger this — Reserved is "set aside,
     /// cite permitted" by R275 design.
     InventoryDeprecated,
+    /// Round 1323 — an inventory citation MARKER opened and its close never
+    /// followed, so the list of ids it encloses has no end and none of them was
+    /// read. `entry_id` carries the open marker and `line` the line it opened
+    /// on. Reported rather than skipped, because a marker read as citing nothing
+    /// is indistinguishable from a document that cites nothing. Judged under
+    /// `severity_inventory`, and not suppressed by the orphan ledger, whose rows
+    /// name an id — an unclosed marker has none.
+    InventoryMarkerUnclosed,
     /// Round 306 — RFC-002 FR-3 symbol-level enforcement.
     ///
     /// At a `§<id>` citation site (`file`:`line` carrying the cite), the
@@ -2839,28 +2856,124 @@ pub fn extract_inventory_path_citations(
     extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::SectionPath)
 }
 
-/// Extract inventory citations whose prefix MARKS the citation and is not part
-/// of the id (Round 1322).
+/// Extract the inventory citations a declared MARKER encloses (Round 1323).
 ///
-/// The section-path tail class, but the id is the tail alone: an annotation an
-/// adopter writes inside a document — `req="REQ-4.2.1"` in an XML attribute —
-/// carries its syntax in the prefix, and an id that kept it would match no
-/// inventory entry. The tail stops at the first character outside the class, so
-/// a closing quote is not part of it. Word-boundary, backtick-skip,
-/// longest-prefix-first and dedup semantics are the other two axes'.
+/// A marker is the pair of delimiters an adopter writes inside a document it
+/// does not rewrite — `req="REQ-4.2.1 REQ-7"` in an XML attribute — and what it
+/// encloses is a whitespace-separated LIST of inventory ids. There is no tail
+/// character class: an inventory id is what the store accepts as one, non-empty
+/// with no whitespace, so whitespace is exactly what separates two ids and
+/// every id the store can hold is read whole. Round 1322 read the marker's tail
+/// with the section-path class instead, which read the first id of a list and
+/// never the rest.
+///
+/// The enclosed list may cross lines, as an XML attribute value may, and each
+/// id carries the line it starts on. A marker whose close never follows is
+/// returned in [`InventoryCitations::unclosed`] at the line it opened on and
+/// none of its ids is read — a list with no end cannot be delimited, and
+/// reading nothing there silently would look exactly like a document citing
+/// nothing. An empty marker cites nothing.
+///
+/// The open follows the other axes' rules: an open that begins with a word
+/// character must not continue a word (`xreq="` is not `req="`), an open inside
+/// a backtick code span on its line is an example rather than a citation, and
+/// where two opens begin at one place the longer is read.
 pub fn extract_inventory_marker_citations(
-    prefixes: &[String],
+    markers: &InventoryMarkers,
     content: &str,
-) -> Vec<(usize, String)> {
-    extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::Marker)
+) -> InventoryCitations {
+    let mut read = InventoryCitations::default();
+    if markers.is_empty() {
+        return read;
+    }
+    let mut ordered: Vec<&InventoryMarker> = markers.iter().collect();
+    ordered.sort_by_key(|marker| std::cmp::Reverse(marker.open().len()));
+
+    let mut cites: BTreeSet<(usize, String)> = BTreeSet::new();
+    let mut line = 1usize;
+    let mut in_backtick = false;
+    let mut at = 0usize;
+    while let Some(c) = content[at..].chars().next() {
+        match c {
+            '\n' => {
+                line += 1;
+                in_backtick = false;
+                at += 1;
+                continue;
+            }
+            '`' => {
+                in_backtick = !in_backtick;
+                at += 1;
+                continue;
+            }
+            _ => {}
+        }
+        let opened = if in_backtick {
+            None
+        } else {
+            ordered.iter().find(|marker| {
+                content[at..].starts_with(marker.open())
+                    && opens_on_a_word_boundary(&content[..at], marker.open())
+            })
+        };
+        let Some(marker) = opened else {
+            at += c.len_utf8();
+            continue;
+        };
+        let list_start = at + marker.open().len();
+        let Some(list_len) = content[list_start..].find(marker.close()) else {
+            read.unclosed.push((line, marker.open().to_string()));
+            at = list_start;
+            continue;
+        };
+        let list = &content[list_start..list_start + list_len];
+        let mut id_start: Option<(usize, usize)> = None;
+        for (offset, ch) in list.char_indices() {
+            if ch.is_whitespace() {
+                if let Some((from, id_line)) = id_start.take() {
+                    cites.insert((id_line, list[from..offset].to_string()));
+                }
+                if ch == '\n' {
+                    line += 1;
+                }
+            } else if id_start.is_none() {
+                id_start = Some((offset, line));
+            }
+        }
+        if let Some((from, id_line)) = id_start {
+            cites.insert((id_line, list[from..].to_string()));
+        }
+        at = list_start + list_len + marker.close().len();
+        in_backtick = false;
+    }
+    read.cites = cites.into_iter().collect();
+    read
+}
+
+/// Whether an open that begins right after `before` does not continue a word.
+/// Only an open that itself begins with a word character can continue one.
+fn opens_on_a_word_boundary(before: &str, open: &str) -> bool {
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    !open.starts_with(is_word) || !before.chars().next_back().is_some_and(is_word)
+}
+
+/// What the inventory axes read in one text (Round 1323).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InventoryCitations {
+    /// Every citation, as `(line, inventory id)`, sorted and deduplicated — a
+    /// citation two axes both read surfaces once.
+    pub cites: Vec<(usize, String)>,
+    /// Every marker whose close never follows, as `(line, open)`. Only the
+    /// marker axis can leave one.
+    pub unclosed: Vec<(usize, String)>,
 }
 
 /// The inventory citation axes a workspace declares, read as ONE thing.
 ///
-/// Three prefix lists, three tail shapes, one lifecycle. Until Round 1322 the
-/// scan and the decay scan each chained the axes by hand and every caller
-/// threaded the lists as separate arguments, so an axis added to one reader was
-/// an axis another reader did not see. Both readers now take this.
+/// Two prefix lists and a marker list, three shapes, one lifecycle. Until Round
+/// 1322 the scan and the decay scan each chained the axes by hand and every
+/// caller threaded the lists as separate arguments, so an axis added to one
+/// reader was an axis another reader did not see. Both readers now take this.
 #[derive(Debug, Clone, Copy)]
 pub struct InventoryCitationAxes<'a> {
     /// Opaque-id prefixes (`inventory_prefixes`); the prefix is part of the id.
@@ -2868,8 +2981,8 @@ pub struct InventoryCitationAxes<'a> {
     /// Section-path prefixes (`inventory_path_prefixes`); the prefix is part of
     /// the id.
     pub path: &'a [String],
-    /// Marker prefixes (`inventory_marker_prefixes`); the id is the tail alone.
-    pub marker: &'a [String],
+    /// Markers (`inventory_markers`); the ids are what each marker encloses.
+    pub markers: &'a InventoryMarkers,
 }
 
 impl<'a> InventoryCitationAxes<'a> {
@@ -2878,25 +2991,26 @@ impl<'a> InventoryCitationAxes<'a> {
         InventoryCitationAxes {
             opaque: &config.inventory_prefixes,
             path: &config.inventory_path_prefixes,
-            marker: &config.inventory_marker_prefixes,
+            markers: &config.inventory_markers,
         }
     }
 
     /// Whether no axis is declared, so there is nothing to read.
     pub fn is_empty(&self) -> bool {
-        self.opaque.is_empty() && self.path.is_empty() && self.marker.is_empty()
+        self.opaque.is_empty() && self.path.is_empty() && self.markers.is_empty()
     }
 
-    /// Every inventory citation in `content` under any declared axis, as
-    /// `(line, inventory id)`, sorted and deduplicated — so a citation two axes
-    /// both read surfaces once.
-    pub fn extract(&self, content: &str) -> Vec<(usize, String)> {
-        let mut cites = extract_inventory_citations(self.opaque, content);
-        cites.extend(extract_inventory_path_citations(self.path, content));
-        cites.extend(extract_inventory_marker_citations(self.marker, content));
-        cites.sort();
-        cites.dedup();
-        cites
+    /// Every inventory citation in `content` under any declared axis, and every
+    /// marker that opened there and never closed.
+    pub fn extract(&self, content: &str) -> InventoryCitations {
+        let mut read = extract_inventory_marker_citations(self.markers, content);
+        read.cites
+            .extend(extract_inventory_citations(self.opaque, content));
+        read.cites
+            .extend(extract_inventory_path_citations(self.path, content));
+        read.cites.sort();
+        read.cites.dedup();
+        read
     }
 }
 
@@ -2913,9 +3027,6 @@ enum InventoryTailMode {
     /// `[A-Za-z0-9./-_]+` with no digit-terminus requirement. Targets
     /// section paths (`3.13`, `test144`, `D.2.selectTransitions`).
     SectionPath,
-    /// The `SectionPath` tail class, but the id is the tail alone — the prefix
-    /// marks the citation and is not part of what it cites (Round 1322).
-    Marker,
 }
 
 fn extract_inventory_citations_with_tail(
@@ -2981,7 +3092,7 @@ fn extract_inventory_citations_with_tail(
                         InventoryTailMode::IdToken => {
                             c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_'
                         }
-                        InventoryTailMode::SectionPath | InventoryTailMode::Marker => {
+                        InventoryTailMode::SectionPath => {
                             c.is_ascii_alphanumeric()
                                 || c == b'.'
                                 || c == b'/'
@@ -3016,13 +3127,7 @@ fn extract_inventory_citations_with_tail(
                 if tail_mode == InventoryTailMode::IdToken && !tail_bytes[t - 1].is_ascii_digit() {
                     continue;
                 }
-                let tail = &line[tail_start..tail_end];
-                let id = match tail_mode {
-                    InventoryTailMode::IdToken | InventoryTailMode::SectionPath => {
-                        format!("{prefix}{tail}")
-                    }
-                    InventoryTailMode::Marker => tail.to_string(),
-                };
+                let id = format!("{}{}", prefix, &line[tail_start..tail_end]);
                 matched_len = Some(prefix.len() + t);
                 matched_id = Some(id);
                 break; // longest-first ordering — first match wins
@@ -4272,6 +4377,7 @@ impl SetEqualityValidator {
             | AuditAxis::SymbolMismatch
             | AuditAxis::InventoryMissing
             | AuditAxis::InventoryDeprecated
+            | AuditAxis::InventoryMarkerUnclosed
             | AuditAxis::BindingUnbacked
             | AuditAxis::ImplementationMissing => false,
         }
@@ -4614,7 +4720,8 @@ impl SetEqualityValidator {
             // InventoryCitation` suppresses both. Every declared inventory
             // axis — opaque id, section path, marker — is read as one, and a
             // citation two axes both read surfaces once.
-            for (line, inventory_id) in inventory_axes.extract(&content) {
+            let inventory_read = inventory_axes.extract(&content);
+            for (line, inventory_id) in inventory_read.cites {
                 let kind = match snapshot.inventory.get(&inventory_id).copied() {
                     None if verdicts.judges(AuditAxis::InventoryMissing) => {
                         Some(ViolationKind::InventoryMissing)
@@ -4641,6 +4748,22 @@ impl SetEqualityValidator {
                         kind: k,
                         // Both inventory kinds are decided by the entry's
                         // status in the store; nothing is read at the site.
+                        evidence: None,
+                    });
+                }
+            }
+            // A marker whose close never follows (Round 1323): its list has no
+            // end, so none of its ids was read above, and that is reported
+            // rather than left looking like a document that cites nothing.
+            if verdicts.judges(AuditAxis::InventoryMarkerUnclosed) {
+                for (line, open) in inventory_read.unclosed {
+                    violations.push(CodeRefViolation::Citation {
+                        citation: Citation {
+                            file: rel.clone(),
+                            line,
+                            entry_id: open,
+                        },
+                        kind: ViolationKind::InventoryMarkerUnclosed,
                         evidence: None,
                     });
                 }
@@ -5221,7 +5344,7 @@ pub fn scan_inventory_decay(
             .strip_prefix(workspace_root)
             .map(|p| p.to_path_buf())
             .unwrap_or(abs.clone());
-        for (line, id) in axes.extract(&content) {
+        for (line, id) in axes.extract(&content).cites {
             if id == inventory_id {
                 hits.push(Citation {
                     file: rel.clone(),
@@ -5644,7 +5767,7 @@ mod tests {
                 external_section_prefixes_bare: external_section_prefixes_bare.to_vec(),
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: inventory_path_prefixes.to_vec(),
-                inventory_marker_prefixes: vec![],
+                inventory_markers: InventoryMarkers::default(),
                 section_namespace: section_namespace.map(String::from),
             },
             entry_id_prefix: prefix.to_string(),
@@ -6114,7 +6237,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_marker_prefixes: vec![],
+                inventory_markers: InventoryMarkers::default(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6231,7 +6354,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_marker_prefixes: vec![],
+                inventory_markers: InventoryMarkers::default(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6446,7 +6569,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_marker_prefixes: vec![],
+                inventory_markers: InventoryMarkers::default(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6720,7 +6843,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
-                inventory_marker_prefixes: vec![],
+                inventory_markers: InventoryMarkers::default(),
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -8372,50 +8495,114 @@ mod tests {
         );
     }
 
-    /// Round 1322 — a MARKER prefix is not part of the id: the annotation
-    /// `req="REQ-4.2.1"` cites `REQ-4.2.1`, and the closing quote ends the tail.
-    /// The control is the same text under the path axis, which keeps the syntax
-    /// in the id — the shape under which an active entry read as missing.
+    /// The marker the marker-axis tests declare: an XML attribute `req="…"`.
+    fn req_attribute() -> InventoryMarkers {
+        InventoryMarkers::new(vec![InventoryMarker::new("req=\"", "\"").expect("a marker")])
+            .expect("one marker")
+    }
+
+    /// Round 1323 — a MARKER encloses a LIST: every id between its delimiters
+    /// is read, on the line it starts, and neither delimiter is part of one. The
+    /// control is the same annotation under the path axis, which keeps the
+    /// attribute's syntax in the id.
     #[test]
-    fn extract_inventory_marker_citations_strips_the_prefix() {
-        let prefixes = vec!["req=\"".to_string()];
-        let content = "<state id=\"idle\" req=\"REQ-4.2.1\"/>\n";
+    fn a_marker_reads_every_id_it_encloses() {
+        let content = "<state id=\"idle\" req=\"REQ-4.2.1 REQ-7\"/>\n\
+                       <state req=\"REQ-8\n  REQ-9\"/> <state req=\"\"/>\n";
         assert_eq!(
-            extract_inventory_marker_citations(&prefixes, content),
-            vec![(1, "REQ-4.2.1".to_string())]
+            extract_inventory_marker_citations(&req_attribute(), content),
+            InventoryCitations {
+                cites: vec![
+                    (1, "REQ-4.2.1".to_string()),
+                    (1, "REQ-7".to_string()),
+                    (2, "REQ-8".to_string()),
+                    (3, "REQ-9".to_string()),
+                ],
+                unclosed: vec![],
+            }
         );
+        let prefixes = vec!["req=\"".to_string()];
         assert_eq!(
-            extract_inventory_path_citations(&prefixes, content),
+            extract_inventory_path_citations(&prefixes, "<state req=\"REQ-4.2.1\"/>\n"),
             vec![(1, "req=\"REQ-4.2.1".to_string())],
             "control: the path axis keeps the prefix in the id"
         );
     }
 
-    /// Round 1322 — every declared axis is read by ONE reader, in one order.
+    /// Round 1323 — an id is what the STORE accepts as one, not a character
+    /// class: a colon and a `#` stay inside it.
+    #[test]
+    fn a_marker_reads_an_id_the_store_accepts_whole() {
+        assert_eq!(
+            extract_inventory_marker_citations(
+                &req_attribute(),
+                "<state req=\"urn:req:9 REQ#10\"/>\n"
+            )
+            .cites,
+            vec![(1, "REQ#10".to_string()), (1, "urn:req:9".to_string())]
+        );
+    }
+
+    /// Round 1323 — a marker whose close never follows is returned at the line
+    /// it opened on, and none of its ids is read.
+    #[test]
+    fn a_marker_that_never_closes_is_returned_not_skipped() {
+        assert_eq!(
+            extract_inventory_marker_citations(
+                &req_attribute(),
+                "<scxml>\n<state req=\"REQ-7 REQ-8/>\n"
+            ),
+            InventoryCitations {
+                cites: vec![],
+                unclosed: vec![(2, "req=\"".to_string())],
+            }
+        );
+    }
+
+    /// Round 1323 — the open follows the other axes' rules: it does not continue
+    /// a word, an example inside a code span is not a citation, and where two
+    /// opens begin at one place the longer is read.
+    #[test]
+    fn a_marker_open_follows_the_word_span_and_length_rules() {
+        let markers = InventoryMarkers::new(vec![
+            InventoryMarker::new("req=\"", "\"").expect("a marker"),
+            InventoryMarker::new("req=\"[", "]").expect("a marker"),
+        ])
+        .expect("two markers");
+        let content = "xreq=\"REQ-1\" `req=\"REQ-2\"` req=\"[REQ-3 REQ-4]\"\n";
+        assert_eq!(
+            extract_inventory_marker_citations(&markers, content).cites,
+            vec![(1, "REQ-3".to_string()), (1, "REQ-4".to_string())]
+        );
+    }
+
+    /// Round 1322 — every declared axis is read by ONE reader, in one order;
+    /// Round 1323 made the marker axis a list of delimiter pairs.
     #[test]
     fn inventory_citation_axes_read_every_declared_axis() {
         let opaque = vec!["ARP_".to_string()];
         let path = vec!["W3C SCXML ".to_string()];
-        let marker = vec!["req=\"".to_string()];
+        let markers = req_attribute();
         let axes = InventoryCitationAxes {
             opaque: &opaque,
             path: &path,
-            marker: &marker,
+            markers: &markers,
         };
-        let content = "// ARP_07 beside W3C SCXML 3.13\n<state req=\"REQ-4.2.1\"/>\n";
+        let content = "// ARP_07 beside W3C SCXML 3.13\n<state req=\"REQ-4.2.1 REQ-7\"/>\n";
         assert_eq!(
-            axes.extract(content),
+            axes.extract(content).cites,
             vec![
                 (1, "ARP_07".to_string()),
                 (1, "W3C SCXML 3.13".to_string()),
                 (2, "REQ-4.2.1".to_string()),
+                (2, "REQ-7".to_string()),
             ]
         );
         assert!(!axes.is_empty());
         assert!(InventoryCitationAxes {
             opaque: &[],
             path: &[],
-            marker: &[],
+            markers: &InventoryMarkers::default(),
         }
         .is_empty());
     }
@@ -9553,7 +9740,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &prefixes,
                 path: &[],
-                marker: &[],
+                markers: &InventoryMarkers::default(),
             },
             true,
         )
@@ -9576,7 +9763,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &[],
                 path: &[],
-                marker: &[],
+                markers: &InventoryMarkers::default(),
             },
             true,
         )
@@ -9602,7 +9789,7 @@ mod tests {
             &InventoryCitationAxes {
                 opaque: &prefixes,
                 path: &[],
-                marker: &[],
+                markers: &InventoryMarkers::default(),
             },
             true,
         )
@@ -10655,6 +10842,15 @@ mod tests {
                     entry_id: "INV_1".into(),
                 },
                 kind: ViolationKind::InventoryDeprecated,
+                evidence: None,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.scxml"),
+                    line: 1,
+                    entry_id: "req=\"".into(),
+                },
+                kind: ViolationKind::InventoryMarkerUnclosed,
                 evidence: None,
             },
             CodeRefViolation::Citation {

@@ -6966,7 +6966,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let inventory_deprecated_count = get(AuditAxis::InventoryDeprecated);
     let symbol_mismatch_count = get(AuditAxis::SymbolMismatch);
     let prose_fact_assertion_count = get(AuditAxis::ProseFactAssertion);
-    let inventory_count = inventory_missing_count + inventory_deprecated_count;
+    let inventory_marker_unclosed_count = get(AuditAxis::InventoryMarkerUnclosed);
+    let inventory_count =
+        inventory_missing_count + inventory_deprecated_count + inventory_marker_unclosed_count;
     let hallucination_count = missing_count + section_missing_count;
     // Round 385 — coverage split. The binding bucket is the per-edge axis:
     // CitationUnbound + BindingUnbacked (cite ↔ file) + SymbolMismatch
@@ -7047,7 +7049,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "valid_inventory_count": store.inventory_entries.len(),
             "inventory_prefixes": cfg.inventory_prefixes,
             "inventory_path_prefixes": cfg.inventory_path_prefixes,
-            "inventory_marker_prefixes": cfg.inventory_marker_prefixes,
+            "inventory_markers": cfg.inventory_markers,
             "external_section_prefixes": cfg.external_section_prefixes,
             "external_section_prefixes_bare": cfg.external_section_prefixes_bare,
             "external_changelog_prefixes": cfg.external_changelog_prefixes,
@@ -7285,10 +7287,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 cfg.inventory_path_prefixes
             );
         }
-        if !cfg.inventory_marker_prefixes.is_empty() {
+        if !cfg.inventory_markers.is_empty() {
+            let markers: Vec<String> = cfg
+                .inventory_markers
+                .iter()
+                .map(|m| format!("{}…{}", m.open(), m.close()))
+                .collect();
             println!(
-                "inventory_marker_prefixes={:?} (Round 1322 marker axis — the id is the tail)",
-                cfg.inventory_marker_prefixes
+                "inventory_markers={markers:?} (Round 1323 marker axis — every id a marker encloses)"
             );
         }
         if !cfg.external_section_prefixes.is_empty() {
@@ -7483,7 +7489,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         reject_msgs.push(format!(
             "{} inventory-axis violation(s) — {} (severity_inventory=reject)",
             inventory_count,
-            axis_detail(&[AuditAxis::InventoryMissing, AuditAxis::InventoryDeprecated,]),
+            axis_detail(&[
+                AuditAxis::InventoryMissing,
+                AuditAxis::InventoryDeprecated,
+                AuditAxis::InventoryMarkerUnclosed,
+            ]),
         ));
     }
     if !reject_msgs.is_empty() {

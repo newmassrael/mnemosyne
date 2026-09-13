@@ -441,6 +441,138 @@ pub enum SymbolResolverConfig {
     },
 }
 
+/// One declared inventory citation marker: the delimiters an adopter writes
+/// around the inventory ids a document cites (Round 1323).
+///
+/// Built only through [`InventoryMarker::new`], which a TOML declaration goes
+/// through too, so a marker a test constructs and a marker a workspace declares
+/// are refused on the same terms.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct InventoryMarker {
+    open: String,
+    close: String,
+}
+
+impl InventoryMarker {
+    /// A marker that opens with `open` and closes with `close`.
+    ///
+    /// # Errors
+    ///
+    /// Refused, with the reason, when `open` is empty (a citation would begin
+    /// at every character) or holds a line break (a marker opens on one line),
+    /// or when `close` is empty (every list would end before its first id) or
+    /// holds whitespace (whitespace separates the ids a marker encloses, so it
+    /// cannot also end them).
+    pub fn new(
+        open: impl Into<String>,
+        close: impl Into<String>,
+    ) -> std::result::Result<Self, String> {
+        let (open, close) = (open.into(), close.into());
+        if open.is_empty() {
+            return Err(
+                "an inventory marker's `open` must be non-empty — an empty open \
+                        begins a citation at every character"
+                    .to_string(),
+            );
+        }
+        if open.contains(['\n', '\r']) {
+            return Err(format!(
+                "the inventory marker `open = {open:?}` holds a line break — a marker opens on \
+                 one line"
+            ));
+        }
+        if close.is_empty() {
+            return Err(format!(
+                "the inventory marker opened by `{open}` has an empty `close` — every list it \
+                 encloses would end before its first id"
+            ));
+        }
+        if close.contains(char::is_whitespace) {
+            return Err(format!(
+                "the inventory marker opened by `{open}` has `close = {close:?}`, which holds \
+                 whitespace — whitespace separates the ids a marker encloses, so it cannot also \
+                 end them"
+            ));
+        }
+        Ok(InventoryMarker { open, close })
+    }
+
+    /// The text that begins a citation.
+    pub fn open(&self) -> &str {
+        &self.open
+    }
+
+    /// The text that ends it.
+    pub fn close(&self) -> &str {
+        &self.close
+    }
+}
+
+impl<'de> Deserialize<'de> for InventoryMarker {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Declared {
+            open: String,
+            close: String,
+        }
+        let Declared { open, close } = Declared::deserialize(deserializer)?;
+        InventoryMarker::new(open, close).map_err(serde::de::Error::custom)
+    }
+}
+
+/// The inventory citation markers a workspace declares, no two opening alike
+/// (Round 1323).
+///
+/// Two markers with one `open` would leave which `close` ends a citation to
+/// declaration order, so [`InventoryMarkers::new`] refuses them — and a TOML
+/// list goes through it too.
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct InventoryMarkers(Vec<InventoryMarker>);
+
+impl InventoryMarkers {
+    /// The markers, as declared.
+    ///
+    /// # Errors
+    ///
+    /// Refused when two markers share an `open`.
+    pub fn new(markers: Vec<InventoryMarker>) -> std::result::Result<Self, String> {
+        let mut opens = std::collections::BTreeSet::new();
+        for marker in &markers {
+            if !opens.insert(marker.open()) {
+                return Err(format!(
+                    "two inventory markers open with `{}` — which `close` ends the citation \
+                     would depend on declaration order",
+                    marker.open()
+                ));
+            }
+        }
+        Ok(InventoryMarkers(markers))
+    }
+
+    /// Every declared marker, in declaration order.
+    pub fn iter(&self) -> std::slice::Iter<'_, InventoryMarker> {
+        self.0.iter()
+    }
+
+    /// Whether no marker is declared, so the axis reads nothing.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl<'de> Deserialize<'de> for InventoryMarkers {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let markers = Vec::<InventoryMarker>::deserialize(deserializer)?;
+        InventoryMarkers::new(markers).map_err(serde::de::Error::custom)
+    }
+}
+
 /// `[plugins.set_equality_validator]` — the citation-refs validator plugin
 /// config (in-place rename from the pre-R306 `[code_refs]` table; no semantic
 /// change, only namespace shift onto the RFC-003 plugin substrate).
@@ -705,23 +837,29 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub inventory_path_prefixes: Vec<String>,
 
-    /// Inventory citation prefixes that MARK a citation without being part of
-    /// its id (Round 1322).
+    /// Inventory citation MARKERS — the delimiters an adopter writes around the
+    /// inventory ids a document cites (Round 1323).
     ///
-    /// Citation form: `<prefix><tail>` with the section-path tail class of
-    /// `inventory_path_prefixes`, and the id is the tail ALONE — so an
-    /// annotation inside a document an adopter does not rewrite
-    /// (`req="REQ-4.2.1"` in an XML attribute) resolves against the entry
-    /// registered as `REQ-4.2.1`. The tail stops at the first character outside
-    /// `[A-Za-z0-9./-_]`, which is why a closing quote is not read into the id.
-    /// Registered as a path prefix instead, the same annotation keeps its syntax
-    /// in the id (`req="REQ-4.2.1`), so an active entry reads as missing and a
-    /// deprecated one is never reported as deprecated.
+    /// `inventory_markers = [{ open = "req=\"", close = "\"" }]` reads
+    /// `<state req="REQ-4.2.1 REQ-7"/>` as two citations, `REQ-4.2.1` and
+    /// `REQ-7`: everything between `open` and the next `close` is a
+    /// whitespace-separated list of ids, and neither delimiter is part of one.
+    /// There is no tail character class — an id is what the store accepts as
+    /// one (non-empty, no whitespace), so whitespace is exactly what separates
+    /// two. Round 1322 declared prefixes read with the section-path tail class
+    /// instead, which read the first id of a list and never the rest, and cut
+    /// an id at any character outside that class.
     ///
-    /// Same lifecycle, `severity_inventory` and orphan-ledger suppression as the
-    /// two other inventory axes. Empty list = axis disabled.
+    /// The enclosed list may cross lines. A marker whose `close` never follows
+    /// is reported as `inventory_marker_unclosed` rather than read as citing
+    /// nothing. [`InventoryMarker::new`] refuses an empty `open` or `close`, a
+    /// line break in `open` and whitespace in `close`, and
+    /// [`InventoryMarkers::new`] refuses two markers with one `open`. Same
+    /// lifecycle and `severity_inventory` as the two other inventory axes, and
+    /// the orphan ledger suppresses its citations — not an unclosed marker,
+    /// which names no id. Empty = axis disabled.
     #[serde(default)]
-    pub inventory_marker_prefixes: Vec<String>,
+    pub inventory_markers: InventoryMarkers,
 
     /// Section-ID namespace scope for this workspace's `§<id>` axis.
     ///
@@ -2591,6 +2729,96 @@ section_namespace = "scxml"
             .and_then(|p| p.set_equality_validator)
             .expect("set_equality_validator missing");
         assert_eq!(sev.section_namespace.as_deref(), Some("scxml"));
+    }
+
+    /// Round 1323 — a marker's delimiters are refused on ONE set of terms,
+    /// whether a caller builds the marker or a workspace declares it, because
+    /// the declaration is read through the constructor.
+    #[test]
+    fn an_inventory_marker_refuses_delimiters_that_cannot_enclose_a_list() {
+        for (open, close, reason) in [
+            ("", "\"", "must be non-empty"),
+            ("req=\n\"", "\"", "holds a line break"),
+            ("req=\"", "", "has an empty `close`"),
+            ("req=\"", "\" ", "which holds whitespace"),
+        ] {
+            let built = InventoryMarker::new(open, close)
+                .expect_err("the constructor refuses the delimiters");
+            assert!(built.contains(reason), "constructor: {built}");
+            let declared = parse_config(&format!(
+                "[workspace]\n\n[plugins.set_equality_validator]\n\
+                 inventory_markers = [{{ open = {open:?}, close = {close:?} }}]\n"
+            ))
+            .expect_err("the declaration refuses the delimiters");
+            assert!(
+                format!("{declared:#}").contains(reason),
+                "declaration: {declared:#}"
+            );
+        }
+    }
+
+    /// Round 1323 — two markers with one `open` would leave the close to
+    /// declaration order; both paths refuse them.
+    #[test]
+    fn inventory_markers_refuse_two_that_open_alike() {
+        let built = InventoryMarkers::new(vec![
+            InventoryMarker::new("req=\"", "\"").expect("a marker"),
+            InventoryMarker::new("req=\"", "'").expect("a marker"),
+        ])
+        .expect_err("the constructor refuses the pair");
+        assert!(
+            built.contains("two inventory markers open with"),
+            "constructor: {built}"
+        );
+        let declared = parse_config(
+            r#"
+[workspace]
+
+[plugins.set_equality_validator]
+inventory_markers = [{ open = "req=\"", close = "\"" }, { open = "req=\"", close = "'" }]
+"#,
+        )
+        .expect_err("the declaration refuses the pair");
+        assert!(
+            format!("{declared:#}").contains("two inventory markers open with"),
+            "declaration: {declared:#}"
+        );
+    }
+
+    /// Round 1323 — a declared marker is read as its two delimiters, and a key
+    /// a marker does not model is refused rather than dropped.
+    #[test]
+    fn a_declared_inventory_marker_is_read_as_its_delimiters() {
+        let cfg = parse_config(
+            r#"
+[workspace]
+
+[plugins.set_equality_validator]
+inventory_markers = [{ open = "sce:req=\"", close = "\"" }]
+"#,
+        )
+        .expect("a well-formed marker is accepted");
+        let markers = cfg
+            .plugins
+            .and_then(|p| p.set_equality_validator)
+            .expect("set_equality_validator")
+            .inventory_markers;
+        let read: Vec<(&str, &str)> = markers.iter().map(|m| (m.open(), m.close())).collect();
+        assert_eq!(read, vec![("sce:req=\"", "\"")]);
+
+        let unmodeled = parse_config(
+            r#"
+[workspace]
+
+[plugins.set_equality_validator]
+inventory_markers = [{ open = "req=\"", close = "\"", separator = "," }]
+"#,
+        )
+        .expect_err("a key a marker does not model is refused");
+        assert!(
+            format!("{unmodeled:#}").contains("separator"),
+            "the refusal names the key: {unmodeled:#}"
+        );
     }
     #[test]
     fn continuity_section_parses_with_defaults() {

@@ -271,15 +271,19 @@ you `informative`, it is older than R422 — the store will refuse it.
  same lifecycle (active / deprecated / reserved). A prefix may be
  registered in both axes if both citation shapes coexist; the
  scanner dedups so a matching cite surfaces once.
-- **`[plugins.set_equality_validator].inventory_marker_prefixes`** — a third axis whose
- prefix MARKS a citation and is not part of its id: the tail (the same
- `[A-Za-z0-9./-_]+` class as the path axis) is the id alone. For an
- annotation inside a document you do not rewrite — register `req="` and
- `<state req="REQ-4.2.1"/>` resolves against the entry `REQ-4.2.1`; the
- closing quote ends the tail. Registered as a path prefix instead, the
- same annotation keeps its syntax in the id (`req="REQ-4.2.1`), so an
- active entry reads as missing and a deprecated one is never reported.
- Same lifecycle, severity and orphan-ledger suppression as the other two.
+- **`[plugins.set_equality_validator].inventory_markers`** — a third axis for
+ annotations inside a document you do not rewrite. Each marker is a pair of
+ delimiters, `inventory_markers = [{ open = "req=\"", close = "\"" }]`, and
+ everything between `open` and the next `close` is a whitespace-separated
+ list of inventory ids: `<state req="REQ-4.2.1 REQ-7"/>` cites both. Neither
+ delimiter is part of an id and there is no tail character class — an id is
+ what the store accepts as one (non-empty, no whitespace), so an id holding a
+ colon or a `#` is read whole. The list may cross lines, and a marker whose
+ `close` never follows is reported as `inventory_marker_unclosed` rather than
+ read as citing nothing. An empty `open` or `close`, a line break in `open`,
+ whitespace in `close`, and two markers with one `open` are refused when the
+ config loads. Same lifecycle and severity as the other two axes; the orphan
+ ledger suppresses its citations but not an unclosed marker, which names no id.
 - **`[plugins.set_equality_validator].external_section_prefixes`** — single-token prefix
  list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
  of external-standard `§` skip (Round 277). Citation form:
