@@ -311,6 +311,9 @@ mod validate_content_drift_epub_smoke;
 #[path = "inventory_axes_smoke.rs"]
 mod inventory_axes_smoke;
 
+#[path = "inventory_marker_smoke.rs"]
+mod inventory_marker_smoke;
+
 #[path = "unmodeled_key_smoke.rs"]
 mod unmodeled_key_smoke;
 

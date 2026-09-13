@@ -2839,6 +2839,67 @@ pub fn extract_inventory_path_citations(
     extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::SectionPath)
 }
 
+/// Extract inventory citations whose prefix MARKS the citation and is not part
+/// of the id (Round 1322).
+///
+/// The section-path tail class, but the id is the tail alone: an annotation an
+/// adopter writes inside a document — `req="REQ-4.2.1"` in an XML attribute —
+/// carries its syntax in the prefix, and an id that kept it would match no
+/// inventory entry. The tail stops at the first character outside the class, so
+/// a closing quote is not part of it. Word-boundary, backtick-skip,
+/// longest-prefix-first and dedup semantics are the other two axes'.
+pub fn extract_inventory_marker_citations(
+    prefixes: &[String],
+    content: &str,
+) -> Vec<(usize, String)> {
+    extract_inventory_citations_with_tail(prefixes, content, InventoryTailMode::Marker)
+}
+
+/// The inventory citation axes a workspace declares, read as ONE thing.
+///
+/// Three prefix lists, three tail shapes, one lifecycle. Until Round 1322 the
+/// scan and the decay scan each chained the axes by hand and every caller
+/// threaded the lists as separate arguments, so an axis added to one reader was
+/// an axis another reader did not see. Both readers now take this.
+#[derive(Debug, Clone, Copy)]
+pub struct InventoryCitationAxes<'a> {
+    /// Opaque-id prefixes (`inventory_prefixes`); the prefix is part of the id.
+    pub opaque: &'a [String],
+    /// Section-path prefixes (`inventory_path_prefixes`); the prefix is part of
+    /// the id.
+    pub path: &'a [String],
+    /// Marker prefixes (`inventory_marker_prefixes`); the id is the tail alone.
+    pub marker: &'a [String],
+}
+
+impl<'a> InventoryCitationAxes<'a> {
+    /// The axes a validator config declares.
+    pub fn of(config: &'a SetEqualityValidatorConfig) -> Self {
+        InventoryCitationAxes {
+            opaque: &config.inventory_prefixes,
+            path: &config.inventory_path_prefixes,
+            marker: &config.inventory_marker_prefixes,
+        }
+    }
+
+    /// Whether no axis is declared, so there is nothing to read.
+    pub fn is_empty(&self) -> bool {
+        self.opaque.is_empty() && self.path.is_empty() && self.marker.is_empty()
+    }
+
+    /// Every inventory citation in `content` under any declared axis, as
+    /// `(line, inventory id)`, sorted and deduplicated — so a citation two axes
+    /// both read surfaces once.
+    pub fn extract(&self, content: &str) -> Vec<(usize, String)> {
+        let mut cites = extract_inventory_citations(self.opaque, content);
+        cites.extend(extract_inventory_path_citations(self.path, content));
+        cites.extend(extract_inventory_marker_citations(self.marker, content));
+        cites.sort();
+        cites.dedup();
+        cites
+    }
+}
+
 /// Inventory citation tail shape — distinguishes opaque-ID citations
 /// from section-path identifiers. Internal to the extractor; callers
 /// pick the public function (`extract_inventory_citations` vs
@@ -2852,6 +2913,9 @@ enum InventoryTailMode {
     /// `[A-Za-z0-9./-_]+` with no digit-terminus requirement. Targets
     /// section paths (`3.13`, `test144`, `D.2.selectTransitions`).
     SectionPath,
+    /// The `SectionPath` tail class, but the id is the tail alone — the prefix
+    /// marks the citation and is not part of what it cites (Round 1322).
+    Marker,
 }
 
 fn extract_inventory_citations_with_tail(
@@ -2917,7 +2981,7 @@ fn extract_inventory_citations_with_tail(
                         InventoryTailMode::IdToken => {
                             c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_'
                         }
-                        InventoryTailMode::SectionPath => {
+                        InventoryTailMode::SectionPath | InventoryTailMode::Marker => {
                             c.is_ascii_alphanumeric()
                                 || c == b'.'
                                 || c == b'/'
@@ -2952,7 +3016,13 @@ fn extract_inventory_citations_with_tail(
                 if tail_mode == InventoryTailMode::IdToken && !tail_bytes[t - 1].is_ascii_digit() {
                     continue;
                 }
-                let id = format!("{}{}", prefix, &line[tail_start..tail_end]);
+                let tail = &line[tail_start..tail_end];
+                let id = match tail_mode {
+                    InventoryTailMode::IdToken | InventoryTailMode::SectionPath => {
+                        format!("{prefix}{tail}")
+                    }
+                    InventoryTailMode::Marker => tail.to_string(),
+                };
                 matched_len = Some(prefix.len() + t);
                 matched_id = Some(id);
                 break; // longest-first ordering — first match wins
@@ -4233,8 +4303,7 @@ impl SetEqualityValidator {
         // are the same decision read twice.
         let verdicts = self.axis_verdicts();
         let comment_only = self.config.comment_only;
-        let inventory_prefixes = self.config.inventory_prefixes.as_slice();
-        let inventory_path_prefixes = self.config.inventory_path_prefixes.as_slice();
+        let inventory_axes = InventoryCitationAxes::of(&self.config);
         // Empty resolver map = symbol axis silently skipped; identical
         // semantic to the pre-R307 `Option<&BTreeMap>` shape where None
         // bypassed lookup entirely.
@@ -4542,17 +4611,10 @@ impl SetEqualityValidator {
             // ---- Inventory ID axis (Phase 1A) ----
             // Active / Reserved → silent; Deprecated → InventoryDeprecated;
             // missing IDs → InventoryMissing. `[[orphan_ledger]] kind =
-            // InventoryCitation` suppresses both. Chain section-path
-            // inventory axis (`inventory_path_prefixes`); dedup on (line, id)
-            // so a prefix registered in both axes surfaces once.
-            let mut inventory_cites = extract_inventory_citations(inventory_prefixes, &content);
-            inventory_cites.extend(extract_inventory_path_citations(
-                inventory_path_prefixes,
-                &content,
-            ));
-            inventory_cites.sort();
-            inventory_cites.dedup();
-            for (line, inventory_id) in inventory_cites {
+            // InventoryCitation` suppresses both. Every declared inventory
+            // axis — opaque id, section path, marker — is read as one, and a
+            // citation two axes both read surfaces once.
+            for (line, inventory_id) in inventory_axes.extract(&content) {
                 let kind = match snapshot.inventory.get(&inventory_id).copied() {
                     None if verdicts.judges(AuditAxis::InventoryMissing) => {
                         Some(ViolationKind::InventoryMissing)
@@ -5127,8 +5189,8 @@ pub fn scan_section_decay(
 /// Skips file-read failures silently (consistent with the bidirectional
 /// scanner). Returns hits sorted by `(file, line)`.
 ///
-/// Decay scan covers both inventory axes: opaque-ID via
-/// `inventory_prefixes` and section-path via `inventory_path_prefixes`.
+/// Decay scan covers every declared inventory axis — the same
+/// [`InventoryCitationAxes`] the validator's scan reads.
 /// Cascade trigger calls this after an `InventoryEntry` transitions to
 /// a status that needs cite-side notification, so a path-shape ID
 /// rename / deprecation surfaces its cite-sites too. An empty slice
@@ -5137,11 +5199,10 @@ pub fn scan_inventory_decay(
     workspace_root: &Path,
     paths: &[String],
     inventory_id: &str,
-    inventory_prefixes: &[String],
-    inventory_path_prefixes: &[String],
+    axes: &InventoryCitationAxes<'_>,
     comment_only: bool,
 ) -> std::io::Result<Vec<Citation>> {
-    if inventory_prefixes.is_empty() && inventory_path_prefixes.is_empty() {
+    if axes.is_empty() {
         return Ok(Vec::new());
     }
     let files = walk_paths(workspace_root, paths)?;
@@ -5160,16 +5221,7 @@ pub fn scan_inventory_decay(
             .strip_prefix(workspace_root)
             .map(|p| p.to_path_buf())
             .unwrap_or(abs.clone());
-        // Chain opaque-ID + section-path axes; dedup on (line, id) so a
-        // prefix registered in both axes surfaces once.
-        let mut cites = extract_inventory_citations(inventory_prefixes, &content);
-        cites.extend(extract_inventory_path_citations(
-            inventory_path_prefixes,
-            &content,
-        ));
-        cites.sort();
-        cites.dedup();
-        for (line, id) in cites {
+        for (line, id) in axes.extract(&content) {
             if id == inventory_id {
                 hits.push(Citation {
                     file: rel.clone(),
@@ -5592,6 +5644,7 @@ mod tests {
                 external_section_prefixes_bare: external_section_prefixes_bare.to_vec(),
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: inventory_path_prefixes.to_vec(),
+                inventory_marker_prefixes: vec![],
                 section_namespace: section_namespace.map(String::from),
             },
             entry_id_prefix: prefix.to_string(),
@@ -6061,6 +6114,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
+                inventory_marker_prefixes: vec![],
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6177,6 +6231,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
+                inventory_marker_prefixes: vec![],
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6391,6 +6446,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
+                inventory_marker_prefixes: vec![],
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -6664,6 +6720,7 @@ mod tests {
                 external_section_prefixes_bare: vec![],
                 external_changelog_prefixes: vec![],
                 inventory_path_prefixes: vec![],
+                inventory_marker_prefixes: vec![],
                 section_namespace: None,
             },
             entry_id_prefix: "Round ".to_string(),
@@ -8315,6 +8372,54 @@ mod tests {
         );
     }
 
+    /// Round 1322 — a MARKER prefix is not part of the id: the annotation
+    /// `req="REQ-4.2.1"` cites `REQ-4.2.1`, and the closing quote ends the tail.
+    /// The control is the same text under the path axis, which keeps the syntax
+    /// in the id — the shape under which an active entry read as missing.
+    #[test]
+    fn extract_inventory_marker_citations_strips_the_prefix() {
+        let prefixes = vec!["req=\"".to_string()];
+        let content = "<state id=\"idle\" req=\"REQ-4.2.1\"/>\n";
+        assert_eq!(
+            extract_inventory_marker_citations(&prefixes, content),
+            vec![(1, "REQ-4.2.1".to_string())]
+        );
+        assert_eq!(
+            extract_inventory_path_citations(&prefixes, content),
+            vec![(1, "req=\"REQ-4.2.1".to_string())],
+            "control: the path axis keeps the prefix in the id"
+        );
+    }
+
+    /// Round 1322 — every declared axis is read by ONE reader, in one order.
+    #[test]
+    fn inventory_citation_axes_read_every_declared_axis() {
+        let opaque = vec!["ARP_".to_string()];
+        let path = vec!["W3C SCXML ".to_string()];
+        let marker = vec!["req=\"".to_string()];
+        let axes = InventoryCitationAxes {
+            opaque: &opaque,
+            path: &path,
+            marker: &marker,
+        };
+        let content = "// ARP_07 beside W3C SCXML 3.13\n<state req=\"REQ-4.2.1\"/>\n";
+        assert_eq!(
+            axes.extract(content),
+            vec![
+                (1, "ARP_07".to_string()),
+                (1, "W3C SCXML 3.13".to_string()),
+                (2, "REQ-4.2.1".to_string()),
+            ]
+        );
+        assert!(!axes.is_empty());
+        assert!(InventoryCitationAxes {
+            opaque: &[],
+            path: &[],
+            marker: &[],
+        }
+        .is_empty());
+    }
+
     #[test]
     fn extract_inventory_path_citations_word_boundary_rejects_alphanumeric_prev() {
         // `xW3C SCXML 3.13` should NOT match — prefix is not on a word
@@ -9445,8 +9550,11 @@ mod tests {
             tmp.path(),
             &["src/".to_string()],
             "ARP_07",
-            &prefixes,
-            &[],
+            &InventoryCitationAxes {
+                opaque: &prefixes,
+                path: &[],
+                marker: &[],
+            },
             true,
         )
         .unwrap();
@@ -9461,9 +9569,18 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         std::fs::create_dir_all(tmp.path().join("src")).unwrap();
         std::fs::write(tmp.path().join("src/a.rs"), "// ARP_07 cite\n").unwrap();
-        let hits =
-            scan_inventory_decay(tmp.path(), &["src/".to_string()], "ARP_07", &[], &[], true)
-                .unwrap();
+        let hits = scan_inventory_decay(
+            tmp.path(),
+            &["src/".to_string()],
+            "ARP_07",
+            &InventoryCitationAxes {
+                opaque: &[],
+                path: &[],
+                marker: &[],
+            },
+            true,
+        )
+        .unwrap();
         assert!(hits.is_empty());
     }
 
@@ -9482,8 +9599,11 @@ mod tests {
             tmp.path(),
             &["src/".to_string()],
             "ARP_07",
-            &prefixes,
-            &[],
+            &InventoryCitationAxes {
+                opaque: &prefixes,
+                path: &[],
+                marker: &[],
+            },
             true,
         )
         .unwrap();

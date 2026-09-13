@@ -4469,7 +4469,7 @@ fn print_inventory_decay_trigger(
     {
         Some(c)
             if !c.paths.is_empty()
-                && (!c.inventory_prefixes.is_empty() || !c.inventory_path_prefixes.is_empty()) =>
+                && !mnemosyne_validate::code_refs::InventoryCitationAxes::of(c).is_empty() =>
         {
             c
         }
@@ -4479,8 +4479,7 @@ fn print_inventory_decay_trigger(
         workspace_root,
         &code_refs_cfg.paths,
         inventory_id,
-        &code_refs_cfg.inventory_prefixes,
-        &code_refs_cfg.inventory_path_prefixes,
+        &mnemosyne_validate::code_refs::InventoryCitationAxes::of(code_refs_cfg),
         code_refs_cfg.comment_only,
     ) {
         Ok(h) => h,

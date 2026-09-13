@@ -705,6 +705,24 @@ pub struct SetEqualityValidatorConfig {
     #[serde(default)]
     pub inventory_path_prefixes: Vec<String>,
 
+    /// Inventory citation prefixes that MARK a citation without being part of
+    /// its id (Round 1322).
+    ///
+    /// Citation form: `<prefix><tail>` with the section-path tail class of
+    /// `inventory_path_prefixes`, and the id is the tail ALONE — so an
+    /// annotation inside a document an adopter does not rewrite
+    /// (`req="REQ-4.2.1"` in an XML attribute) resolves against the entry
+    /// registered as `REQ-4.2.1`. The tail stops at the first character outside
+    /// `[A-Za-z0-9./-_]`, which is why a closing quote is not read into the id.
+    /// Registered as a path prefix instead, the same annotation keeps its syntax
+    /// in the id (`req="REQ-4.2.1`), so an active entry reads as missing and a
+    /// deprecated one is never reported as deprecated.
+    ///
+    /// Same lifecycle, `severity_inventory` and orphan-ledger suppression as the
+    /// two other inventory axes. Empty list = axis disabled.
+    #[serde(default)]
+    pub inventory_marker_prefixes: Vec<String>,
+
     /// Section-ID namespace scope for this workspace's `§<id>` axis.
     ///
     /// A `§<id>` citation's namespace is the segment of `<id>` before the

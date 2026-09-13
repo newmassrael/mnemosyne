@@ -7047,6 +7047,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "valid_inventory_count": store.inventory_entries.len(),
             "inventory_prefixes": cfg.inventory_prefixes,
             "inventory_path_prefixes": cfg.inventory_path_prefixes,
+            "inventory_marker_prefixes": cfg.inventory_marker_prefixes,
             "external_section_prefixes": cfg.external_section_prefixes,
             "external_section_prefixes_bare": cfg.external_section_prefixes_bare,
             "external_changelog_prefixes": cfg.external_changelog_prefixes,
@@ -7282,6 +7283,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             println!(
                 "inventory_path_prefixes={:?} (Round 302 section-path axis)",
                 cfg.inventory_path_prefixes
+            );
+        }
+        if !cfg.inventory_marker_prefixes.is_empty() {
+            println!(
+                "inventory_marker_prefixes={:?} (Round 1322 marker axis — the id is the tail)",
+                cfg.inventory_marker_prefixes
             );
         }
         if !cfg.external_section_prefixes.is_empty() {

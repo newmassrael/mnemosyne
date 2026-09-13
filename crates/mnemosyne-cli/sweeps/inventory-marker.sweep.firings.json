@@ -1,0 +1,46 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-marker-keeps-its-prefix-in-the-id": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                    InventoryTailMode::Marker => tail.to_string(),\n",
+          "to": "                    InventoryTailMode::Marker => format!(\"{prefix}{tail}\"),\n"
+        }
+      ],
+      "expect_red": [
+        "extract_inventory_marker_citations_strips_the_prefix",
+        "inventory_citation_axes_read_every_declared_axis",
+        "a_marker_prefix_cites_the_id_after_it"
+      ],
+      "tests": [
+        "code_refs::tests::extract_inventory_marker_citations_strips_the_prefix",
+        "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+        "inventory_marker_smoke::a_marker_prefix_cites_the_id_after_it"
+      ]
+    },
+    "the-one-reader-skips-the-marker-axis": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "        cites.extend(extract_inventory_marker_citations(self.marker, content));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "inventory_citation_axes_read_every_declared_axis",
+        "a_marker_prefix_cites_the_id_after_it"
+      ],
+      "tests": [
+        "code_refs::tests::inventory_citation_axes_read_every_declared_axis",
+        "inventory_marker_smoke::a_marker_prefix_cites_the_id_after_it"
+      ]
+    }
+  },
+  "forgotten": {}
+}

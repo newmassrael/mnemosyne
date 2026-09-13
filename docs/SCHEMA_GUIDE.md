@@ -271,6 +271,15 @@ you `informative`, it is older than R422 — the store will refuse it.
  same lifecycle (active / deprecated / reserved). A prefix may be
  registered in both axes if both citation shapes coexist; the
  scanner dedups so a matching cite surfaces once.
+- **`[plugins.set_equality_validator].inventory_marker_prefixes`** — a third axis whose
+ prefix MARKS a citation and is not part of its id: the tail (the same
+ `[A-Za-z0-9./-_]+` class as the path axis) is the id alone. For an
+ annotation inside a document you do not rewrite — register `req="` and
+ `<state req="REQ-4.2.1"/>` resolves against the entry `REQ-4.2.1`; the
+ closing quote ends the tail. Registered as a path prefix instead, the
+ same annotation keeps its syntax in the id (`req="REQ-4.2.1`), so an
+ active entry reads as missing and a deprecated one is never reported.
+ Same lifecycle, severity and orphan-ledger suppression as the other two.
 - **`[plugins.set_equality_validator].external_section_prefixes`** — single-token prefix
  list (`["RFC", "IEEE", "ISO/IEC"]`) for the *numeric-document* form
  of external-standard `§` skip (Round 277). Citation form:

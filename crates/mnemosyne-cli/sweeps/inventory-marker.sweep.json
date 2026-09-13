@@ -1,0 +1,75 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS A MARKER PREFIX IS READ AND IS NOT PART OF THE ID — run it",
+    "from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-cli/sweeps/inventory-marker.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. `inventory_marker_prefixes` declares prefixes that mark",
+    "an inventory citation inside a document — `req=\"REQ-4.2.1\"` — and the id is",
+    "the tail alone. Registered as a path prefix, the same annotation kept its",
+    "syntax in the id, so an active entry read as missing and a deprecated one was",
+    "never reported. All three inventory axes are now read through one",
+    "`InventoryCitationAxes`, which the scan and the decay scan both take.",
+    "",
+    "TWO INJECTIONS. Keeping the prefix in a marker id is the defect the axis exists",
+    "to remove; it must redden the extractor test, the three-axis test and the gate",
+    "run through the real binary. Dropping the marker axis from the one reader is",
+    "how a third list threaded beside the other two would have gone missing from one",
+    "caller; it must redden the three-axis test and the gate run.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-validate",
+    "-p",
+    "mnemosyne-cli",
+    "--no-fail-fast",
+    "--",
+    "extract_inventory_marker_citations_strips_the_prefix",
+    "inventory_citation_axes_read_every_declared_axis",
+    "inventory_marker_smoke::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-marker-keeps-its-prefix-in-the-id",
+      "why": "the adopter's measurement: the annotation's syntax stays in the id, the active entry reads as missing and the deprecated one is never reported as deprecated",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                    InventoryTailMode::Marker => tail.to_string(),\n",
+          "to": "                    InventoryTailMode::Marker => format!(\"{prefix}{tail}\"),\n"
+        }
+      ],
+      "expect_red": [
+        "extract_inventory_marker_citations_strips_the_prefix",
+        "inventory_citation_axes_read_every_declared_axis",
+        "a_marker_prefix_cites_the_id_after_it"
+      ]
+    },
+    {
+      "name": "the-one-reader-skips-the-marker-axis",
+      "why": "the shape a third list threaded beside the other two would have taken in any caller that was not updated: the axis is declared, parsed and reported in the config echo, and no citation under it is ever read",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "        cites.extend(extract_inventory_marker_citations(self.marker, content));\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "inventory_citation_axes_read_every_declared_axis",
+        "a_marker_prefix_cites_the_id_after_it"
+      ]
+    }
+  ]
+}

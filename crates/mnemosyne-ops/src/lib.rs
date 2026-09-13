@@ -2769,9 +2769,8 @@ pub fn inventory_decay_scan(
     else {
         return Ok(Vec::new());
     };
-    if cfg.paths.is_empty()
-        || (cfg.inventory_prefixes.is_empty() && cfg.inventory_path_prefixes.is_empty())
-    {
+    let axes = mnemosyne_validate::code_refs::InventoryCitationAxes::of(cfg);
+    if cfg.paths.is_empty() || axes.is_empty() {
         return Ok(Vec::new());
     }
     // An unreadable scan path fails loud rather than reporting "no decay" —
@@ -2780,8 +2779,7 @@ pub fn inventory_decay_scan(
         workspace_root,
         &cfg.paths,
         inventory_id,
-        &cfg.inventory_prefixes,
-        &cfg.inventory_path_prefixes,
+        &axes,
         cfg.comment_only,
     )?;
     Ok(hits)
