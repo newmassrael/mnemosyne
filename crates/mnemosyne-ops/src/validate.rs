@@ -98,6 +98,8 @@ pub struct ValidateWorkspaceReport {
     /// because an empty `verification_unrecorded` is the same clean a workspace
     /// gets when the check never ran.
     pub verification_record_reach: VerificationRecordReach,
+    /// Round 1341 — what the inventory axes hold, and what nothing here checks.
+    pub inventory_axis_reach: InventoryAxisReach,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -526,6 +528,11 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
             verification_unrecorded.len()
         ));
     }
+    // Round 1341 — what the inventory axes hold. Counted, never judged: the
+    // adopter who asked for the arrival check is right that "unchecked" must not
+    // read as a pass, and the answer at zero population is to SAY the number
+    // rather than to invent a refusal nobody can satisfy.
+    let inventory_axis_reach = InventoryAxisReach::of(&atomic_store);
     let failed = !failure_reasons.is_empty();
 
     Ok(ValidateWorkspaceReport {
@@ -534,6 +541,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         entry_id_dating,
         verification_unrecorded,
         verification_record_reach,
+        inventory_axis_reach,
         orphan_actual,
         orphan_ledger: orphan_ledger_view,
         orphan_new,
@@ -649,6 +657,79 @@ pub enum VerificationRecordReach {
         /// Entries older than this check reaches: frozen, counted, not judged.
         out_of_reach: usize,
     },
+}
+
+/// WHAT THE INVENTORY AXES HOLD, AND WHAT NOTHING HERE CHECKS (Round 1341).
+///
+/// THE ADOPTER ASKED FOR THIS IN THE RIGHT WORDS: *a disposition wants an
+/// arrival check, and "unchecked" must not read as a pass.* The axes landed in
+/// Round 1321 — `modality` says how a requirement is stated, `disposition` says
+/// where it is satisfied — and `delegated { to_doc, to_id }` names a requirement
+/// in ANOTHER document. A store has no cross-workspace reference, so nothing in
+/// this repository resolves that name, and until now nothing SAID so either: the
+/// limitation was written in a doc comment on the type and the gate printed the
+/// same silence for "no delegated rows" and "delegated rows nobody checked".
+///
+/// SO THE REPORT CARRIES THE REACH, THE WAY THE READER AXIS DOES (Round 1326).
+/// No new refusal: the population is zero in every store on this machine, and a
+/// gate that reddens on the day an axis is adopted is one an adopter turns off
+/// (Rounds 819 and 855 are the precedent). What is owed at zero population is a
+/// number that says zero and a sentence that says which question it answers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct InventoryAxisReach {
+    /// Inventory entries in the store.
+    pub entries: usize,
+    /// Entries carrying a `modality`.
+    pub with_modality: usize,
+    /// Entries carrying a `disposition`, by kind.
+    pub implemented: usize,
+    pub delegated: usize,
+    pub out_of_scope: usize,
+    pub system_level: usize,
+    /// `<entry id> -> <to_doc>#<to_id>` for every delegated row, so the rows
+    /// nothing verifies can be chased by the person reading the report rather
+    /// than only counted. Bounded by the caller when it prints.
+    pub delegations: Vec<String>,
+}
+
+impl InventoryAxisReach {
+    /// What this workspace's inventory axes say, counted from the store.
+    #[must_use]
+    pub fn of(store: &mnemosyne_atomic::AtomicStore) -> Self {
+        use mnemosyne_core::InventoryDisposition as Disposition;
+        let mut reach = Self {
+            entries: store.inventory_entries.len(),
+            with_modality: 0,
+            implemented: 0,
+            delegated: 0,
+            out_of_scope: 0,
+            system_level: 0,
+            delegations: Vec::new(),
+        };
+        for (id, entry) in &store.inventory_entries {
+            if entry.modality.is_some() {
+                reach.with_modality += 1;
+            }
+            match &entry.disposition {
+                None => {}
+                Some(Disposition::Implemented {}) => reach.implemented += 1,
+                Some(Disposition::OutOfScope { .. }) => reach.out_of_scope += 1,
+                Some(Disposition::SystemLevel { .. }) => reach.system_level += 1,
+                Some(Disposition::Delegated { to_doc, to_id }) => {
+                    reach.delegated += 1;
+                    reach.delegations.push(format!("{id} -> {to_doc}#{to_id}"));
+                }
+            }
+        }
+        reach
+    }
+
+    /// Entries carrying a disposition of any kind.
+    #[must_use]
+    pub fn with_disposition(&self) -> usize {
+        self.implemented + self.delegated + self.out_of_scope + self.system_level
+    }
 }
 
 /// WHETHER THE LEDGER'S COUNTS ARE DATED AT ALL (Round 983).
@@ -1416,6 +1497,43 @@ impl ValidateWorkspaceReport {
         );
         for u in &self.verification_unrecorded {
             let _ = writeln!(out, "  {}", u);
+        }
+        // Round 1341 — the inventory axes report what they hold AND what nothing
+        // here asks. A count alone would let "0 delegated rows" and "delegated
+        // rows nobody resolved" print the same line.
+        let inventory = &self.inventory_axis_reach;
+        let _ = writeln!(
+            out,
+            "inventory axes: {} entry(ies), {} carry a modality, {} a disposition \
+             (implemented {} · delegated {} · out_of_scope {} · system_level {}) \
+             (Round 1341)",
+            inventory.entries,
+            inventory.with_modality,
+            inventory.with_disposition(),
+            inventory.implemented,
+            inventory.delegated,
+            inventory.out_of_scope,
+            inventory.system_level,
+        );
+        let _ = writeln!(
+            out,
+            "  arrival: {} — `to_doc`/`to_id` name a requirement in another \
+             document and a store has no cross-workspace reference, so a \
+             delegated row is RECORDED, NOT VERIFIED",
+            if inventory.delegated == 0 {
+                "no row delegates, so there is nothing to check yet".to_string()
+            } else {
+                format!(
+                    "{} delegated row(s), 0 checked by anything here",
+                    inventory.delegated
+                )
+            }
+        );
+        for delegation in inventory.delegations.iter().take(10) {
+            let _ = writeln!(out, "    unchecked: {delegation}");
+        }
+        if inventory.delegations.len() > 10 {
+            let _ = writeln!(out, "    and {} more", inventory.delegations.len() - 10);
         }
         if self.failed {
             let _ = writeln!(out, "FAILED:");

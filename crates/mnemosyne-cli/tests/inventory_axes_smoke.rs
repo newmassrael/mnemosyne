@@ -249,3 +249,89 @@ fn both_writers_of_each_axis_refuse_the_same_inputs() {
         "a refused update was written anyway: {untouched}"
     );
 }
+
+/// WHAT THE AXES HOLD, AND WHAT NOTHING HERE CHECKS (Round 1341).
+///
+/// The adopter who asked for these axes came back with the sharper half of the
+/// request: *a disposition wants an arrival check, and "unchecked" must not read
+/// as a pass.* `delegated { to_doc, to_id }` names a requirement in another
+/// document, a store has no cross-workspace reference, and until this round the
+/// limitation lived in a doc comment while the gate printed the same silence for
+/// "nothing delegates" and "rows nobody resolved".
+#[test]
+fn the_report_counts_the_axes_and_names_what_it_does_not_check() {
+    let ws = workspace();
+    accepted(
+        ws.path(),
+        &[
+            "add-inventory-entry",
+            "--id",
+            "REQ-1",
+            "--status",
+            "active",
+            "--modality",
+            "shall",
+            "--disposition",
+            "implemented",
+        ],
+    );
+    accepted(
+        ws.path(),
+        &[
+            "add-inventory-entry",
+            "--id",
+            "REQ-2",
+            "--status",
+            "active",
+            "--disposition",
+            "delegated",
+            "--to-doc",
+            "transport-spec",
+            "--to-id",
+            "REQ-7",
+        ],
+    );
+    let said = accepted(ws.path(), &["validate-workspace"]);
+    let axes = said
+        .lines()
+        .find(|l| l.starts_with("inventory axes:"))
+        .expect("the report says nothing about the inventory axes");
+    assert!(
+        axes.contains("2 entry(ies)")
+            && axes.contains("1 carry a modality")
+            && axes.contains("2 a disposition")
+            && axes.contains("delegated 1"),
+        "the reach does not say what the axes hold: {axes}"
+    );
+    assert!(
+        said.contains("1 delegated row(s), 0 checked by anything here")
+            && said.contains("RECORDED, NOT VERIFIED"),
+        "a delegated row nothing resolves is reported as though it were fine: {said}"
+    );
+    assert!(
+        said.contains("unchecked: REQ-2 -> transport-spec#REQ-7"),
+        "the row nothing verifies is counted but cannot be chased: {said}"
+    );
+}
+
+/// AND A WORKSPACE THAT DELEGATES NOTHING SAYS SO, rather than printing the
+/// silence an unchecked delegation would print. The two states have to be
+/// different sentences, which is the whole point of reporting a reach — and at
+/// zero population it is the only thing this round can honestly say.
+#[test]
+fn a_workspace_that_delegates_nothing_says_that_rather_than_nothing() {
+    let ws = workspace();
+    accepted(
+        ws.path(),
+        &["add-inventory-entry", "--id", "REQ-1", "--status", "active"],
+    );
+    let said = accepted(ws.path(), &["validate-workspace"]);
+    assert!(
+        said.contains("no row delegates, so there is nothing to check yet"),
+        "an empty axis prints the same as an unchecked one: {said}"
+    );
+    assert!(
+        !said.contains("unchecked:"),
+        "a workspace with no delegation reported one: {said}"
+    );
+}

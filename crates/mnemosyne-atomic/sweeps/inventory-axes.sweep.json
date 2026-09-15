@@ -19,6 +19,13 @@
     "blank-payload check is not injected: a blank payload is also refused by the",
     "edge-whitespace check beside it, so switching one off alone proves nothing.",
     "",
+    "AND THREE MORE FOR WHAT THE AXES DO NOT CHECK (Round 1341). A delegated row",
+    "names a requirement in another document and nothing here resolves it, so the",
+    "report carries the reach: what the axes hold, that no delegation was checked,",
+    "and which rows those are. The ways that goes quiet are the ways every reach",
+    "goes quiet — a count that counts nothing, an empty axis printing what an",
+    "unchecked one prints, and rows that are tallied but cannot be chased.",
+    "",
     "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
     "beside this file."
   ],
@@ -70,6 +77,42 @@
         "every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs",
         "both_writers_of_each_axis_refuse_the_same_inputs"
       ]
+    },
+    {
+      "name": "the-reach-counts-nothing",
+      "why": "the axes report zero of everything, which is what an unadopted workspace looks like — so a store full of requirements and a store with none print the same line, and a reader learns nothing from either",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        for (id, entry) in &store.inventory_entries {",
+          "to": "        for (id, entry) in store.inventory_entries.iter().take(0) {"
+        }
+      ],
+      "expect_red": ["the_report_counts_the_axes_and_names_what_it_does_not_check"]
+    },
+    {
+      "name": "an-empty-axis-prints-what-an-unchecked-one-prints",
+      "why": "the adopter's own sentence, put back: `unchecked` reading as a pass. A workspace that delegates nothing and a workspace whose delegations nobody resolved are different states, and a report that gives them one line has answered neither",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "                \"no row delegates, so there is nothing to check yet\".to_string()",
+          "to": "                \"0 delegated row(s), 0 checked by anything here\".to_string()"
+        }
+      ],
+      "expect_red": ["a_workspace_that_delegates_nothing_says_that_rather_than_nothing"]
+    },
+    {
+      "name": "the-unchecked-rows-are-counted-but-not-named",
+      "why": "the count survives and the rows go — so a reader is told that four delegations were never resolved and given no way to find them. A number nobody can act on is the shape this repository turns off",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "            let _ = writeln!(out, \"    unchecked: {delegation}\");",
+          "to": "            let _ = delegation;"
+        }
+      ],
+      "expect_red": ["the_report_counts_the_axes_and_names_what_it_does_not_check"]
     },
     {
       "name": "a-delegated-id-with-a-space-is-accepted",

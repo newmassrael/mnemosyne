@@ -37,6 +37,21 @@
         "tests::every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs"
       ]
     },
+    "an-empty-axis-prints-what-an-unchecked-one-prints": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "                \"no row delegates, so there is nothing to check yet\".to_string()",
+          "to": "                \"0 delegated row(s), 0 checked by anything here\".to_string()"
+        }
+      ],
+      "expect_red": [
+        "a_workspace_that_delegates_nothing_says_that_rather_than_nothing"
+      ],
+      "tests": [
+        "inventory_axes_smoke::a_workspace_that_delegates_nothing_says_that_rather_than_nothing"
+      ]
+    },
     "an-unregistered-unit-is-accepted": {
       "edits": [
         {
@@ -52,6 +67,36 @@
       "tests": [
         "inventory_axes_smoke::both_writers_of_each_axis_refuse_the_same_inputs",
         "tests::every_writer_of_the_inventory_axes_and_the_gate_refuse_the_same_inputs"
+      ]
+    },
+    "the-reach-counts-nothing": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        for (id, entry) in &store.inventory_entries {",
+          "to": "        for (id, entry) in store.inventory_entries.iter().take(0) {"
+        }
+      ],
+      "expect_red": [
+        "the_report_counts_the_axes_and_names_what_it_does_not_check"
+      ],
+      "tests": [
+        "inventory_axes_smoke::the_report_counts_the_axes_and_names_what_it_does_not_check"
+      ]
+    },
+    "the-unchecked-rows-are-counted-but-not-named": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "            let _ = writeln!(out, \"    unchecked: {delegation}\");",
+          "to": "            let _ = delegation;"
+        }
+      ],
+      "expect_red": [
+        "the_report_counts_the_axes_and_names_what_it_does_not_check"
+      ],
+      "tests": [
+        "inventory_axes_smoke::the_report_counts_the_axes_and_names_what_it_does_not_check"
       ]
     }
   },
