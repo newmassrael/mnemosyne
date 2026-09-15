@@ -20,7 +20,7 @@ use std::sync::OnceLock;
 use anyhow::{anyhow, bail, Context, Result};
 
 use mnemosyne_atomic::AtomicStore;
-use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection, Severity, WorkspaceConfig};
+use mnemosyne_config::{discover_config, LoadedConfig, SchemaSection, Severity};
 use mnemosyne_query::{
     build_envelope, changelog_entries_for_section, query_term, related_sections_with_atomic,
     section_by_id, TermMode, TermQuery, TermScope,
@@ -28,7 +28,7 @@ use mnemosyne_query::{
 use mnemosyne_style::{
     check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
 };
-use mnemosyne_validate::code_refs::{AuditAxis, SetEqualityValidator};
+use mnemosyne_validate::code_refs::AuditAxis;
 
 /// workspace config (mnemosyne.toml) cached on first lookup.
 /// `discover_config` walks upward from CWD looking for `mnemosyne.toml`
