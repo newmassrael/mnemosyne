@@ -306,6 +306,80 @@ fn a_ledger_whose_retirements_name_no_round_is_judged_without_asking_anything() 
     );
 }
 
+/// A NOTATION THIS READER CANNOT PLACE A BODY FOR IS NO VERDICT, NOT A PASS.
+///
+/// THE GENERAL FORM OF WHAT ROUND 1339 REPAIRED. A table row registers with its
+/// reason in the next cell, and until that round the reader placed bodies for
+/// two notations and let the third fall through to the inline rule — where the
+/// parenthetical IS the body, a body holding only `(①)` has nothing left after
+/// the classification, and "nothing left" is how this crate recognises somebody
+/// merely naming a debt registered elsewhere. Three live rows vanished that way
+/// and the count simply came back smaller. Teaching it the table row fixes the
+/// instance; this refuses the CLASS, so the fourth notation stops the census
+/// instead of shrinking it.
+#[test]
+fn a_row_in_an_unknown_notation_is_no_verdict_rather_than_a_smaller_number() {
+    let root = fixture_root("unknown_notation");
+    let ledger = root.join("ledger.md");
+    fs::write(
+        &ledger,
+        "- **N910**(①) — a bullet, whose reason is right here.\n\
+         \u{2023} **N911**(①) — a notation nobody taught this reader.\n",
+    )
+    .expect("the fixture ledger can be written");
+
+    let answer = Command::new(env!("CARGO_BIN_EXE_open-debts"))
+        .arg("--ledger")
+        .arg(&ledger)
+        .output()
+        .expect("the census binary can be run");
+    let said = String::from_utf8_lossy(&answer.stderr).to_string();
+    assert_eq!(
+        answer.status.code(),
+        Some(2),
+        "a row it cannot read is not a row it may drop: {said}{}",
+        String::from_utf8_lossy(&answer.stdout)
+    );
+    assert!(
+        said.contains("N911") && said.contains("NO VERDICT"),
+        "the refusal names the row a reader has to go and look at: {said}"
+    );
+}
+
+/// AND A ROW WRITTEN IN A NOTATION IT DOES KNOW IS JUDGED, which is what keeps
+/// the refusal above from being a filter on line-opening registrations as such:
+/// this ledger opens lines with real inline registrations — twenty-one of them
+/// as this round was written — and every one of those carries its reason in the
+/// parenthetical, so none is a mention and none is refused.
+#[test]
+fn a_line_opening_registration_that_carries_its_reason_is_judged() {
+    let root = fixture_root("line_opening_inline");
+    let ledger = root.join("ledger.md");
+    fs::write(
+        &ledger,
+        "**N912**(the guard lives on the caller rather than the chain, ①)\n\
+         - **N913**(②) — a limit, recorded rather than worked.\n",
+    )
+    .expect("the fixture ledger can be written");
+
+    let answer = Command::new(env!("CARGO_BIN_EXE_open-debts"))
+        .arg("--ledger")
+        .arg(&ledger)
+        .output()
+        .expect("the census binary can be run");
+    let said = String::from_utf8_lossy(&answer.stdout).to_string();
+    assert_eq!(
+        answer.status.code(),
+        Some(1),
+        "judged, with N912 open: {said}{}",
+        String::from_utf8_lossy(&answer.stderr)
+    );
+    assert!(
+        said.contains("N912"),
+        "the inline registration with a reason is a row: {said}"
+    );
+}
+
 /// Every program this crate has is declared, and one of them is the default.
 ///
 /// THE LAW IS HERE BECAUSE THE DEFECT CAME FROM HERE (Round 1314). The fixture

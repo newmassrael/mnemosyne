@@ -195,6 +195,40 @@ fn main() -> ExitCode {
         );
         return ExitCode::from(2);
     }
+    // A ROW WRITTEN IN A NOTATION THIS READER DOES NOT KNOW IS REFUSED RATHER
+    // THAN DROPPED, which is the general form of the defect Round 1339 repaired.
+    // The reader places a registration's body by the mark its line opens with,
+    // and it knows the two the ledger writes. A row that opens its line in some
+    // third mark has its reason in text no rule here fetches, so the only thing
+    // left to judge is the classification — and "nothing left after the
+    // classification" is this crate's definition of somebody merely NAMING a
+    // debt elsewhere. That is exactly how three live ① rows went uncounted while
+    // the census printed a smaller number and no sign that it had.
+    //
+    // REFUSING RATHER THAN GUESSING, because the alternative is to invent where
+    // the body of an unknown notation lives, and a wrong guess reads as a clean
+    // pass. Exit 2 is this program's "not judged", and its termination condition
+    // is the one thing a false pass must never be able to reach.
+    let unplaced: Vec<&open_debts::Registration> = all
+        .iter()
+        .filter(|row| row.opens_its_line && row.is_a_mention())
+        .collect();
+    if !unplaced.is_empty() {
+        eprintln!(
+            "[open-debts] NO VERDICT — {} registration(s) open their line in a notation \
+             this reader cannot place a body for, so their reason was never read:",
+            unplaced.len()
+        );
+        for row in &unplaced {
+            eprintln!(
+                "[open-debts]   {} (line {}) — write it as a bullet (`- **{}**(…) — …`) \
+                 or as a table row (`| **{}**(…) | … |`), or teach this reader the \
+                 notation; being unable to read a row is not a pass",
+                row.id, row.line, row.id, row.id
+            );
+        }
+        return ExitCode::from(2);
+    }
     // THE NAMES A RETIREMENT GIVES ARE RESOLVED BEFORE ANYTHING IS COUNTED
     // RETIRED (R1298). A closure that names a commit is a checkable claim, and
     // this census believed one that was false for several turns.

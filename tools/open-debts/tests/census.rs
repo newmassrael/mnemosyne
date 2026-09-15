@@ -105,6 +105,78 @@ fn an_inline_registration_with_a_body_is_a_row() {
     assert_eq!(open[0].shape, Shape::Inline);
 }
 
+/// A TABLE ROW REGISTERS, and its body is the cell beside the id.
+///
+/// THE SECOND TIME THIS CENSUS UNDERCOUNTED BY A NOTATION. The ledger's tables
+/// were read as a place rows are RETIRED — the case below — and the reader never
+/// asked what a table row that OPENS one looks like. It looks like this, with
+/// the classification exactly where every other shape puts it, and the reason in
+/// the next cell; falling through to `Inline` made the parenthetical the whole
+/// body, and a body holding nothing but `(①)` is this crate's definition of
+/// somebody merely naming a debt. Measured on the live ledger 2026-09-15: three
+/// such rows, all ①, none counted — against a census whose exit 0 is the debt
+/// arc's termination condition.
+#[test]
+fn a_table_row_registers_and_its_body_is_the_cell_beside_it() {
+    let ledger = "\
+| # | 한 줄 |
+|---|---|
+| **N700**(①) | 🆕 a thing this repository can do, written where the tables write it |
+| **N701**(②) | a limit, recorded rather than worked |
+";
+    let rows = registrations(ledger);
+    assert_eq!(rows.len(), 2, "both table rows register: {rows:?}");
+    assert_eq!(rows[0].shape, Shape::Row);
+    assert!(
+        !rows[0].is_a_mention(),
+        "its reason is in the next cell, not the parenthetical: {:?}",
+        rows[0]
+    );
+    let open = open_autonomous(ledger);
+    assert_eq!(
+        open.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        vec!["N700"],
+        "the ① row is this branch's and the ② row is not: {open:?}"
+    );
+}
+
+/// AND AN ID IN A LATER CELL IS NOT THAT ROW'S REGISTRATION. The shape is
+/// decided by what opens the line, so a row that cites another debt in its
+/// reason cites it — the citation keeps the inline rules, and a citation
+/// carrying nothing but a branch marker stays a mention.
+#[test]
+fn an_id_cited_inside_a_cell_is_not_the_rows_registration() {
+    let ledger = "| **N702**(①) | 🆕 the same family as **N703**(①) |\n";
+    let rows = registrations(ledger);
+    assert_eq!(rows.len(), 2, "both ids are SEEN: {rows:?}");
+    assert_eq!(rows[0].shape, Shape::Row);
+    assert_eq!(rows[1].shape, Shape::Inline);
+    let open = open_autonomous(ledger);
+    assert_eq!(
+        open.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        vec!["N702"],
+        "the cited one is a mention and opens nothing: {open:?}"
+    );
+}
+
+/// AND A TABLE ROW CLOSES THE WAY ITS LINE SAYS. A registering row and its
+/// retirement can be the same line, so the shape that can now be opened has to
+/// be one that can be shut — otherwise the census trades an undercount for a
+/// row nothing can ever close.
+#[test]
+fn a_table_row_that_names_what_closed_it_is_retired() {
+    let ledger = "\
+| **N704**(①) | 🟢 **R1283 CLOSED** — paid in the round that found it |
+| **N705**(①) | still open |
+";
+    let open = open_autonomous(ledger);
+    assert_eq!(
+        open.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        vec!["N705"],
+        "the retired row is out and the live one is in: {open:?}"
+    );
+}
+
 /// THE ONE THAT MADE THE NUMBER WRONG. The ledger's tables retire a row by
 /// striking the id through, and the prose reader looked for `CLOSED` within a
 /// few characters of the id — which that table row puts a round number and two

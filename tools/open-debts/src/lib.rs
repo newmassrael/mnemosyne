@@ -35,6 +35,19 @@ fn a_branch_marker(c: char) -> bool {
 pub enum Shape {
     /// `- **N224**(①) — the body runs to the next bullet or blank line.`
     Bullet,
+    /// `| **N298**(①) | the body is the cell beside it. |`
+    ///
+    /// THE LEDGER'S TABLES REGISTER ROWS AND NOT ONLY RETIRE THEM, which this
+    /// reader learned by being wrong about three live rows. A table row puts the
+    /// classification where every other shape does — inside the parenthetical
+    /// that follows the id — and puts the BODY in the next cell, which is the
+    /// one place the old two-shape reader never looked: it fell through to
+    /// `Inline`, read `(①)` as the whole body, found nothing left after the
+    /// classification and filed a real registration as somebody merely naming
+    /// one. Measured 2026-09-15 on the live ledger: N296, N297 and N298, all
+    /// three marked ①, all three invisible to a census whose exit 0 is this
+    /// arc's termination condition.
+    Row,
     /// `… · **N216**(the body is the parenthetical, ①) · …`
     Inline,
 }
@@ -46,9 +59,22 @@ pub struct Registration {
     /// 1-based, so a reader can open the file at it.
     pub line: usize,
     pub shape: Shape,
-    /// The text this registration is judged on: the row for a bullet, the
-    /// parenthetical for an inline one.
+    /// The text this registration is judged on: the bullet and its indented
+    /// continuations, the whole line for a table row, the parenthetical for an
+    /// inline one.
     pub body: String,
+    /// Whether this id is the first thing on its line, list punctuation aside.
+    ///
+    /// THE ONE FACT THAT SAYS "A NOTATION AROSE THAT THIS READER DOES NOT KNOW".
+    /// Every shape whose reason lives OUTSIDE the parenthetical opens its line —
+    /// a bullet does, a table row does — and every registration whose reason
+    /// lives INSIDE it is written mid-sentence. So an id that opens its line and
+    /// whose parenthetical holds nothing but the classification is neither: it is
+    /// a row written in a notation nobody taught this reader, and it would be
+    /// dropped as a mention exactly the way [`Shape::Row`] was until now. It is
+    /// kept as data rather than judged here, because the refusal belongs to the
+    /// program that owns the exit codes.
+    pub opens_its_line: bool,
 }
 
 impl Registration {
@@ -63,6 +89,14 @@ impl Registration {
     /// JUDGED ON WHAT IS LEFT AFTER THE CLASSIFICATION, so no length threshold
     /// decides it: strip the branch markers and the words the ledger writes
     /// beside them, and a mention has nothing remaining.
+    ///
+    /// AND ONLY AN INLINE REGISTRATION CAN BE ONE, which is what [`Shape::Row`]
+    /// was named for. The test reads the body, so a shape whose body sits
+    /// somewhere this reader does not look answers it with an empty string and
+    /// is dropped — not because it holds nothing to do, but because nobody
+    /// fetched what it holds. A bullet and a table row both write their reason
+    /// outside the parenthetical, so for both the question is settled by where
+    /// the id sits on its line rather than by what the parenthetical contains.
     #[must_use]
     pub fn is_a_mention(&self) -> bool {
         if self.shape != Shape::Inline {
@@ -103,7 +137,9 @@ impl Registration {
     pub fn classification(&self) -> String {
         match self.shape {
             Shape::Inline => self.body.clone(),
-            Shape::Bullet => parenthetical_of(&self.body, &self.id).unwrap_or_default(),
+            Shape::Bullet | Shape::Row => {
+                parenthetical_of(&self.body, &self.id).unwrap_or_default()
+            }
         }
     }
 
@@ -209,7 +245,14 @@ pub fn registrations(ledger: &str) -> Vec<Registration> {
             }
             let index = line_of(start);
             let line = lines[index];
+            // WHICH SHAPE A REGISTRATION IS, IS DECIDED BY WHAT OPENS ITS LINE
+            // and not by what its parenthetical holds. The ledger writes a row
+            // in three notations — a bullet, a table row, and inline inside a
+            // sentence — and only the last keeps its reason in the parenthetical.
+            // Asking the opener is what lets the other two put their reason
+            // where they actually put it.
             let bullet = line.trim_start().starts_with(&format!("- **{id}**"));
+            let table_row = line.trim_start().starts_with(&format!("| **{id}**"));
             let (shape, body) = if bullet {
                 // A BULLET'S ROW IS ITS OWN LINE PLUS ITS INDENTED CONTINUATIONS,
                 // which is the notation the ledger actually uses: a wrapped row
@@ -227,6 +270,13 @@ pub fn registrations(ledger: &str) -> Vec<Registration> {
                     end += 1;
                 }
                 (Shape::Bullet, lines[index..end].join("\n"))
+            } else if table_row {
+                // A TABLE ROW IS EXACTLY ITS LINE. The cells beside the id hold
+                // the reason, the pipes are the ledger's separator and not a
+                // continuation mark, and a row that wraps is not a notation this
+                // ledger has ever written — so the line is the whole body and
+                // there is no boundary here to get wrong.
+                (Shape::Row, line.to_string())
             } else {
                 // FROM THE FLAT TEXT so a wrapped parenthetical is one
                 // parenthetical, and from THIS registration's own offset so two
@@ -238,11 +288,22 @@ pub fn registrations(ledger: &str) -> Vec<Registration> {
                     parenthetical_at(ledger, start + width + 3).unwrap_or_default(),
                 )
             };
+            // WHAT SITS BEFORE THE ID ON ITS LINE, ASKED AS "IS ANY OF IT A
+            // WORD". An allow-list of opening marks was the first form of this
+            // and it had the rule backwards: the case worth catching is the
+            // notation nobody has thought of, and a list of the marks somebody
+            // HAS thought of answers "not an opener" for exactly those. So the
+            // question is the other way round — a line that opens with marks,
+            // whatever marks, is opening a row, and a line that opens with WORDS
+            // is a sentence that mentions one.
+            let before = &line[..start - starts[index]];
+            let opens_its_line = !before.chars().any(char::is_alphabetic);
             found.push(Registration {
                 id: id.to_string(),
                 line: index + 1,
                 shape,
                 body,
+                opens_its_line,
             });
         }
     }
@@ -715,9 +776,18 @@ pub fn open_autonomous(ledger: &str, unresolved: &Unresolved) -> Vec<Registratio
     // row registering that very defect named it in its own headline and
     // vanished from the census, and the census reported a smaller number with
     // nothing to show that it had.
+    // AND THE SHAPES THAT HAVE A BODY ARE ASKED TOGETHER. `retired` above needs
+    // the retirement word to be REACHED by a run of ids, which is what keeps a
+    // sentence naming five debts from closing all five — and a table row breaks
+    // that run with its own cell separator, so a row whose reason cell says
+    // `🟢 R1283 CLOSED` is not retired by that path. It is retired here, on the
+    // same argument the bullet was: this text is the registration's OWN body,
+    // so a retirement in it is about this row and nothing else. Inline stays
+    // out, because its body is the parenthetical and the run rule is the whole
+    // reason a `신규 = A · B · C CLOSED` list does not close A and B.
     let mut says_closed: BTreeSet<String> = closed;
     for row in &all {
-        if row.shape != Shape::Bullet {
+        if !matches!(row.shape, Shape::Bullet | Shape::Row) {
             continue;
         }
         let retires = row.body.lines().any(|line| {
