@@ -840,15 +840,77 @@ fn census_contemporaneity(
 /// bullet naming the wrapper, or a status it prints, is a bullet asserting that
 /// a command was executed and came out a particular way. Bullets that describe
 /// what was measured, read or reasoned claim no run and are not asked for a
-/// record — which is why this is four literals and not a judgement about
-/// meaning. It over-reaches on a bullet that merely mentions the wrapper by
-/// name; that direction is the safe one, because the repair is to file the
-/// record the bullet is talking about.
+/// record. It over-reaches on a bullet that merely mentions the wrapper by name;
+/// that direction is the safe one, because the repair is to file the record the
+/// bullet is talking about.
+///
+/// AND THE VOCABULARY IS DERIVED FROM THE LEDGER RATHER THAN CHOSEN (Round
+/// 1340). It was four literals — `verify.sh`, `check-side-workspaces`, `exit 0`,
+/// `rc=0` — and this repository's rounds do not write their verdicts that way.
+/// Measured over the store on 2026-09-15: of the 24 entries that FILE a
+/// verification record, FOUR were not recognised as claiming one, and Round
+/// 1316 — the round that built this gate — was among them. What they write
+/// instead is a tally (`2228 passed, 0 failed`, 357 entries use `<n> failed`)
+/// and the wrapper's own sealed spelling with an equals sign (`exit=0`, 33
+/// entries), neither of which the four literals contain. An entry that says
+/// `sealed as exit=0` and files nothing passed this gate in silence, which is
+/// the exact shape the gate exists to refuse.
+///
+/// SO THE SPELLINGS ARE SCANNED, NOT LISTED. An exit status in any of the four
+/// ways this ledger writes one, or a test tally, or the name of a gate that
+/// produces either. The list that remains — the two gate NAMES — is a list
+/// because those are proper nouns; a status is a shape and is read as one.
+///
+/// THE LAW THAT KEEPS THIS FROM DRIFTING AGAIN IS NOT HERE, and that is the
+/// point: `every_entry_that_files_a_record_is_recognised_as_claiming_one` puts
+/// this predicate to the real ledger's own entries, so the next round to write
+/// its verdict in a new spelling and file a record turns that test red instead
+/// of quietly leaving the population.
 pub fn claims_a_run(verification_bullets: &[String]) -> bool {
-    const CLAIMS: [&str; 4] = ["verify.sh", "check-side-workspaces", "exit 0", "rc=0"];
-    verification_bullets
-        .iter()
-        .any(|b| CLAIMS.iter().any(|c| b.contains(c)))
+    verification_bullets.iter().any(|b| bullet_claims_a_run(b))
+}
+
+/// The gates whose NAME in a bullet is itself the claim that one ran.
+const RUN_GATES: [&str; 2] = ["verify.sh", "check-side-workspaces"];
+
+/// Whether one bullet asserts that something was executed and came out a
+/// particular way.
+fn bullet_claims_a_run(bullet: &str) -> bool {
+    RUN_GATES.iter().any(|gate| bullet.contains(gate))
+        || names_an_exit_status(bullet)
+        || names_a_test_tally(bullet)
+}
+
+/// `exit 0` · `exit=101` · `exit code 2` · `rc=0` — one thing in four spellings.
+///
+/// THE DIGIT IS REQUIRED, so that prose ABOUT exiting ("the gate would exit
+/// rather than guess") is not read as a verdict somebody reached.
+fn names_an_exit_status(bullet: &str) -> bool {
+    let digit_first = |rest: &str| rest.starts_with(|c: char| c.is_ascii_digit());
+    let after_exit = bullet.match_indices("exit").any(|(at, word)| {
+        let rest = &bullet[at + word.len()..];
+        let rest = rest.strip_prefix(" code").unwrap_or(rest);
+        rest.strip_prefix(' ')
+            .or_else(|| rest.strip_prefix('='))
+            .is_some_and(digit_first)
+    });
+    after_exit
+        || bullet
+            .match_indices("rc=")
+            .any(|(at, word)| digit_first(&bullet[at + word.len()..]))
+}
+
+/// `2228 passed, 0 failed` — the shape a round's suite result actually takes.
+///
+/// A COUNT IMMEDIATELY BEFORE THE WORD, so "the injections passed through the
+/// port" is prose and "17 passed" is a result.
+fn names_a_test_tally(bullet: &str) -> bool {
+    let bytes = bullet.as_bytes();
+    [" passed", " failed"].iter().any(|tail| {
+        bullet
+            .match_indices(tail)
+            .any(|(at, _)| at > 0 && bytes[at - 1].is_ascii_digit())
+    })
 }
 
 /// AN ENTRY THAT CLAIMS A RUN MUST FILE ONE (Round 1316).
@@ -891,10 +953,19 @@ fn verification_records(
     workspace_root: &Path,
     store: &mnemosyne_atomic::AtomicStore,
 ) -> Result<(VerificationRecordReach, Vec<String>), OpError> {
+    // AND AN ENTRY THAT FILED A RECORD IS IN THE POPULATION WHATEVER ITS PROSE
+    // SAYS (Round 1340). Filing one IS claiming one — the record carries the
+    // command and the status it sealed — so reading the claim only out of the
+    // prose let the two numbers on the report line disagree: 24 entries carried
+    // a record while the line said 20 filed one, because four of them wrote
+    // their verdict in a spelling the predicate did not know. A reach that can
+    // report fewer records than the store holds is an instrument nobody can
+    // check the store with, and the floor makes that arithmetic impossible
+    // rather than merely unlikely.
     let claiming: Vec<(&String, bool)> = store
         .changelog_entries
         .iter()
-        .filter(|(_, e)| claims_a_run(&e.verification_bullets))
+        .filter(|(_, e)| claims_a_run(&e.verification_bullets) || !e.verification_runs.is_empty())
         .map(|(id, e)| (id, !e.verification_runs.is_empty()))
         .collect();
     let total_claiming = claiming.len();

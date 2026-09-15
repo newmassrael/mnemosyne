@@ -19,12 +19,20 @@
     "this repository has already been bitten by. Two make the RECORD lie — no",
     "verdict at all, and a verdict that is always green, which is the defect",
     "wearing the fix. One makes the READER accept an unsealed record, which is",
-    "how a killed run becomes a green one. Three make the GATE stop biting: a",
+    "how a killed run becomes a green one. The rest make the GATE stop biting: a",
     "predicate that recognises no claim, a violation that never reaches the",
     "failure list, and a reach that ignores adoption — the last of which does",
     "not look like a weakening at all, because it makes the gate STRICTER while",
     "turning every frozen entry written before the rule into a finding nobody",
     "can act on.",
+    "",
+    "AND THREE OF THEM PUT R1340 BACK (the tally, the sealed `exit=<n>`, and the",
+    "floor under the population). They are not hypotheticals: that was this",
+    "gate's state until then, and under it four of the twenty-four entries that",
+    "FILE a record — Round 1316's own among them — were not recognised as",
+    "claiming one. A vocabulary that has drifted from the population it judges",
+    "is the quietest of all these failures, because every number it prints is",
+    "about a smaller ledger than the one on disk.",
     "",
     "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
     "beside this file, so a run sent to a build machine leaves its evidence on a",
@@ -86,19 +94,59 @@
     },
     {
       "name": "the-gate-recognises-no-claim",
-      "why": "the population goes empty and the gate reports a clean tree for every round that ever claimed a suite in prose. `0 violations` out of a population of 0 is the same green a genuinely clean ledger prints, which is the shape this repository has been wrong about before",
+      "why": "the population goes empty and the gate reports a clean tree for every round that ever claimed a suite in prose. `0 violations` out of a population of 0 is the same green a genuinely clean ledger prints, which is the shape this repository has been wrong about before. MEASURED, AND THE REACH NOW SURVIVES IT: `each_state_of_the_check_says_which_one_it_is` was in this red set until Round 1340's floor existed — with recognition dead the population went empty and the measured state reported nothing. It stays green now, because an entry that FILED a record is counted whatever the predicate makes of its prose, so killing the vocabulary blinds the gate and no longer blinds the count",
       "edits": [
         {
           "file": "crates/mnemosyne-ops/src/validate.rs",
-          "from": "    const CLAIMS: [&str; 4] = [\"verify.sh\", \"check-side-workspaces\", \"exit 0\", \"rc=0\"];",
-          "to": "    const CLAIMS: [&str; 4] = [\"\\u{0}verify.sh\", \"\\u{0}check-side-workspaces\", \"\\u{0}exit 0\", \"\\u{0}rc=0\"];"
+          "from": "    RUN_GATES.iter().any(|gate| bullet.contains(gate))\n        || names_an_exit_status(bullet)\n        || names_a_test_tally(bullet)",
+          "to": "    let _ = (RUN_GATES, names_an_exit_status(bullet), names_a_test_tally(bullet));\n    false"
         }
       ],
       "expect_red": [
         "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
         "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
-        "each_state_of_the_check_says_which_one_it_is"
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
+        "every_entry_that_files_a_record_is_recognised_as_claiming_one"
       ]
+    },
+    {
+      "name": "the-gate-forgets-the-tally",
+      "why": "Round 1340's half, put back the way it was: the predicate knows the gate NAMES and an exit status, and not the shape this repository's rounds actually write their results in. 357 entries of this ledger say `<n> failed`; an entry that says `2228 passed, 0 failed` and files nothing walked through the gate in silence for as long as that was so",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "            .any(|(at, _)| at > 0 && bytes[at - 1].is_ascii_digit())",
+          "to": "            .any(|(at, _)| at > 0 && bytes[at - 1].is_ascii_digit() && false)"
+        }
+      ],
+      "expect_red": [
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
+        "every_entry_that_files_a_record_is_recognised_as_claiming_one"
+      ]
+    },
+    {
+      "name": "the-gate-forgets-the-sealed-exit",
+      "why": "the other half: `exit 0` with a space is known and `exit=0` — the spelling the WRAPPER ITSELF seals into every record — is not. That is how the round that built this gate came to be one of the four entries its own predicate could not recognise. MEASURED: this does NOT redden the law over the real ledger, because every entry of it that files a record also writes a tally; the exit spelling is load-bearing for the wire and not for that population, and saying so is the difference between a red set and a guess",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        rest.strip_prefix(' ')\n            .or_else(|| rest.strip_prefix('='))",
+          "to": "        rest.strip_prefix(' ')\n            .or_else(|| None)"
+        }
+      ],
+      "expect_red": ["a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim"]
+    },
+    {
+      "name": "the-population-drops-what-filed",
+      "why": "the floor goes and the report can again say fewer records than the store holds — 20 filed against 24 carried, with nothing to say which four are missing. A reach that under-reports the thing it counts is an instrument nobody can check a store with",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        .filter(|(_, e)| claims_a_run(&e.verification_bullets) || !e.verification_runs.is_empty())",
+          "to": "        .filter(|(_, e)| claims_a_run(&e.verification_bullets))"
+        }
+      ],
+      "expect_red": ["a_filed_record_counts_as_a_claim_however_the_prose_reads"]
     },
     {
       "name": "the-violation-never-reaches-the-verdict",
@@ -112,7 +160,8 @@
       ],
       "expect_red": [
         "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
-        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit"
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim"
       ]
     },
     {
@@ -142,7 +191,9 @@
         "record_verification_files_every_run_a_round_hands_it",
         "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
         "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
-        "each_state_of_the_check_says_which_one_it_is"
+        "each_state_of_the_check_says_which_one_it_is",
+        "a_filed_record_counts_as_a_claim_however_the_prose_reads",
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim"
       ]
     }
   ]

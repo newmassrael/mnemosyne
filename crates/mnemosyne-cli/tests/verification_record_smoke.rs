@@ -23,6 +23,13 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
+// THE REPOSITORY'S OWN ROOT HAS ONE RESOLVER AND IT IS `common::repo_root`
+// (Round 1340). The law below reads THIS ledger, and a second `ancestors().nth`
+// here is a second answer to "where is the tree" — the shape this repository
+// pays for elsewhere by name. `use crate::common` and not `mod common`: this
+// file is `#[path]`-loaded into `all.rs`, which declares the harness once.
+use crate::common::repo_root;
+
 fn cli_binary() -> &'static str {
     env!("CARGO_BIN_EXE_mnemosyne-cli")
 }
@@ -388,6 +395,152 @@ fn an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected() {
     assert!(
         said.contains("Round 1317"),
         "the rejection does not name the entry: {said}"
+    );
+}
+
+/// THE SPELLINGS THIS REPOSITORY'S OWN ROUNDS WRITE THEIR VERDICTS IN.
+///
+/// Round 1340's subject. The predicate knew four literals and the ledger writes
+/// neither of the two shapes its rounds actually use: a tally, and the wrapper's
+/// own sealed `exit=<n>` with an equals sign. An entry saying `2228 passed, 0
+/// failed` and filing nothing walked through this gate in silence. Each case
+/// here is one of those spellings, put to the wire that ships.
+#[test]
+fn a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim() {
+    for prose in [
+        "- THE ROOT POPULATION. `cargo test --workspace`: 2228 passed, 0 failed\n",
+        "- the whole suite through the wrapper, sealed as `exit=0`\n",
+        "- the side gate came back `exit code 0` over both workspaces\n",
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path();
+        adopted(ws);
+        fs::write(ws.join("verify.txt"), prose).unwrap();
+        assert!(append(ws, "Round 1317", &[]).status.success());
+        let (ok, said) = validated(ws);
+        assert!(
+            !ok && said.contains("Round 1317"),
+            "a verdict written as `{}` claimed no run: {said}",
+            prose.trim()
+        );
+    }
+}
+
+/// AND PROSE THAT REACHES NO VERDICT STILL CLAIMS NOTHING, which is what keeps
+/// the widening above from being "every entry is a claimant". The population has
+/// to be able to exclude, or the gate is a tax rather than a question.
+#[test]
+fn prose_that_names_no_status_and_no_tally_claims_no_run() {
+    for prose in [
+        "- read the two call sites and the header above them\n",
+        "- the gate would exit rather than guess, which is the shape wanted here\n",
+        "- every injection passed through the port and none reached the judge\n",
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let ws = tmp.path();
+        adopted(ws);
+        fs::write(ws.join("verify.txt"), prose).unwrap();
+        assert!(append(ws, "Round 1317", &[]).status.success());
+        let (ok, said) = validated(ws);
+        assert!(
+            ok,
+            "prose reaching no verdict was asked for a record: `{}`: {said}",
+            prose.trim()
+        );
+    }
+}
+
+/// AN ENTRY THAT FILED A RECORD IS IN THE POPULATION, WHATEVER ITS PROSE SAYS.
+///
+/// The other half of Round 1340, and the one that makes a disagreement between
+/// the two numbers on the report line arithmetically impossible: filing a record
+/// IS claiming a run, because the record carries the command and the status it
+/// sealed. Reading the claim only out of the prose let the line say `20 file
+/// one` while the store held 24, and a reach that under-reports the very thing
+/// it is counting is an instrument nobody can check the store with.
+#[test]
+fn a_filed_record_counts_as_a_claim_however_the_prose_reads() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    adopted(ws);
+    fs::write(
+        ws.join("verify.txt"),
+        "- read the two call sites and the header above them\n",
+    )
+    .unwrap();
+    assert!(append(
+        ws,
+        "Round 1317",
+        &["--record-verification", "logs/root.log"]
+    )
+    .status
+    .success());
+    let measured = record_line(ws);
+    assert!(
+        measured.contains("1 uncommitted"),
+        "an entry that filed its run is outside the population that counts \
+         records: {measured}"
+    );
+}
+
+/// THE DRIFT INSTRUMENT, PUT TO THE REAL LEDGER — the half of Round 1340 that
+/// keeps the vocabulary derived rather than chosen.
+///
+/// An entry that FILES a record demonstrably ran something, so its prose is a
+/// sample of how this repository writes a verdict. If the predicate cannot
+/// recognise that prose, the vocabulary has drifted from the population — which
+/// is exactly what had happened: four of twenty-four, Round 1316's own entry
+/// among them, and nothing said so. The population grows every time a round
+/// files a record, so this law gets stricter on its own.
+///
+/// ASKED OF THE PROSE ALONE, deliberately: `verification_records` also counts an
+/// entry that filed a record whatever its prose says, and asking THAT here would
+/// be a test of the floor rather than of the vocabulary — green for the very
+/// reason the drift is invisible.
+#[test]
+fn every_entry_that_files_a_record_is_recognised_as_claiming_one() {
+    let store: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(repo_root().join("docs/.atomic/workspace.atomic.json"))
+            .expect("this repository's own store can be read"),
+    )
+    .expect("the store parses");
+    let entries = store["changelog_entries"]
+        .as_object()
+        .expect("the store has changelog entries");
+    let mut filing = 0usize;
+    let mut unrecognised: Vec<&str> = Vec::new();
+    for (id, entry) in entries {
+        let files_one = entry["verification_runs"]
+            .as_array()
+            .is_some_and(|runs| !runs.is_empty());
+        if !files_one {
+            continue;
+        }
+        filing += 1;
+        let bullets: Vec<String> = entry["verification_bullets"]
+            .as_array()
+            .map(|bs| {
+                bs.iter()
+                    .filter_map(|b| b.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !mnemosyne_ops::validate::claims_a_run(&bullets) {
+            unrecognised.push(id);
+        }
+    }
+    assert!(
+        filing > 0,
+        "no entry of this ledger files a verification run — this law has nothing \
+         to measure, which is not the same as a clean answer"
+    );
+    assert!(
+        unrecognised.is_empty(),
+        "{} of {filing} entry(ies) that FILE a verification record write their \
+         verdict in a spelling `claims_a_run` does not know, so an entry writing \
+         it that way and filing NOTHING would pass this gate in silence: {:?}",
+        unrecognised.len(),
+        unrecognised
     );
 }
 

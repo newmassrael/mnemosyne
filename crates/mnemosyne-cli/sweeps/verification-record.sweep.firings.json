@@ -20,6 +20,38 @@
         "verification_record_smoke::a_record_whose_wrapper_never_finished_is_refused"
       ]
     },
+    "the-gate-forgets-the-sealed-exit": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        rest.strip_prefix(' ')\n            .or_else(|| rest.strip_prefix('='))",
+          "to": "        rest.strip_prefix(' ')\n            .or_else(|| None)"
+        }
+      ],
+      "expect_red": [
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim"
+      ],
+      "tests": [
+        "verification_record_smoke::a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim"
+      ]
+    },
+    "the-gate-forgets-the-tally": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "            .any(|(at, _)| at > 0 && bytes[at - 1].is_ascii_digit())",
+          "to": "            .any(|(at, _)| at > 0 && bytes[at - 1].is_ascii_digit() && false)"
+        }
+      ],
+      "expect_red": [
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
+        "every_entry_that_files_a_record_is_recognised_as_claiming_one"
+      ],
+      "tests": [
+        "verification_record_smoke::a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
+        "verification_record_smoke::every_entry_that_files_a_record_is_recognised_as_claiming_one"
+      ]
+    },
     "the-gate-reaches-back-past-adoption": {
       "edits": [
         {
@@ -39,19 +71,36 @@
       "edits": [
         {
           "file": "crates/mnemosyne-ops/src/validate.rs",
-          "from": "    const CLAIMS: [&str; 4] = [\"verify.sh\", \"check-side-workspaces\", \"exit 0\", \"rc=0\"];",
-          "to": "    const CLAIMS: [&str; 4] = [\"\\u{0}verify.sh\", \"\\u{0}check-side-workspaces\", \"\\u{0}exit 0\", \"\\u{0}rc=0\"];"
+          "from": "    RUN_GATES.iter().any(|gate| bullet.contains(gate))\n        || names_an_exit_status(bullet)\n        || names_a_test_tally(bullet)",
+          "to": "    let _ = (RUN_GATES, names_an_exit_status(bullet), names_a_test_tally(bullet));\n    false"
         }
       ],
       "expect_red": [
         "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
         "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
-        "each_state_of_the_check_says_which_one_it_is"
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
+        "every_entry_that_files_a_record_is_recognised_as_claiming_one"
       ],
       "tests": [
+        "verification_record_smoke::a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
         "verification_record_smoke::an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
         "verification_record_smoke::an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
-        "verification_record_smoke::each_state_of_the_check_says_which_one_it_is"
+        "verification_record_smoke::every_entry_that_files_a_record_is_recognised_as_claiming_one"
+      ]
+    },
+    "the-population-drops-what-filed": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/validate.rs",
+          "from": "        .filter(|(_, e)| claims_a_run(&e.verification_bullets) || !e.verification_runs.is_empty())",
+          "to": "        .filter(|(_, e)| claims_a_run(&e.verification_bullets))"
+        }
+      ],
+      "expect_red": [
+        "a_filed_record_counts_as_a_claim_however_the_prose_reads"
+      ],
+      "tests": [
+        "verification_record_smoke::a_filed_record_counts_as_a_claim_however_the_prose_reads"
       ]
     },
     "the-primitive-drops-what-the-wire-filed": {
@@ -67,9 +116,13 @@
         "record_verification_files_every_run_a_round_hands_it",
         "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
         "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
-        "each_state_of_the_check_says_which_one_it_is"
+        "each_state_of_the_check_says_which_one_it_is",
+        "a_filed_record_counts_as_a_claim_however_the_prose_reads",
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim"
       ],
       "tests": [
+        "verification_record_smoke::a_filed_record_counts_as_a_claim_however_the_prose_reads",
+        "verification_record_smoke::a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
         "verification_record_smoke::an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
         "verification_record_smoke::an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
         "verification_record_smoke::each_state_of_the_check_says_which_one_it_is",
@@ -102,9 +155,11 @@
       ],
       "expect_red": [
         "an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected",
-        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit"
+        "an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
+        "a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim"
       ],
       "tests": [
+        "verification_record_smoke::a_verdict_written_as_a_tally_or_a_sealed_exit_is_a_claim",
         "verification_record_smoke::an_entry_the_tip_commit_added_without_its_run_is_caught_after_the_commit",
         "verification_record_smoke::an_uncommitted_entry_that_claims_a_run_and_files_none_is_rejected"
       ]
