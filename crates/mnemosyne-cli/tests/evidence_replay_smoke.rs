@@ -3319,6 +3319,51 @@ fn the_number_scan_sees_the_key_shape_and_spares_the_oracles() {
     }
 }
 
+/// THE ONE LOCAL COMPILE IS HELD TO WHAT THE HOSTED JOB HOLDS THE TREE TO.
+///
+/// Round 1342, and the defect it answers is Round 1337's: two unused imports
+/// reached `main`, the hosted `validate` job died on them at
+/// `cargo clippy --workspace -- -D warnings`, and the eight steps behind it never
+/// ran. They were not hidden — `scripts/mn` compiled that crate and PRINTED both,
+/// to the round that shipped them and again to the round that repaired them.
+/// Since Round 1287 the git hooks compile nothing on purpose, so that hosted job
+/// is the only judge of a warning and its verdict arrives a round late.
+///
+/// THE TOKEN IS READ FROM THE WORKFLOW RATHER THAN SPELLED HERE, which is what
+/// makes this a law about agreement rather than a second copy of the rule. If CI
+/// ever loosens or renames its strictness, this test fails on the script that no
+/// longer matches it — and if the script loosens, it fails on the same line.
+/// Two places holding one datum is the shape this repository pays for by name;
+/// asking one of them what the datum IS, is the cheap half of not paying it.
+#[test]
+fn the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries() {
+    let root = repo_root();
+    let workflow = std::fs::read_to_string(root.join(".github/workflows/mnemosyne-validate.yml"))
+        .expect("the validate workflow can be read");
+    let clippy = workflow
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("run:") && l.contains("cargo clippy --workspace"))
+        .expect("no hosted step runs the workspace clippy — this law has lost its subject");
+    let token = "-D warnings";
+    assert!(
+        clippy.contains(token),
+        "the hosted clippy no longer denies warnings, so nothing says what local \
+         strictness should match: {clippy}"
+    );
+    let script = std::fs::read_to_string(root.join("scripts/mn")).expect("scripts/mn can be read");
+    let build = script
+        .lines()
+        .find(|l| l.contains("cargo build") && !l.trim_start().starts_with('#'))
+        .expect("scripts/mn no longer builds the CLI");
+    assert!(
+        build.contains(token),
+        "the one compile every hook pays for does not carry the strictness the \
+         hosted job judges by ({token}), so a warning reaches `main` and is read \
+         one round later — which is exactly how Round 1337's red happened: {build}"
+    );
+}
+
 /// No runbook tells its orchestrator to install this CLI into the shared slot.
 ///
 /// The third member of the family, and the only one whose failure reaches OUT

@@ -1,0 +1,40 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "the-hosted-job-stops-denying-warnings": {
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        run: cargo clippy --workspace --locked --all-targets -- -D warnings",
+          "to": "        run: cargo clippy --workspace --locked --all-targets"
+        }
+      ],
+      "expect_red": [
+        "the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries"
+      ],
+      "tests": [
+        "the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries"
+      ]
+    },
+    "the-local-build-stops-denying-warnings": {
+      "edits": [
+        {
+          "file": "scripts/mn",
+          "from": "(cd \"$repo\" && RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-D warnings\" cargo build -q --locked -p mnemosyne-cli)",
+          "to": "(cd \"$repo\" && cargo build -q --locked -p mnemosyne-cli)"
+        }
+      ],
+      "expect_red": [
+        "the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries"
+      ],
+      "tests": [
+        "the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries"
+      ]
+    }
+  },
+  "forgotten": {}
+}

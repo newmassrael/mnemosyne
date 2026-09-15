@@ -33,8 +33,38 @@
 #
 # The build happens in this repo; the command runs in the CALLER's directory, so
 # `scripts/mn validate-workspace` from a consumer's workspace validates THEIRS.
+# AND THIS BUILD IS HELD TO WHAT THE HOSTED JOB HOLDS THE TREE TO (Round 1342).
+#
+# THE EVIDENCE IS THAT IT WAS PRINTED TWICE AND READ PAST TWICE. Round 1337 left
+# two unused imports in `mnemosyne-cli`; the hosted `validate` job died on them
+# at `cargo clippy --workspace -- -D warnings` and the eight steps behind it never
+# ran. This script compiled that crate and printed both warnings — to the round
+# that shipped them, and again to the round that repaired them. What it lacked
+# was not a check but a REFUSAL.
+#
+# WHY HERE, of all the places a strictness could go: since Round 1287 the git
+# hooks compile nothing, deliberately (Round 1284 measured a commit that could
+# not finish eleven times while sibling repositories held the cores), so the
+# hosted clippy is the only thing that judges warnings — one round later. This
+# build is the ONE local compile that always happens, because every hook runs
+# the CLI through this script. Making it strict adds no compilation that was not
+# already happening.
+#
+# WHAT IT COSTS, MEASURED ON THIS MACHINE RATHER THAN ASSUMED (2026-09-15).
+# `RUSTFLAGS` is part of a unit's fingerprint, so the strict build keeps its own
+# artifacts: the first one costs 19.1s, every repeat costs 0.10s, and the
+# artifacts of a plain `cargo build` SURVIVE it (0.08s immediately after), so
+# nothing else in this repository rebuilds because of this line. The price is one
+# rebuild of this crate per source change, on the path that was already building
+# it, against a red that otherwise reaches `main` and is read a round later.
+#
+# AND THERE IS NO ESCAPE HATCH, which is the part to argue with rather than work
+# around: a round that is mid-refactor and has a warning cannot talk to its own
+# store until it resolves it. That is the intended shape — a warning here is the
+# same warning CI will refuse — and an environment variable that waved it through
+# would be read by the next round as the way to keep working.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-(cd "$repo" && cargo build -q --locked -p mnemosyne-cli)
+(cd "$repo" && RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-D warnings" cargo build -q --locked -p mnemosyne-cli)
 exec "$repo/target/debug/mnemosyne-cli" "$@"

@@ -1,0 +1,74 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE LOCAL COMPILE AND THE HOSTED ONE AGREE — run it from",
+    "the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- sweep \\",
+    "        crates/mnemosyne-cli/sweeps/local-strictness.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS (Round 1342). Since Round 1287 the git hooks compile",
+    "nothing — deliberately, because Round 1284 measured a commit that could not",
+    "finish eleven times while sibling repositories held the cores — so the hosted",
+    "`cargo clippy --workspace -- -D warnings` is the only judge of a warning and",
+    "its verdict arrives one round late. Round 1337 shipped two unused imports that",
+    "way: the job died on them and the eight steps behind it never ran. They were",
+    "never hidden; `scripts/mn` compiled that crate and printed both, to the round",
+    "that shipped them and again to the round that repaired them. So that one",
+    "compile — the one every hook already pays for — now carries the same",
+    "strictness, and a law asks the WORKFLOW what that strictness is rather than",
+    "spelling it twice.",
+    "",
+    "TWO INJECTIONS, one per side of the agreement. Loosen the script and the law",
+    "must redden; loosen the workflow and it must redden too. A law that only reads",
+    "one side would pass while the two disagreed, which is the whole failure it",
+    "exists to prevent.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "evidence_replay_smoke",
+    "--no-fail-fast",
+    "--",
+    "the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-local-build-stops-denying-warnings",
+      "why": "the state this repository was in until Round 1342: the one compile every hook pays for prints its warnings and exits 0, so a warning reaches `main` and is read a round later. This is the side a round loosens by accident, while trying to get past a warning it does not want to fix yet",
+      "edits": [
+        {
+          "file": "scripts/mn",
+          "from": "(cd \"$repo\" && RUSTFLAGS=\"${RUSTFLAGS:+$RUSTFLAGS }-D warnings\" cargo build -q --locked -p mnemosyne-cli)",
+          "to": "(cd \"$repo\" && cargo build -q --locked -p mnemosyne-cli)"
+        }
+      ],
+      "expect_red": [
+        "the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries"
+      ]
+    },
+    {
+      "name": "the-hosted-job-stops-denying-warnings",
+      "why": "the other side, and the reason the law reads the workflow instead of spelling the token: if CI loosens, a local build that is still strict is no longer AGREEING with anything — it is holding a rule nobody else holds, and the next person to hit it will loosen the script rather than ask why the two differ",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        run: cargo clippy --workspace --locked --all-targets -- -D warnings",
+          "to": "        run: cargo clippy --workspace --locked --all-targets"
+        }
+      ],
+      "expect_red": [
+        "the_local_cli_build_carries_the_strictness_the_hosted_clippy_carries"
+      ]
+    }
+  ]
+}
