@@ -53,9 +53,14 @@ on:
     - cron: '17 4 * * 1'
   workflow_dispatch:
 
+# Latest-only, the same policy as `mnemosyne-validate.yml`: a run in flight is
+# never cancelled by a newer push, and the pushes that arrive meanwhile collapse
+# to the last one. The weekly `schedule` and a manual dispatch share this group
+# on `main`, so each takes the pending slot of whichever it meets; all of them
+# judge the same tree.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 # R1090 — the reasoning is recorded once, in `mnemosyne-validate.yml`: 29.1 GB of
 # this project's own 44.2 GB `target/debug` is DWARF, and `line-tables-only` keeps

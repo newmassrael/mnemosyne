@@ -1144,9 +1144,10 @@ pub fn report(
         }
     }
     // A RUN A LATER PUSH RETIRED IS NOT A RED COMMIT (R1242), and the difference is
-    // the whole of what a reader does next. GitHub's concurrency group stops the
-    // run in flight the moment a newer one queues on the same ref, so a session
-    // that pushes three rounds in ninety minutes cancels its own two earlier runs
+    // the whole of what a reader does next. GitHub's concurrency group retires a
+    // run the moment a newer one queues on the same ref — the run in flight until
+    // 2026-10-01, the pending one since — so a session that pushes three rounds
+    // in ninety minutes cancels its own earlier runs
     // — and every one of them reported `cancelled` and read as this commit's
     // failure. Measured on `74035d7`: three cancelled checks, one of them
     // twenty-seven minutes into `cargo test --workspace`, and the reason was the

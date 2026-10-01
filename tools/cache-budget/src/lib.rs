@@ -198,9 +198,9 @@ pub fn run_started_in(run_id: &str, body: &str) -> Result<String, String> {
 /// GUESS. This was FIVE until R1312, on the reasoning that the rows above the
 /// run being looked for are a sibling run of the same push, a re-run, or a short
 /// red streak. That is a claim about a repository's CADENCE, and this repository
-/// falsifies it: its concurrency group cancels the run in flight when the next
-/// push arrives, a cancelled run usually does not reach its post steps, and on
-/// 2026-09-02 FOURTEEN consecutive runs wrote no archive at all — the caches API
+/// falsifies it: its concurrency group cancelled the run in flight when the next
+/// push arrived (until 2026-10-01), a cancelled run usually does not reach its
+/// post steps, and on 2026-09-02 FOURTEEN consecutive runs wrote no archive at all — the caches API
 /// dates nothing between `03:02:19Z` and `09:08:38Z`. The run that last wrote
 /// `Linux-cargo-validate-` was fifteen runs and fifteen commits back, and GitHub
 /// calls THAT one `cancelled` too: cancelled is not the same as having written

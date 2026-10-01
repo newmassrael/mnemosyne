@@ -17,9 +17,15 @@ on:
     branches: [main]
   pull_request:
 
+# Latest-only. A run in flight is never cancelled by a newer push, and the
+# commits pushed while it runs collapse to the LAST one, which runs next.
+# GitHub keeps one running and at most one pending run per group; a newer
+# pending run replaces the older pending one, which ends `cancelled` having
+# started nothing. This was `cancel-in-progress: true` until 2026-10-01, which
+# killed the run in flight instead.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 # R1090 — WHAT THE CACHED ARTIFACTS ARE MADE OF, measured rather than assumed.
 #
@@ -1578,10 +1584,13 @@ jobs:
   # step of one job, and this repository routinely does both at once.
   #
   # R1312 — AND WHEN IT CANNOT FIND THAT RUN, IT SAYS SO INSTEAD OF ASKING A
-  # SMALLER QUESTION. `cancel-in-progress` above plus a round cadence shorter
-  # than a run means the archive-writing run is routinely far down the list —
-  # fifteen cancelled rows down, measured on 2026-09-02 — and the gate used to
-  # fall back to the push range and issue a verdict from it. That verdict was
+  # SMALLER QUESTION. `cancel-in-progress: true`, which the group above declared
+  # until 2026-10-01, plus a round cadence shorter than a run meant the
+  # archive-writing run was routinely far down the list — fifteen cancelled
+  # rows down, measured on 2026-09-02. A pending run a newer push replaced
+  # still writes no archive, so a streak of silent rows remains possible. The
+  # gate used to fall back to the push range and issue a verdict from it. That
+  # verdict was
   # `SAVED BY THIS RUN … and nothing changed` for eight archives whose own
   # `hashFiles` input, this file, had moved three commits earlier. An interval
   # nobody bounded is now `Unreached` (exit 2, the gate could not look), never a

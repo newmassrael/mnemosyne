@@ -167,9 +167,9 @@ enum Runs {
     /// A STREAK OF RUNS THAT WROTE NOTHING, and behind them the one that wrote
     /// the archive — this repository's own shape, and the state R1312 paid for.
     ///
-    /// Its concurrency group cancels the run in flight when the next push
-    /// arrives, and a cancelled run usually does not reach its post steps — the
-    /// run that DID write here is one GitHub calls `cancelled` too, so the
+    /// Its concurrency group cancelled the run in flight when the next push
+    /// arrived (until 2026-10-01), and a cancelled run usually does not reach
+    /// its post steps — the run that DID write here is one GitHub calls `cancelled` too, so the
     /// conclusion is not what says whether an archive was written. Measured
     /// 2026-09-02: FOURTEEN consecutive runs wrote no archive at all, and the
     /// run that last wrote `Linux-cargo-validate-` was FIFTEEN back. Whether
@@ -1262,9 +1262,9 @@ fn a_run_that_wrote_no_archive_does_not_bound_the_interval() {
 /// A streak of runs that wrote nothing does not put the interval out of reach.
 ///
 /// THIS IS RUN 33607225800, AND IT IS THE FALSE RED R1312 PAID FOR. This
-/// repository's workflow declares `cancel-in-progress`, so a push that arrives
-/// while a run is in flight cancels it — and a cancelled run usually does not
-/// reach its post steps, so it writes no archive. Under a round cadence shorter
+/// repository's workflow declared `cancel-in-progress: true` until 2026-10-01,
+/// so a push that arrived while a run was in flight cancelled it — and a
+/// cancelled run usually does not reach its post steps, so it writes no archive. Under a round cadence shorter
 /// than a run, that is not an occasional row to skip: measured on 2026-09-02,
 /// FOURTEEN consecutive runs wrote no archive at all, and the run that last
 /// wrote `Linux-cargo-validate-` was FIFTEEN back — itself a run GitHub calls
