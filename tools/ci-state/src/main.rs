@@ -32,12 +32,13 @@
 //! WAS NOT: a push that is about a red still goes through, and a push that has
 //! not looked at one no longer does.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
 use ci_state::{
     annotations_in, annotations_query, checks_in, checks_query, is_failing, job_of, report,
-    steps_in, steps_query, stoppage_line, stopped_at, Check, Said, STOPPED_NOWHERE,
+    steps_in, steps_query, stoppage_line, stopped_at, Check, Retired, Said, Step, STOPPED_NOWHERE,
 };
 
 fn main() {
@@ -152,7 +153,19 @@ fn state_of(root: &Path, sha: &str) -> Report {
         checks.iter().filter(|c| c.output.annotations_count > 0),
     );
 
-    let retired = ci_state::superseded_checks(&checks, &read);
+    // THE STEPS ARE ASKED BEFORE THE CENSUS IS PHRASED, for the reason the
+    // annotations are: whether a cancelled job ever ran is a fact only its steps
+    // carry, and the sentence that says `RED` or `NO VERDICT` cannot be written
+    // without it. The calls are the same ones the loop below made, in a different
+    // order, for the same checks — none that a later push retired, because where
+    // a retired job got to is not about this commit.
+    let superseded = ci_state::superseded_checks(&checks, &read);
+    let asked: BTreeMap<u64, Result<Vec<Step>, String>> = checks
+        .iter()
+        .filter(|check| is_failing(check) && !superseded.contains(&check.name))
+        .map(|check| (check.id, steps_for(root, check)))
+        .collect();
+    let retired = retire(&checks, superseded, &asked);
     let mut lines = report(sha, &checks, &retired);
 
     // WHICH STEP ENDED IT, FOR EVERY CHECK THAT DID NOT PASS (R1236). The
@@ -169,18 +182,36 @@ fn state_of(root: &Path, sha: &str) -> Report {
     // sentence above it says otherwise, and it costs a call per check to say. The
     // count of what was not asked is PRINTED, because a block that shrinks in
     // silence is how a reader comes to believe there was nothing to see.
+    //
+    // AND NOT FOR A JOB THAT NEVER RAN. Its steps were asked, because that is how
+    // it was found out, and the answer is an empty list: there is no stopping point
+    // to describe, and `no step of that job carries the failure` would read as a
+    // puzzle where the census above already gave the reason.
     let mut unasked = 0;
+    let mut never_ran = 0;
     for check in checks.iter().filter(|check| is_failing(check)) {
-        if retired.contains(&check.name) {
+        if retired.by_later_push.contains(&check.name) {
             unasked += 1;
             continue;
         }
-        lines.extend(steps_of(root, check));
+        if retired.never_ran.contains(&check.name) {
+            never_ran += 1;
+            continue;
+        }
+        if let Some(steps) = asked.get(&check.id) {
+            lines.extend(where_it_stopped(steps));
+        }
     }
     if unasked > 0 {
         lines.push(format!(
             "      not asking where {unasked} retired check(s) stopped — a run a later push \
              ended says nothing about this commit"
+        ));
+    }
+    if never_ran > 0 {
+        lines.push(format!(
+            "      {never_ran} check(s) were cancelled before any step of them ran — nothing \
+             was asked of this commit by them, so they carry no verdict either way"
         ));
     }
 
@@ -315,16 +346,16 @@ fn state_of(root: &Path, sha: &str) -> Report {
     let mut walk = vec![ci_state::Walked {
         sha: sha.to_string(),
         checks: checks.clone(),
-        superseded: retired.clone(),
+        retired: retired.clone(),
     }];
-    if !ci_state::judged(&checks) {
+    if !ci_state::judged(&checks, &retired) {
         match parents_of(root, sha) {
             Ok(parents) => {
                 let mut reached = false;
                 for parent in &parents {
                     match lean_state(root, parent) {
                         Ok(step) => {
-                            reached = ci_state::judged(&step.checks);
+                            reached = ci_state::judged(&step.checks, &step.retired);
                             walk.push(step);
                             if reached {
                                 break;
@@ -464,9 +495,14 @@ fn parents_of(root: &Path, sha: &str) -> Result<Vec<String>, String> {
 ///
 /// LEAN ON PURPOSE. The base commit gets the whole report — steps, annotations,
 /// budgets, trends — because that is what a person is being told about. A commit
-/// the walk merely passes needs exactly two facts: did anything fail, and was
-/// that failure a run a later push retired. Everything else would multiply the
-/// most expensive part of this program by the depth of the walk.
+/// the walk merely passes needs exactly two facts: did anything fail, and did that
+/// failure carry a verdict about the commit — it did not if a later push retired
+/// its run or the job was cancelled before a step of it ran. Everything else would
+/// multiply the most expensive part of this program by the depth of the walk.
+///
+/// THE STEPS ARE ASKED ONLY ABOUT A `cancelled` CHECK, the one conclusion for which
+/// they can change the answer: a `failure` is a verdict whatever its steps say, so
+/// the ordinary red commit costs the walk no more than it did.
 fn lean_state(root: &Path, sha: &str) -> Result<ci_state::Walked, String> {
     let answer = gh(root, &checks_query(sha))?;
     let checks = checks_in(sha, &answer)?;
@@ -480,11 +516,45 @@ fn lean_state(root: &Path, sha: &str) -> Result<ci_state::Walked, String> {
             .filter(|check| is_failing(check) && check.output.annotations_count > 0),
     );
     let superseded = ci_state::superseded_checks(&checks, &read);
+    let asked: BTreeMap<u64, Result<Vec<Step>, String>> = checks
+        .iter()
+        .filter(|check| {
+            check.conclusion.as_deref() == Some(ci_state::CANCELLED)
+                && !superseded.contains(&check.name)
+        })
+        .map(|check| (check.id, steps_for(root, check)))
+        .collect();
+    let retired = retire(&checks, superseded, &asked);
     Ok(ci_state::Walked {
         sha: sha.to_string(),
         checks,
-        superseded,
+        retired,
     })
+}
+
+/// Who among the checks that did not pass has no verdict to give.
+///
+/// ONE PLACE FOR BOTH READINGS, because the base commit and a commit the walk
+/// passes must be classified the same way or the report and the verdict end up
+/// about two different answers. A check whose steps could not be read stays out of
+/// the set: not being able to ask is not evidence that nothing ran.
+fn retire(
+    checks: &[Check],
+    superseded: std::collections::BTreeSet<String>,
+    asked: &BTreeMap<u64, Result<Vec<Step>, String>>,
+) -> Retired {
+    let read: BTreeMap<u64, Vec<Step>> = asked
+        .iter()
+        .filter_map(|(id, steps)| steps.as_ref().ok().map(|steps| (*id, steps.clone())))
+        .collect();
+    let never_ran = ci_state::never_ran_checks(checks, &read)
+        .into_iter()
+        .filter(|name| !superseded.contains(name))
+        .collect();
+    Retired {
+        by_later_push: superseded,
+        never_ran,
+    }
 }
 
 /// GitHub, asked what one job of one commit did step by step.
@@ -521,26 +591,40 @@ impl ci_state::history::StepsOf for Github<'_> {
     }
 }
 
-/// What one failing check's own steps say about where its job stopped.
+/// One failing check's own steps, or the line that says why they could not be had.
+///
+/// ASKED ONCE AND READ TWICE: it decides whether the job ever ran, and it says
+/// where the job stopped. The `Err` is the finished sentence, indentation and all,
+/// because the reason differs per cause and a caller that rebuilt it would lose it.
 ///
 /// EVERY WAY THIS CAN COME BACK EMPTY IS A SENTENCE. A check no Actions job is
-/// behind, a `gh` that could not be asked, an answer that would not read, a job
-/// whose steps name no stopping point: each returns a line saying which one it
-/// was, because the whole value here is that a reader stops guessing — and a
-/// reporter that fell silent would hand back exactly the guess it exists to end.
-fn steps_of(root: &Path, check: &Check) -> Vec<String> {
+/// behind, a `gh` that could not be asked, an answer that would not read: each
+/// returns a line saying which one it was, because the whole value here is that a
+/// reader stops guessing — and a reporter that fell silent would hand back exactly
+/// the guess it exists to end.
+fn steps_for(root: &Path, check: &Check) -> Result<Vec<Step>, String> {
     let Some(job) = job_of(&check.details_url) else {
-        return vec![format!(
+        return Err(format!(
             "      no Actions job behind `{}` — its details are at {}",
             check.name, check.details_url
-        )];
+        ));
     };
-    let steps = match gh(root, &steps_query(job)).and_then(|body| steps_in(job, &body)) {
-        Ok(steps) => steps,
-        Err(why) => return vec![format!("      NOTE {why}")],
-    };
-    match stopped_at(&steps) {
-        Some(stoppage) => vec![format!("      {}", stoppage_line(&stoppage))],
-        None => vec![format!("      {STOPPED_NOWHERE}")],
+    gh(root, &steps_query(job))
+        .and_then(|body| steps_in(job, &body))
+        .map_err(|why| format!("      NOTE {why}"))
+}
+
+/// What one failing check's steps say about where its job stopped.
+///
+/// A job whose steps name no stopping point is a sentence as well, for the same
+/// reason: it is what a runner that never started looks like, and saying nothing
+/// there would be silent exactly where a reader has least to go on.
+fn where_it_stopped(steps: &Result<Vec<Step>, String>) -> Vec<String> {
+    match steps {
+        Err(line) => vec![line.clone()],
+        Ok(steps) => match stopped_at(steps) {
+            Some(stoppage) => vec![format!("      {}", stoppage_line(&stoppage))],
+            None => vec![format!("      {STOPPED_NOWHERE}")],
+        },
     }
 }

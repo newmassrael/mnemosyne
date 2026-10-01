@@ -37,7 +37,7 @@
 //! rather than silent, and names the JOB rather than the workflow — which is the
 //! grain the last two red runs in this repository actually differed at.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// What a push learned about what CI cost, kept, so the next one can read a
 /// trend rather than a level (R1260).
@@ -291,6 +291,90 @@ pub fn superseded_checks(checks: &[Check], read: &[Said]) -> std::collections::B
         .filter(|check| run_of(&check.details_url).is_some_and(|run| runs.contains(&run)))
         .map(|check| check.name.clone())
         .collect()
+}
+
+/// What GitHub calls a job that somebody or something stopped.
+pub const CANCELLED: &str = "cancelled";
+
+/// Whether a job's steps show that nothing of it ever ran.
+///
+/// A STEP THAT CARRIES A CONCLUSION OTHER THAN `skipped` IS WORK DONE OR
+/// ATTEMPTED, and that is the whole test. `Set up job` ending `cancelled` is a job
+/// a runner picked up and a person or a timeout stopped, which is R1236's case and
+/// is about THIS commit; an empty list, or a list of steps nobody reached, is a job
+/// that was still waiting for a runner when it was cancelled.
+///
+/// MEASURED on the eleven jobs of `84dcad2c` that were cancelled on 2026-09-15 after
+/// 85 minutes in the queue: every one answered `steps: []` and a runner name that
+/// was null or empty. That commit's report called them RED, which asked a push to
+/// name eleven failures none of which had begun.
+#[must_use]
+pub fn ran_nothing(steps: &[Step]) -> bool {
+    !steps.iter().any(|step| {
+        step.conclusion
+            .as_deref()
+            .is_some_and(|conclusion| conclusion != NEVER_RAN)
+    })
+}
+
+/// The checks that were cancelled before any step of their job began.
+///
+/// ONLY `cancelled`, deliberately. A `startup_failure` also arrives with no steps
+/// and is the workflow failing to start, which is a fact about this commit; a
+/// `timed_out` job did run until its budget ended it. The one conclusion for which
+/// "no step ran" means "nobody judged this" is the one a person or a queue
+/// produces.
+///
+/// A CHECK WHOSE STEPS WERE NOT READ IS NOT IN THIS SET. Not being able to ask is
+/// no evidence that nothing ran, and the direction that leaves a job counted red is
+/// the loud one, the same choice [`SUPERSEDED_BY_A_LATER_PUSH`] makes.
+///
+/// KEYED BY THE CHECK'S ID AND ANSWERED IN NAMES, and each half is measured.
+/// `84dcad2c` carries THREE checks named `replay every kit at its pinned revision`
+/// — two successes and one cancelled in the queue, because `evidence-replay` is
+/// re-run on a commit that already has a run — so steps keyed by name collided,
+/// and a set of names then called the successes unrun too. The answer stays in
+/// names because that is what the acknowledgement and the walk speak; a name is
+/// in it only when EVERY cancelled check of that name is one that ran nothing, so
+/// a sibling that ran, or whose steps could not be read, keeps the name red.
+#[must_use]
+pub fn never_ran_checks(checks: &[Check], steps: &BTreeMap<u64, Vec<Step>>) -> BTreeSet<String> {
+    let mut every_one_ran_nothing: BTreeMap<&str, bool> = BTreeMap::new();
+    for check in checks
+        .iter()
+        .filter(|check| check.conclusion.as_deref() == Some(CANCELLED))
+    {
+        let this_one = steps.get(&check.id).is_some_and(|steps| ran_nothing(steps));
+        *every_one_ran_nothing.entry(&check.name).or_insert(true) &= this_one;
+    }
+    every_one_ran_nothing
+        .into_iter()
+        .filter(|(_, all)| *all)
+        .map(|(name, _)| name.to_string())
+        .collect()
+}
+
+/// The checks whose result says nothing about the commit they are on, and why.
+///
+/// TWO REASONS AND NOT ONE SET, because the reader's next move differs. A run a
+/// later push cancelled has an answer somewhere else — read the later commit's run.
+/// A job cancelled before it ran has no answer anywhere: nothing was asked of this
+/// commit by it, and the repair is that CI run it again, not that a person look for
+/// a verdict that was never produced.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Retired {
+    /// R1242: the run these jobs were in was cancelled by a LATER PUSH.
+    pub by_later_push: BTreeSet<String>,
+    /// The job was cancelled while it was still waiting for a runner.
+    pub never_ran: BTreeSet<String>,
+}
+
+impl Retired {
+    /// Whether a check's result is no evidence about its commit, for either reason.
+    #[must_use]
+    pub fn contains(&self, check: &str) -> bool {
+        self.by_later_push.contains(check) || self.never_ran.contains(check)
+    }
 }
 
 /// What this program asks GitHub about one job's steps.
@@ -739,6 +823,9 @@ pub enum Unmeasured {
     /// A later push ended the run this job was in, so the wall clock between its
     /// two stamps is not what the job cost. A state, not a defect.
     Retired { check: String },
+    /// The job was cancelled while it waited for a runner, so the wall clock between
+    /// its stamps is how long it queued and not what it cost. A state, not a defect.
+    NeverRan { check: String },
     /// The job never ran, so its two identical stamps are not a duration at all.
     /// A state, not a defect — this repository skips a job whose inputs did not
     /// change on every green push.
@@ -780,6 +867,11 @@ impl std::fmt::Display for Unmeasured {
                 formatter,
                 "`{check}` was ended by a LATER PUSH, so the time between its two \
                  stamps is how long it waited to be cancelled and not what it cost"
+            ),
+            Self::NeverRan { check } => write!(
+                formatter,
+                "`{check}` was cancelled before any step of it ran, so the time between \
+                 its two stamps is how long it queued and not what it cost"
             ),
             Self::Skipped { check } => write!(
                 formatter,
@@ -860,13 +952,29 @@ pub fn closest_to_budget(spent: &[Spent]) -> Option<&Spent> {
 pub fn spent_against_budgets(
     checks: &[Check],
     budgets: &[(String, ci_plan::JobBudget)],
-    retired: &BTreeSet<String>,
+    retired: &Retired,
 ) -> (Vec<Spent>, Vec<Unmeasured>) {
     let mut spent = Vec::new();
     let mut unread = Vec::new();
     for check in checks {
-        if retired.contains(&check.name) {
+        // ONLY A CHECK THAT DID NOT PASS CAN BE RETIRED, because the sets are
+        // keyed by NAME and a name is not unique on a commit. `84dcad2c` has two
+        // successes called `replay every kit at its pinned revision` beside a
+        // cancelled one; asked by name alone, the report counted THIRTEEN jobs as
+        // cancelled in the queue against eleven that were, and lost the cost of the
+        // two that had run.
+        if is_failing(check) && retired.by_later_push.contains(&check.name) {
             unread.push(Unmeasured::Retired {
+                check: check.name.clone(),
+            });
+            continue;
+        }
+        // A JOB CANCELLED WHILE IT QUEUED HAS A CLOCK AND NO COST. Measured on
+        // `84dcad2c`: eleven jobs stamped across 85 minutes of waiting, which
+        // against their budgets read as `every test compiled is one CI runs` at
+        // 94% of ninety minutes — a number about a queue, in a cost's clothes.
+        if is_failing(check) && retired.never_ran.contains(&check.name) {
+            unread.push(Unmeasured::NeverRan {
                 check: check.name.clone(),
             });
             continue;
@@ -1002,6 +1110,18 @@ pub fn budget_report(spent: &[Spent], unread: &[Unmeasured]) -> Vec<String> {
              stamps is how long they waited to be cancelled and not what they cost"
         ));
     }
+    // AND FOR A JOB CANCELLED WHILE IT STILL QUEUED: the same clock, the same
+    // reason it is not a cost, and a different reason it has no verdict.
+    let never_ran = unread
+        .iter()
+        .filter(|why| matches!(why, Unmeasured::NeverRan { .. }))
+        .count();
+    if never_ran > 0 {
+        lines.push(format!(
+            "  {never_ran} job(s) were cancelled before any step of them ran, so the \
+             clock between their stamps is how long they queued and not what they cost"
+        ));
+    }
     // AND COUNTED FOR THE THIRD TIME, for the most ordinary case of all (R1261):
     // this repository skips a job whose inputs did not change, so a green push
     // routinely has two of these and nothing at all is wrong.
@@ -1024,6 +1144,7 @@ pub fn budget_report(spent: &[Spent], unread: &[Unmeasured]) -> Vec<String> {
     for why in unread.iter().filter(|why| match why {
         Unmeasured::NotFinished { .. }
         | Unmeasured::Retired { .. }
+        | Unmeasured::NeverRan { .. }
         | Unmeasured::Skipped { .. } => false,
         Unmeasured::NoSuchJob { .. }
         | Unmeasured::Ambiguous { .. }
@@ -1109,11 +1230,7 @@ pub fn short(sha: &str) -> String {
 /// failures says nothing about how much was looked at — so the counts name every
 /// row and the lines name every row that is not routine. Nothing is dropped
 /// silently, which is the rule the hook's annotation cap already followed.
-pub fn report(
-    sha: &str,
-    checks: &[Check],
-    superseded: &std::collections::BTreeSet<String>,
-) -> Vec<String> {
+pub fn report(sha: &str, checks: &[Check], retired: &Retired) -> Vec<String> {
     let short = short(sha);
     if checks.is_empty() {
         return vec![format!(
@@ -1135,8 +1252,10 @@ pub fn report(
     )];
     for check in checks {
         if check.conclusion.as_deref() != Some("success") {
-            let why = if superseded.contains(&check.name) {
+            let why = if is_failing(check) && retired.by_later_push.contains(&check.name) {
                 " (a later push superseded this run)"
+            } else if is_failing(check) && retired.never_ran.contains(&check.name) {
+                " (cancelled before any step of it ran)"
             } else {
                 ""
             };
@@ -1153,25 +1272,58 @@ pub fn report(
     // twenty-seven minutes into `cargo test --workspace`, and the reason was the
     // NEXT push. What that commit needed was no verdict at all, and the later
     // commit's run — nine checks, all success — is where the answer was.
+    //
+    // AND A JOB CANCELLED BEFORE ANY STEP OF IT RAN IS NOT A RED COMMIT EITHER, for
+    // the reason that sentence gives and one more: it has no verdict ANYWHERE. A
+    // run a later push ended has its answer on the later commit; a job that never
+    // left the queue was never asked, so there is nothing to read and what
+    // follows is that CI run it. Measured on `84dcad2c`: eleven of thirteen checks
+    // cancelled by a person after 85 minutes in the queue, with no step run in
+    // any of them, and the report called the commit RED.
     let failing: Vec<&Check> = checks.iter().filter(|check| is_failing(check)).collect();
-    let retired = failing
+    let by_later_push = failing
         .iter()
-        .filter(|check| superseded.contains(&check.name))
+        .filter(|check| retired.by_later_push.contains(&check.name))
         .count();
+    let never_ran = failing
+        .iter()
+        .filter(|check| retired.never_ran.contains(&check.name))
+        .count();
+    let retired_count = by_later_push + never_ran;
     if verdict(checks) == Verdict::Red {
-        if retired == failing.len() {
+        if retired_count == failing.len() && never_ran == 0 {
             lines.push(format!(
                 "^^ NO VERDICT on {short} — every check that did not pass was cancelled by a \
                  LATER PUSH on this ref, not by anything on this commit. Read the later \
                  commit's run; this one was never finished."
             ));
+        } else if retired_count == failing.len() {
+            let reasons = match by_later_push {
+                0 => format!("{never_ran} cancelled before any step of them ran"),
+                _ => format!(
+                    "{by_later_push} cancelled by a LATER PUSH and {never_ran} cancelled \
+                     before any step of them ran"
+                ),
+            };
+            lines.push(format!(
+                "^^ NO VERDICT on {short} — every check that did not pass was cancelled and \
+                 none of them judged this commit ({reasons}). A job that never left the \
+                 queue was never asked, so there is no verdict to read here: the walk goes \
+                 back to the nearest commit whose checks did conclude."
+            ));
         } else {
-            let also = if retired == 0 {
+            let also = if retired_count == 0 {
                 String::new()
+            } else if never_ran == 0 {
+                format!(
+                    " ({by_later_push} of the {} that did not pass were merely superseded by a \
+                     later push)",
+                    failing.len()
+                )
             } else {
                 format!(
-                    " ({retired} of the {} that did not pass were merely superseded by a later \
-                     push)",
+                    " ({by_later_push} superseded by a later push and {never_ran} cancelled \
+                     before any step of them ran, of the {} that did not pass)",
                     failing.len()
                 )
             };
@@ -1251,8 +1403,9 @@ pub fn spell(sha: &str, job: &str) -> String {
 pub struct Walked {
     pub sha: String,
     pub checks: Vec<Check>,
-    /// The names R1242's subtraction already removed for this commit.
-    pub superseded: BTreeSet<String>,
+    /// The names R1242's subtraction already removed for this commit, and the jobs
+    /// that were cancelled before any step of them ran.
+    pub retired: Retired,
 }
 
 /// Whether this commit's verdict EXISTS — every check concluded, either way.
@@ -1275,10 +1428,24 @@ pub struct Walked {
 /// with nobody asked. `tools/unasked-variant` is the law that says so, and it
 /// caught this; what it could not do was reach anybody, which is the round this
 /// is part of.
+///
+/// A RED THAT IS ALL RETIRED IS NOT A VERDICT, and that is the one thing added on
+/// 2026-10-01. A commit whose every non-passing check was cancelled by a later push
+/// or before any step of it ran HAS no verdict in the sense this walk stops at:
+/// nobody could read what those jobs said about it, because they said nothing. The
+/// walk used to stop there, which let an older red hide behind a commit CI never
+/// judged — and let a commit nobody judged read as the place verdicts start again.
+///
+/// THE BOUND STAYS WHERE IT WAS. The `depth 2` measured above was taken in a regime
+/// where a later push cancelled the run in flight; the walk is still capped, and
+/// reaching the cap is printed as a statement about CI.
 #[must_use]
-pub fn judged(checks: &[Check]) -> bool {
+pub fn judged(checks: &[Check], retired: &Retired) -> bool {
     match verdict(checks) {
-        Verdict::Red | Verdict::Clear => true,
+        Verdict::Red => checks
+            .iter()
+            .any(|check| is_failing(check) && !retired.contains(&check.name)),
+        Verdict::Clear => true,
         Verdict::Nothing | Verdict::Pending => false,
     }
 }
@@ -1303,7 +1470,7 @@ pub fn outstanding_reds(walk: &[Walked]) -> Vec<(String, String)> {
     for step in walk {
         for check in &step.checks {
             if is_failing(check)
-                && !step.superseded.contains(&check.name)
+                && !step.retired.contains(&check.name)
                 && !green_since.contains(check.name.as_str())
             {
                 outstanding.push((step.sha.clone(), check.name.clone()));

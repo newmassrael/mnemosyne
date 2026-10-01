@@ -421,6 +421,80 @@ fn a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary() {
     );
 }
 
+/// A job cancelled in the queue reads as no verdict, out of this binary.
+///
+/// WHETHER A JOB EVER RAN IS DECIDED IN `main.rs` (R1096): the library can be handed
+/// an empty step list and every law about it passes, while the binary never asks
+/// for the steps before it phrases the census and goes on printing `is RED`. That
+/// is what `84dcad2c` looked like — eleven jobs cancelled after 85 minutes waiting
+/// for a runner, a report that called the commit red, and a push refused over
+/// failures none of which had begun.
+///
+/// THE CHECKS ARE THE RECORDED ONES WITH ONE WORD CHANGED, as above, and the job's
+/// steps are the recorded body of one of those eleven jobs (`steps: []`). The push
+/// SAYS NOTHING ABOUT THE RED it is building on, so if the binary still counted the
+/// job as red it would exit 1 here; it exits 0 only because nothing is red.
+///
+/// AND THE WALK IS ENTERED. This temporary directory is no repository, so the walk
+/// cannot read the parents and says so — which is the evidence that the commit was
+/// not taken for judged and the binary went looking for one that was.
+#[test]
+fn a_job_cancelled_in_the_queue_reads_as_no_verdict_through_this_binary() {
+    let recorded =
+        fs::read_to_string(fixture("check-runs.one-page.json")).expect("the recorded checks");
+    let failure = "\"conclusion\":\"failure\"";
+    assert_eq!(
+        recorded.matches(failure).count(),
+        1,
+        "this case rewrites the ONE failing conclusion in the recording; a count \
+         that is not one means the edit applied to something else, or to nothing"
+    );
+    let stub = Stub::recording().saying(None);
+    let checks = stub.dir.path().join("check-runs.cancelled.json");
+    fs::write(
+        &checks,
+        recorded.replace(failure, "\"conclusion\":\"cancelled\""),
+    )
+    .expect("the rewritten recording, which is DATA and not a program (R1192)");
+
+    let out = stub.run_with_job(
+        &[SHA],
+        &checks,
+        "93478488570",
+        &fixture("job.never-started.json"),
+    );
+    let said = said(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a push over a commit nothing judged is not refused for a red that is not there:\n{said}"
+    );
+    assert!(
+        said.contains("NO VERDICT") && said.contains("before any step of them ran"),
+        "the binary has to ask the job's steps before it phrases the census:\n{said}"
+    );
+    assert!(
+        !said.contains("is RED"),
+        "and a job that never began is not a red commit:\n{said}"
+    );
+    assert!(
+        said.contains("(cancelled before any step of it ran)"),
+        "the row itself carries the reason, beside the conclusion that cannot say it:\n{said}"
+    );
+    assert!(
+        !said.contains("stopped at step") && !said.contains("carries the failure"),
+        "and there is no stopping point to describe, so none is invented:\n{said}"
+    );
+    assert!(
+        said.contains("1 check(s) were cancelled before any step of them ran"),
+        "what is not described is counted rather than dropped:\n{said}"
+    );
+    assert!(
+        said.contains("could not walk back"),
+        "a commit nobody judged is not where the walk stops, so it went looking:\n{said}"
+    );
+}
+
 /// What a job COST, held against what its workflow allows, out of this binary.
 ///
 /// THE JOIN LIVES IN `main.rs` AND NOWHERE ELSE (R1096): the library can be handed

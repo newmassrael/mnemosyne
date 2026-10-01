@@ -94,7 +94,11 @@
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
         "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
         "what_a_job_cost_is_held_against_its_budget_through_this_binary",
-        "what_this_push_measured_is_kept_and_read_back_through_this_binary"
+        "what_this_push_measured_is_kept_and_read_back_through_this_binary",
+        "a_job_cancelled_in_the_queue_reads_as_no_verdict_through_this_binary",
+        "a_push_that_names_the_red_it_is_fixing_goes_through",
+        "a_red_commit_nobody_named_refuses_the_push_through_this_binary",
+        "an_acknowledgement_of_some_other_job_still_refuses"
       ]
     },
     {
@@ -109,7 +113,9 @@
       ],
       "expect_red": [
         "a_commit_still_running_is_neither_red_nor_clear",
-        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded"
+        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded",
+        "a_commit_that_has_not_finished_is_refused_a_verdict_out_loud",
+        "the_walk_stops_where_a_verdict_exists_and_not_where_it_is_clean"
       ]
     },
     {
@@ -194,7 +200,8 @@
       ],
       "expect_red": [
         "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
-        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
+        "a_job_cancelled_in_the_queue_reads_as_no_verdict_through_this_binary"
       ]
     },
     {
@@ -203,8 +210,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/main.rs",
-          "from": "        lines.extend(steps_of(root, check));",
-          "to": "        let _ = steps_of(root, check);"
+          "from": "            lines.extend(where_it_stopped(steps));",
+          "to": "            let _ = where_it_stopped(steps);"
         }
       ],
       "expect_red": [
@@ -391,12 +398,13 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "        Verdict::Red | Verdict::Clear => true,",
-          "to": "        Verdict::Clear => true,\n        Verdict::Red => false,"
+          "from": "        Verdict::Red => checks\n            .iter()\n            .any(|check| is_failing(check) && !retired.contains(&check.name)),",
+          "to": "        Verdict::Red => false,"
         }
       ],
       "expect_red": [
-        "the_walk_stops_where_a_verdict_exists_and_not_where_it_is_clean"
+        "the_walk_stops_where_a_verdict_exists_and_not_where_it_is_clean",
+        "a_commit_whose_every_failure_is_retired_is_not_judged"
       ]
     },
     {
@@ -419,13 +427,20 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "        if retired == failing.len() {",
+          "from": "        if retired_count == failing.len() && never_ran == 0 {",
           "to": "        if false {"
+        },
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        } else if retired_count == failing.len() {",
+          "to": "        } else if false {"
         }
       ],
       "expect_red": [
         "a_run_a_later_push_retired_is_no_verdict_rather_than_red",
-        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"
+        "a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary",
+        "a_commit_whose_failures_never_ran_is_no_verdict_and_not_red",
+        "a_job_cancelled_in_the_queue_reads_as_no_verdict_through_this_binary"
       ]
     },
     {
@@ -477,11 +492,14 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "            let also = if retired == 0 {\n                String::new()\n            } else {\n                format!(\n                    \" ({retired} of the {} that did not pass were merely superseded by a later \\\n                     push)\",\n                    failing.len()\n                )\n            };",
+          "from": "            let also = if retired_count == 0 {\n                String::new()\n            } else if never_ran == 0 {\n                format!(\n                    \" ({by_later_push} of the {} that did not pass were merely superseded by a \\\n                     later push)\",\n                    failing.len()\n                )\n            } else {\n                format!(\n                    \" ({by_later_push} superseded by a later push and {never_ran} cancelled \\\n                     before any step of them ran, of the {} that did not pass)\",\n                    failing.len()\n                )\n            };",
           "to": "            let also = String::new();"
         }
       ],
-      "expect_red": ["a_failure_in_another_run_is_still_red_beside_a_retired_one"]
+      "expect_red": [
+        "a_failure_in_another_run_is_still_red_beside_a_retired_one",
+        "a_failure_beside_jobs_that_never_ran_is_still_red"
+      ]
     },
     {
       "name": "the-binary-never-asks-whether-the-run-was-retired",
@@ -489,8 +507,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/main.rs",
-          "from": "    let retired = ci_state::superseded_checks(&checks, &read);",
-          "to": "    let retired = std::collections::BTreeSet::new();"
+          "from": "    let superseded = ci_state::superseded_checks(&checks, &read);\n    let asked: BTreeMap<u64, Result<Vec<Step>, String>> = checks\n        .iter()\n        .filter(|check| is_failing(check) && !superseded.contains(&check.name))",
+          "to": "    let superseded = std::collections::BTreeSet::new();\n    let asked: BTreeMap<u64, Result<Vec<Step>, String>> = checks\n        .iter()\n        .filter(|check| is_failing(check) && !superseded.contains(&check.name))"
         }
       ],
       "expect_red": ["a_run_a_later_push_retired_reads_as_no_verdict_through_this_binary"]
@@ -501,7 +519,12 @@
       "edits": [
         {
           "file": "tools/ci-state/src/main.rs",
-          "from": "        if retired.contains(&check.name) {\n            unasked += 1;\n            continue;\n        }\n",
+          "from": "        .filter(|check| is_failing(check) && !superseded.contains(&check.name))\n        .map(|check| (check.id, steps_for(root, check)))",
+          "to": "        .filter(|check| is_failing(check))\n        .map(|check| (check.id, steps_for(root, check)))"
+        },
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "        if retired.by_later_push.contains(&check.name) {\n            unasked += 1;\n            continue;\n        }\n",
           "to": ""
         }
       ],
@@ -579,8 +602,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "        Unmeasured::NotFinished { .. }\n        | Unmeasured::Retired { .. }\n        | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NoSuchJob { .. }\n",
-          "to": "        Unmeasured::Retired { .. } | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NotFinished { .. }\n        | Unmeasured::NoSuchJob { .. }\n"
+          "from": "        Unmeasured::NotFinished { .. }\n        | Unmeasured::Retired { .. }\n        | Unmeasured::NeverRan { .. }\n        | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NoSuchJob { .. }\n",
+          "to": "        Unmeasured::Retired { .. } | Unmeasured::NeverRan { .. } | Unmeasured::Skipped { .. } => false,\n        Unmeasured::NotFinished { .. }\n        | Unmeasured::NoSuchJob { .. }\n"
         }
       ],
       "expect_red": ["a_job_near_its_budget_is_named_and_the_unfinished_are_counted"]
@@ -591,8 +614,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "        if retired.contains(&check.name) {",
-          "to": "        if retired.contains(\"a name no check of this repository carries\") {"
+          "from": "        if is_failing(check) && retired.by_later_push.contains(&check.name) {\n            unread.push(Unmeasured::Retired {",
+          "to": "        if is_failing(check) && retired.by_later_push.contains(\"a name no check of this repository carries\") {\n            unread.push(Unmeasured::Retired {"
         }
       ],
       "expect_red": ["a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget"]
@@ -1225,6 +1248,138 @@
       ],
       "expect_red": [
         "a_run_whose_steps_cannot_be_read_is_named_rather_than_left_out"
+      ]
+    },
+    {
+      "name": "a-job-stopped-in-its-first-step-is-called-one-that-never-ran",
+      "why": "2026-10-01. The line `ran_nothing` draws is a step carrying a conclusion other than `skipped`. `Set up job` ending `cancelled` is R1236's case: a runner picked the job up and something stopped it, which is about THIS commit. Calling it unrun deletes the distinction between a job that waited and a job that was hung, and the second is the one R1236 was written to find",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            .is_some_and(|conclusion| conclusion != NEVER_RAN)",
+          "to": "            .is_some_and(|conclusion| conclusion != NEVER_RAN && conclusion != CANCELLED)"
+        }
+      ],
+      "expect_red": [
+        "a_job_ran_nothing_exactly_when_no_step_of_it_has_a_conclusion",
+        "only_a_cancelled_job_with_its_steps_read_and_empty_is_one_that_never_ran",
+        "a_name_two_jobs_share_is_unrun_only_when_every_cancelled_one_of_them_is"
+      ]
+    },
+    {
+      "name": "every-kind-of-failure-can-be-a-job-that-never-ran",
+      "why": "2026-10-01. Only `cancelled` means `nobody judged this` when no step ran: `startup_failure` also arrives with no steps and is the workflow failing to start, a fact about the commit, and `timed_out` ran until its budget ended it. Widening the test to every failing conclusion would excuse a workflow that cannot start",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        .filter(|check| check.conclusion.as_deref() == Some(CANCELLED))\n    {\n        let this_one",
+          "to": "        .filter(|check| is_failing(check))\n    {\n        let this_one"
+        }
+      ],
+      "expect_red": [
+        "only_a_cancelled_job_with_its_steps_read_and_empty_is_one_that_never_ran"
+      ]
+    },
+    {
+      "name": "a-job-whose-steps-were-not-read-is-presumed-never-to-have-run",
+      "why": "2026-10-01. Not being able to ask is not evidence that nothing ran. A `gh` that failed on the steps call must leave the job counted red, which is the loud direction, exactly as SUPERSEDED_BY_A_LATER_PUSH leaves a run red when GitHub rewords its sentence. The quiet direction would turn every API hiccup into a pass",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        let this_one = steps.get(&check.id).is_some_and(|steps| ran_nothing(steps));",
+          "to": "        let this_one = steps.get(&check.id).map_or(true, |steps| ran_nothing(steps));"
+        }
+      ],
+      "expect_red": [
+        "only_a_cancelled_job_with_its_steps_read_and_empty_is_one_that_never_ran",
+        "a_name_two_jobs_share_is_unrun_only_when_every_cancelled_one_of_them_is"
+      ]
+    },
+    {
+      "name": "a-commit-whose-every-failure-never-ran-is-where-the-walk-stops",
+      "why": "2026-10-01, and the point of the change. `84dcad2c` carried eleven jobs cancelled in the queue and two successes; stopping the walk there let a commit CI never judged stand for the place verdicts start again, and let an older red hide behind it. A red that is all retired is not a verdict",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            .any(|check| is_failing(check) && !retired.contains(&check.name)),",
+          "to": "            .any(|check| is_failing(check)),"
+        }
+      ],
+      "expect_red": [
+        "a_commit_whose_every_failure_is_retired_is_not_judged",
+        "a_red_behind_a_commit_that_never_ran_is_still_outstanding",
+        "a_job_cancelled_in_the_queue_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    {
+      "name": "a-job-that-never-ran-is-held-against-a-budget",
+      "why": "2026-10-01. Eleven jobs of `84dcad2c` are stamped across 85 minutes of waiting for a runner, which against their budgets reads `every test compiled is one CI runs` at 94% of ninety minutes: a number about a queue, in a cost's clothes, the same shape R1260 found for a run a later push ended",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if is_failing(check) && retired.never_ran.contains(&check.name) {\n            unread.push(Unmeasured::NeverRan {",
+          "to": "        if is_failing(check) && retired.never_ran.contains(\"a name no check of this repository carries\") {\n            unread.push(Unmeasured::NeverRan {"
+        }
+      ],
+      "expect_red": [
+        "a_job_cancelled_before_it_ran_is_counted_rather_than_held_against_a_budget",
+        "a_successful_job_beside_a_retired_one_of_its_name_is_still_measured"
+      ]
+    },
+    {
+      "name": "the-binary-never-asks-whether-a-job-ran",
+      "why": "the R1096 shape again, for the new distinction: the library can be handed an empty step list and every law about `never_ran_checks` passes, while the BINARY classifies nothing and goes on printing `is RED` over a queue. Only a case that runs the process notices, which is what the entrance suite is for",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    let never_ran = ci_state::never_ran_checks(checks, &read)\n        .into_iter()\n        .filter(|name| !superseded.contains(name))\n        .collect();",
+          "to": "    let never_ran = std::collections::BTreeSet::new();"
+        }
+      ],
+      "expect_red": [
+        "a_job_cancelled_in_the_queue_reads_as_no_verdict_through_this_binary"
+      ]
+    },
+    {
+      "name": "a-mixed-red-does-not-say-how-much-of-it-never-ran",
+      "why": "2026-10-01. A commit carrying a real failure beside jobs that never began is still red, and a reporter that says only `RED` sends the reader to open every row. Counting the ones that never ran is what points at the check worth opening, the other half of the repair for a run a later push ended",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            } else if never_ran == 0 {\n                format!(",
+          "to": "            } else if true {\n                format!("
+        }
+      ],
+      "expect_red": [
+        "a_failure_beside_jobs_that_never_ran_is_still_red"
+      ]
+    },
+    {
+      "name": "a-successful-job-is-retired-because-its-name-is",
+      "why": "2026-10-01, measured on `84dcad2c`: THREE checks called `replay every kit at its pinned revision` — two successes and one cancelled in the queue, because `evidence-replay` is run again on a commit that already has a run. The retired sets are keyed by NAME, so without the guard the budget block counted THIRTEEN jobs as cancelled before they ran against eleven that were, and threw away the cost of the two that had passed",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if is_failing(check) && retired.never_ran.contains(&check.name) {\n            unread.push(Unmeasured::NeverRan {",
+          "to": "        if retired.never_ran.contains(&check.name) {\n            unread.push(Unmeasured::NeverRan {"
+        }
+      ],
+      "expect_red": [
+        "a_successful_job_beside_a_retired_one_of_its_name_is_still_measured"
+      ]
+    },
+    {
+      "name": "a-name-with-a-sibling-that-ran-is-called-unrun",
+      "why": "2026-10-01. A name is two jobs when two runs of one workflow reach a commit, and one of them can have run while the other waited. Steps keyed by name let the last write decide; keyed by id, a name is unrun only if EVERY cancelled check of it ran nothing, so a sibling that ran keeps the name red. Widening that to `any` calls a job that did run a job nobody judged",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        *every_one_ran_nothing.entry(&check.name).or_insert(true) &= this_one;",
+          "to": "        *every_one_ran_nothing.entry(&check.name).or_insert(false) |= this_one;"
+        }
+      ],
+      "expect_red": [
+        "a_name_two_jobs_share_is_unrun_only_when_every_cancelled_one_of_them_is"
       ]
     }
   ]

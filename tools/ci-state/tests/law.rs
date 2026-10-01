@@ -8,7 +8,8 @@
 //! a SUBSTRING of the failure output agreed with the output it existed to refuse.
 
 use ci_state::{
-    annotation_report, one_line, report, verdict, Annotation, Check, Output, Said, Spent, Verdict,
+    annotation_report, one_line, report, verdict, Annotation, Check, Output, Retired, Said, Spent,
+    Step, Verdict,
 };
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
@@ -16,7 +17,7 @@ const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 /// The census when nothing was superseded — the ordinary case, which is every
 /// case here that is not about supersession.
 fn census(sha: &str, checks: &[Check]) -> Vec<String> {
-    report(sha, checks, &std::collections::BTreeSet::new())
+    report(sha, checks, &Retired::default())
 }
 
 /// A check with a conclusion, spelled the way GitHub spells one.
@@ -231,8 +232,24 @@ fn job(id: &str, shown_as: Option<&str>, timeout: Option<&str>) -> (String, ci_p
 }
 
 /// The ordinary commit, where no later push has retired anything.
-fn nothing_retired() -> std::collections::BTreeSet<String> {
-    std::collections::BTreeSet::new()
+fn nothing_retired() -> Retired {
+    Retired::default()
+}
+
+/// A commit's retired checks when a later push ended these runs.
+fn retired_by_a_later_push(names: &[&str]) -> Retired {
+    Retired {
+        by_later_push: names.iter().map(|name| (*name).to_string()).collect(),
+        never_ran: std::collections::BTreeSet::new(),
+    }
+}
+
+/// A commit's retired checks when these jobs were cancelled before a step ran.
+fn retired_for_never_running(names: &[&str]) -> Retired {
+    Retired {
+        by_later_push: std::collections::BTreeSet::new(),
+        never_ran: names.iter().map(|name| (*name).to_string()).collect(),
+    }
 }
 
 /// A check with its two stamps, which is what a cost is read out of.
@@ -240,6 +257,20 @@ fn ran(name: &str, started: &str, completed: Option<&str>) -> Check {
     let mut row = check(1, name, Some("success"), 0);
     row.started_at = Some(started.to_string());
     row.completed_at = completed.map(str::to_string);
+    row
+}
+
+/// The same, ended by a cancellation.
+///
+/// WHAT A RETIRED CHECK ACTUALLY IS. Both reasons a check says nothing about its
+/// commit — a later push ended its run, or it was cancelled in the queue — are
+/// cancellations, and the budget block only retires a check that did not pass: a
+/// success that shares a name with a retired one is still a measurement. A case
+/// about retiring must therefore build a cancelled check, not a successful one
+/// marked as retired, which is a state GitHub never produces.
+fn cancelled_after(name: &str, started: &str, completed: Option<&str>) -> Check {
+    let mut row = ran(name, started, completed);
+    row.conclusion = Some("cancelled".to_string());
     row
 }
 
@@ -402,19 +433,19 @@ fn a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget() {
         job("validate", None, Some("90")),
     ];
     let checks = [
-        ran(
+        cancelled_after(
             "MSRV (workspace.package.rust-version)",
             "2026-08-19T11:39:12Z",
             Some("2026-08-19T12:37:16Z"),
         ),
-        ran(
+        cancelled_after(
             "validate",
             "2026-08-19T11:39:12Z",
             Some("2026-08-19T12:37:16Z"),
         ),
     ];
-    let retired: std::collections::BTreeSet<String> =
-        checks.iter().map(|check| check.name.clone()).collect();
+    let names: Vec<&str> = checks.iter().map(|check| check.name.as_str()).collect();
+    let retired = retired_by_a_later_push(&names);
 
     let (measured, _) = ci_state::spent_against_budgets(&checks, &budgets, &nothing_retired());
     assert_eq!(
@@ -442,6 +473,55 @@ fn a_run_a_later_push_cancelled_is_counted_rather_than_held_against_a_budget() {
     );
     assert!(
         !said.contains("193"),
+        "above all the number itself is gone: {said}"
+    );
+}
+
+/// A job cancelled while it queued has a clock and no cost.
+///
+/// MEASURED ON `84dcad2c`: eleven jobs stamped from 11:49 to 13:15 on 2026-09-15,
+/// which is 85 minutes of waiting for a runner that never came. Held against their
+/// budgets that reads `every test compiled is one CI runs` at 94% of ninety
+/// minutes — a number about a queue, in a cost's clothes, and the same shape R1260
+/// found for a run a later push ended. They are counted under a sentence of their
+/// own because the reason they say nothing is different.
+#[test]
+fn a_job_cancelled_before_it_ran_is_counted_rather_than_held_against_a_budget() {
+    let budgets = [job(
+        "compile",
+        Some("every test compiled is one CI runs"),
+        Some("90"),
+    )];
+    let checks = [cancelled_after(
+        "every test compiled is one CI runs",
+        "2026-09-15T11:49:54Z",
+        Some("2026-09-15T13:15:22Z"),
+    )];
+
+    let (measured, _) = ci_state::spent_against_budgets(&checks, &budgets, &nothing_retired());
+    assert_eq!(
+        measured.iter().map(Spent::percent).collect::<Vec<_>>(),
+        vec![94],
+        "the reading this replaces: 85 minutes of queueing held against a 90 minute budget"
+    );
+
+    let retired = retired_for_never_running(&["every test compiled is one CI runs"]);
+    let (spent, unread) = ci_state::spent_against_budgets(&checks, &budgets, &retired);
+    assert!(
+        spent.is_empty(),
+        "a job that never left the queue is not a measurement: {spent:?}"
+    );
+    let said = ci_state::budget_report(&spent, &unread).join("\n");
+    assert!(
+        said.contains("1 job(s) were cancelled before any step of them ran"),
+        "counted, under its own sentence: {said}"
+    );
+    assert!(
+        !said.contains("LATER PUSH"),
+        "and not under the later push's, because that is not why it says nothing: {said}"
+    );
+    assert!(
+        !said.contains("94"),
         "above all the number itself is gone: {said}"
     );
 }
@@ -639,7 +719,10 @@ fn a_run_a_later_push_retired_is_no_verdict_rather_than_red() {
         check_in_run(7, 2, "every compilation is one job's", Some("cancelled"), 0),
     ];
     let read = vec![said("validate", "failure", RETIRED)];
-    let retired = ci_state::superseded_checks(&checks, &read);
+    let retired = Retired {
+        by_later_push: ci_state::superseded_checks(&checks, &read),
+        ..Retired::default()
+    };
     let said = report(SHA, &checks, &retired).join("\n");
     assert!(
         said.contains("NO VERDICT") && said.contains("LATER PUSH"),
@@ -650,6 +733,11 @@ fn a_run_a_later_push_retired_is_no_verdict_rather_than_red() {
         "a commit whose run was retired by the next push is not a red commit, and \
          calling it one sends a reader to look for a defect that is not there:\n{said}"
     );
+    assert!(
+        said.contains("Read the later commit's run"),
+        "and the advice is the one that is TRUE for this reason: the answer is on the \
+         later commit, which is not what a job that never ran gets told:\n{said}"
+    );
 
     // THE CHECK THAT NEVER STARTED IS COVERED TOO, and that is why supersession is
     // read per RUN. Two of the three cancelled checks on `74035d7` carried no
@@ -657,7 +745,7 @@ fn a_run_a_later_push_retired_is_no_verdict_rather_than_red() {
     // so a reader asking each check for its own reason would have called one
     // superseded and left the others looking like this commit's failures.
     assert_eq!(
-        retired.len(),
+        retired.by_later_push.len(),
         2,
         "both checks of the retired run are retired, including the one with no \
          annotation of its own: {retired:?}"
@@ -677,7 +765,10 @@ fn a_failure_in_another_run_is_still_red_beside_a_retired_one() {
         check_in_run(9, 2, "evidence replay", Some("failure"), 0),
     ];
     let read = vec![said("validate", "failure", RETIRED)];
-    let retired = ci_state::superseded_checks(&checks, &read);
+    let retired = Retired {
+        by_later_push: ci_state::superseded_checks(&checks, &read),
+        ..Retired::default()
+    };
     let said = report(SHA, &checks, &retired).join("\n");
     assert!(said.contains("is RED"), "{said}");
     assert!(
@@ -686,9 +777,274 @@ fn a_failure_in_another_run_is_still_red_beside_a_retired_one() {
          tell which check to look at:\n{said}"
     );
     assert_eq!(
-        retired.into_iter().collect::<Vec<_>>(),
+        retired.by_later_push.into_iter().collect::<Vec<_>>(),
         vec!["validate".to_string()],
         "the failure in the OTHER run must not be swept up by the retired one"
+    );
+}
+
+/// A step as GitHub spells one, with only the fields this reader depends on.
+fn step(number: u64, name: &str, conclusion: Option<&str>) -> Step {
+    Step {
+        name: name.to_string(),
+        number,
+        status: if conclusion.is_some() {
+            "completed".to_string()
+        } else {
+            "queued".to_string()
+        },
+        conclusion: conclusion.map(str::to_string),
+        started_at: None,
+        completed_at: None,
+    }
+}
+
+/// A job cancelled while it queued ran nothing, and a job that ran something did.
+///
+/// MEASURED ON `84dcad2c` (2026-09-15): eleven jobs cancelled after 85 minutes
+/// waiting for a runner, every one of them answering `steps: []` and a runner of
+/// null or empty. The report called the commit RED and the push was refused over
+/// eleven failures none of which had begun.
+///
+/// ⚠ THE LINE IS "A STEP CARRIES A CONCLUSION OTHER THAN `skipped`", and each side
+/// of it is held here. `Set up job` ending `cancelled` is R1236's case — a runner
+/// picked the job up and something stopped it, which is about THIS commit — so it
+/// must stay a failure, and a reader that called every empty-looking job unrun
+/// would have deleted that distinction.
+#[test]
+fn a_job_ran_nothing_exactly_when_no_step_of_it_has_a_conclusion() {
+    assert!(
+        ci_state::ran_nothing(&[]),
+        "the recorded shape: a job cancelled in the queue answers an empty list"
+    );
+    assert!(
+        ci_state::ran_nothing(&[
+            step(1, "Set up job", Some("skipped")),
+            step(2, "Run tests", None),
+        ]),
+        "steps nobody reached are not work: skipped and unfinished steps ran nothing"
+    );
+    assert!(
+        !ci_state::ran_nothing(&[step(1, "Set up job", Some("cancelled"))]),
+        "a runner picked it up and it was stopped in the first step, which is R1236's \
+         case and a fact about this commit"
+    );
+    assert!(
+        !ci_state::ran_nothing(&[
+            step(1, "Set up job", Some("success")),
+            step(2, "Run tests", Some("skipped")),
+        ]),
+        "one step that succeeded is a job that ran, whatever followed it"
+    );
+}
+
+/// The recorded body of one of those jobs reads as a job that ran nothing.
+///
+/// AGAINST THE REAL ANSWER AND NOT A TYPED ONE, because the whole classification
+/// stands on GitHub continuing to spell a queued-and-cancelled job as an empty step
+/// list; this is the body `gh api` returned for job 104396410160 on 2026-10-01.
+#[test]
+fn the_recorded_body_of_a_job_cancelled_in_the_queue_ran_nothing() {
+    let body = include_str!("job.never-started.json");
+    let steps = ci_state::steps_in(104_396_410_160, body).expect("the recorded body reads");
+    assert!(steps.is_empty(), "{steps:?}");
+    assert!(ci_state::ran_nothing(&steps));
+}
+
+/// Only a `cancelled` job can be one that never ran, and only when its steps were read.
+///
+/// `startup_failure` also arrives with no steps and is the workflow failing to
+/// start, a fact about this commit; `timed_out` ran until its budget ended it. A
+/// check whose steps could not be read is not in the set either: not being able to
+/// ask is not evidence that nothing ran, and the direction that leaves it red is
+/// the loud one.
+#[test]
+fn only_a_cancelled_job_with_its_steps_read_and_empty_is_one_that_never_ran() {
+    let checks = [
+        check(1, "queued then cancelled", Some("cancelled"), 0),
+        check(2, "stopped in its first step", Some("cancelled"), 0),
+        check(3, "workflow failed to start", Some("startup_failure"), 0),
+        check(4, "ran out of budget", Some("timed_out"), 0),
+        check(5, "steps could not be read", Some("cancelled"), 0),
+        check(6, "plain failure", Some("failure"), 0),
+    ];
+    let mut steps = std::collections::BTreeMap::new();
+    steps.insert(1, Vec::new());
+    steps.insert(2, vec![step(1, "Set up job", Some("cancelled"))]);
+    steps.insert(3, Vec::new());
+    steps.insert(4, Vec::new());
+    steps.insert(6, Vec::new());
+
+    let never_ran = ci_state::never_ran_checks(&checks, &steps);
+    assert_eq!(
+        never_ran.into_iter().collect::<Vec<_>>(),
+        vec!["queued then cancelled".to_string()]
+    );
+}
+
+/// Two checks of one name are two jobs, and a name is unrun only if every one was.
+///
+/// MEASURED ON `84dcad2c`: THREE checks called `replay every kit at its pinned
+/// revision` — two successes and one cancelled in the queue — because
+/// `evidence-replay` is run again on a commit that already has a run. Steps keyed
+/// by name collided, and the report counted THIRTEEN jobs as cancelled before they
+/// ran against eleven that were. So the steps are keyed by the check's id, and a
+/// name is in the set only when every CANCELLED check of that name ran nothing: a
+/// sibling that ran, or one whose steps could not be read, keeps the name red.
+#[test]
+fn a_name_two_jobs_share_is_unrun_only_when_every_cancelled_one_of_them_is() {
+    let checks = [
+        check(1, "replay", Some("cancelled"), 0),
+        check(2, "replay", Some("success"), 0),
+        check(3, "both queued", Some("cancelled"), 0),
+        check(4, "both queued", Some("cancelled"), 0),
+        check(5, "one ran", Some("cancelled"), 0),
+        check(6, "one ran", Some("cancelled"), 0),
+        check(7, "one unread", Some("cancelled"), 0),
+        check(8, "one unread", Some("cancelled"), 0),
+    ];
+    let mut steps = std::collections::BTreeMap::new();
+    steps.insert(1, Vec::new());
+    steps.insert(2, vec![step(1, "Set up job", Some("success"))]);
+    steps.insert(3, Vec::new());
+    steps.insert(4, Vec::new());
+    steps.insert(5, Vec::new());
+    steps.insert(6, vec![step(1, "Set up job", Some("cancelled"))]);
+    steps.insert(7, Vec::new());
+
+    let never_ran = ci_state::never_ran_checks(&checks, &steps);
+    assert_eq!(
+        never_ran.into_iter().collect::<Vec<_>>(),
+        vec!["both queued".to_string(), "replay".to_string()],
+        "the cancelled `replay` ran nothing, and the successful one beside it is not \
+         a cancelled check and cannot change that; a name with a sibling that ran, or \
+         whose steps were not read, stays red"
+    );
+}
+
+/// A successful check that shares a name with a retired one is still measured.
+///
+/// The census marks the NAME, and a name is not a check: asked only by name, the
+/// budget block threw away the cost of two jobs that had run and passed because a
+/// third of the same name had been cancelled in the queue.
+#[test]
+fn a_successful_job_beside_a_retired_one_of_its_name_is_still_measured() {
+    let budgets = [job("replay", Some("replay"), Some("45"))];
+    let mut passed = ran(
+        "replay",
+        "2026-09-28T10:56:09Z",
+        Some("2026-09-28T11:16:09Z"),
+    );
+    passed.id = 2;
+    let mut queued = ran(
+        "replay",
+        "2026-09-15T11:49:52Z",
+        Some("2026-09-15T13:15:22Z"),
+    );
+    queued.conclusion = Some("cancelled".to_string());
+    queued.id = 1;
+
+    let retired = retired_for_never_running(&["replay"]);
+    let (spent, unread) = ci_state::spent_against_budgets(&[queued, passed], &budgets, &retired);
+    assert_eq!(
+        spent.iter().map(Spent::percent).collect::<Vec<_>>(),
+        vec![44],
+        "the run that passed took 20 of its 45 minutes, and that is still a fact"
+    );
+    let said = ci_state::budget_report(&spent, &unread).join("\n");
+    assert!(
+        said.contains("1 job(s) were cancelled before any step of them ran"),
+        "and only the cancelled one is counted as never having run:\n{said}"
+    );
+}
+
+/// A commit whose every failure never ran is NO VERDICT, said with its own reason.
+///
+/// THE REASON IS NOT THE LATER PUSH'S, and the sentence a reader acts on differs: a
+/// run a later push ended has its answer on the later commit, and a job that never
+/// left the queue has no answer anywhere. Telling a reader to "read the later
+/// commit's run" there sends them looking for a verdict that was never produced.
+#[test]
+fn a_commit_whose_failures_never_ran_is_no_verdict_and_not_red() {
+    let checks = [
+        check(1, "every compilation is one job's", Some("cancelled"), 0),
+        check(2, "validate", Some("cancelled"), 1),
+        check(3, "lint", Some("success"), 0),
+    ];
+    let retired = retired_for_never_running(&["every compilation is one job's", "validate"]);
+    let said = report(SHA, &checks, &retired).join("\n");
+    assert!(
+        said.contains("NO VERDICT") && said.contains("before any step of them ran"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("is RED"),
+        "eleven jobs that never began are not a red commit: {said}"
+    );
+    assert!(
+        !said.contains("Read the later commit's run"),
+        "and there is no later run to read, so the advice for that case is not given: {said}"
+    );
+    assert!(
+        said.contains("validate (cancelled before any step of it ran)")
+            || said.contains("— validate (cancelled before any step of it ran)"),
+        "each row says why it carries no verdict: {said}"
+    );
+}
+
+/// And a real failure beside jobs that never ran is still red.
+///
+/// ⚠ THE OTHER HALF, without which the case above is satisfied by a reporter that
+/// has simply stopped saying `RED`.
+#[test]
+fn a_failure_beside_jobs_that_never_ran_is_still_red() {
+    let checks = [
+        check(1, "queued then cancelled", Some("cancelled"), 0),
+        check(2, "evidence replay", Some("failure"), 0),
+    ];
+    let retired = retired_for_never_running(&["queued then cancelled"]);
+    let said = report(SHA, &checks, &retired).join("\n");
+    assert!(said.contains("is RED"), "{said}");
+    assert!(
+        said.contains("1 cancelled before any step of them ran"),
+        "and it says how much of the red was never a verdict: {said}"
+    );
+}
+
+/// A RED THAT IS ALL RETIRED IS NOT A VERDICT, so the walk does not stop at it.
+///
+/// This is the whole point of the change: a commit CI never judged must not be the
+/// place the walk concludes that verdicts exist again.
+#[test]
+fn a_commit_whose_every_failure_is_retired_is_not_judged() {
+    let all_queued = [
+        check(1, "a", Some("cancelled"), 0),
+        check(2, "b", Some("success"), 0),
+    ];
+    let retired = retired_for_never_running(&["a"]);
+    assert!(
+        !ci_state::judged(&all_queued, &retired),
+        "a commit whose only failure never ran has no verdict to stop at"
+    );
+    assert!(
+        !ci_state::judged(&all_queued, &retired_by_a_later_push(&["a"])),
+        "and the same holds for a run a later push ended"
+    );
+    assert!(
+        ci_state::judged(&all_queued, &nothing_retired()),
+        "while the same checks with nothing retired are a red, and a red is judged"
+    );
+    let one_real = [
+        check(1, "a", Some("cancelled"), 0),
+        check(2, "b", Some("failure"), 0),
+    ];
+    assert!(
+        ci_state::judged(&one_real, &retired_for_never_running(&["a"])),
+        "a real failure beside the retired one is a verdict"
+    );
+    assert!(
+        ci_state::judged(&[check(1, "a", Some("success"), 0)], &nothing_retired()),
+        "a clear commit is judged"
     );
 }
 
@@ -1158,18 +1514,22 @@ fn the_walk_stops_where_a_verdict_exists_and_not_where_it_is_clean() {
     let clear = [check(1, "validate", Some("success"), 0)];
     let red = [check(1, "validate", Some("failure"), 0)];
     let pending = [check(1, "validate", None, 0)];
-    assert!(ci_state::judged(&clear), "an all-success commit is judged");
+    let none = nothing_retired();
     assert!(
-        ci_state::judged(&red),
+        ci_state::judged(&clear, &none),
+        "an all-success commit is judged"
+    );
+    assert!(
+        ci_state::judged(&red, &none),
         "and so is a RED one — somebody could read it, which is the whole \
          difference from the tail this walk exists to cover"
     );
     assert!(
-        !ci_state::judged(&pending),
+        !ci_state::judged(&pending, &none),
         "a commit still running has no verdict to read"
     );
     assert!(
-        !ci_state::judged(&[]),
+        !ci_state::judged(&[], &none),
         "and neither has one nothing ever ran on"
     );
 }
@@ -1186,12 +1546,12 @@ fn a_red_a_later_commit_ran_green_is_not_outstanding() {
         ci_state::Walked {
             sha: "1eab0c05".to_string(),
             checks: vec![check(1, "separate in-repo workspaces", Some("success"), 0)],
-            superseded: std::collections::BTreeSet::new(),
+            retired: nothing_retired(),
         },
         ci_state::Walked {
             sha: "0d1c3336".to_string(),
             checks: vec![check(2, "separate in-repo workspaces", Some("failure"), 0)],
-            superseded: std::collections::BTreeSet::new(),
+            retired: nothing_retired(),
         },
     ];
     assert!(
@@ -1226,7 +1586,7 @@ fn a_commit_does_not_clear_its_own_red_with_its_other_jobs() {
             check(1, "validate", Some("success"), 0),
             check(2, "separate in-repo workspaces", Some("failure"), 0),
         ],
-        superseded: std::collections::BTreeSet::new(),
+        retired: nothing_retired(),
     }];
     assert_eq!(
         ci_state::outstanding_reds(&walk).len(),
@@ -1242,15 +1602,52 @@ fn a_commit_does_not_clear_its_own_red_with_its_other_jobs() {
 /// exactly this reason; a walk that counted them would refuse every push.
 #[test]
 fn the_walk_does_not_carry_a_red_a_later_push_retired() {
-    let mut superseded = std::collections::BTreeSet::new();
-    superseded.insert("validate".to_string());
     let walk = vec![ci_state::Walked {
         sha: "7557cb27".to_string(),
         checks: vec![check(1, "validate", Some("cancelled"), 0)],
-        superseded,
+        retired: retired_by_a_later_push(&["validate"]),
     }];
     assert!(
         ci_state::outstanding_reds(&walk).is_empty(),
         "a run a later push ended says nothing about this commit"
+    );
+}
+
+/// A job that never ran is not a red the walk carries, and an older red survives it.
+///
+/// THE CASE THAT MADE THIS CHANGE, end to end through the library: the base commit
+/// is `84dcad2c` with eleven jobs cancelled in the queue and two successes, and
+/// behind it a commit where `validate` really failed. The base contributes no red,
+/// the walk reaches past it because it is not judged, and the older failure is
+/// still the push's to name — stepping over a commit CI never judged must not
+/// forgive what is behind it.
+#[test]
+fn a_red_behind_a_commit_that_never_ran_is_still_outstanding() {
+    let base = ci_state::Walked {
+        sha: "84dcad2c".to_string(),
+        checks: vec![
+            check(1, "every compilation is one job's", Some("cancelled"), 0),
+            check(2, "lint", Some("success"), 0),
+        ],
+        retired: retired_for_never_running(&["every compilation is one job's"]),
+    };
+    assert!(
+        !ci_state::judged(&base.checks, &base.retired),
+        "the walk does not stop at a commit whose only failure never ran"
+    );
+    let behind = ci_state::Walked {
+        sha: "1eab0c05".to_string(),
+        checks: vec![check(3, "validate", Some("failure"), 0)],
+        retired: nothing_retired(),
+    };
+    assert_eq!(
+        ci_state::outstanding_reds(&[base.clone(), behind]),
+        vec![("1eab0c05".to_string(), "validate".to_string())],
+        "the older red is named, and the base's jobs that never ran are not"
+    );
+    assert!(
+        ci_state::outstanding_reds(&[base]).is_empty(),
+        "and with nothing behind it there is no red at all: a commit CI never \
+         judged has nothing to name"
     );
 }
