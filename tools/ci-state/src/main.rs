@@ -565,7 +565,7 @@ fn retire(
 /// header states and the reason `ci_state::history::StepsOf` is a trait.
 ///
 /// TWO CALLS BECAUSE A COMMIT DOES NOT NAME A JOB. The check rows carry the job
-/// in their `details_url`, which is the same route [`steps_of`] takes for the
+/// in their `details_url`, which is the same route [`steps_for`] takes for the
 /// commit being reported on; that one has its rows in hand already and this one
 /// is asking about a commit from the record, which may be weeks back.
 struct Github<'a> {
