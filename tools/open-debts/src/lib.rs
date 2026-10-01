@@ -787,8 +787,12 @@ pub fn open_autonomous(ledger: &str, unresolved: &Unresolved) -> Vec<Registratio
     // reason a `신규 = A · B · C CLOSED` list does not close A and B.
     let mut says_closed: BTreeSet<String> = closed;
     for row in &all {
-        if !matches!(row.shape, Shape::Bullet | Shape::Row) {
-            continue;
+        // Every shape is named, so a fourth one is a compile error here and
+        // not a row this loop silently skips: `matches!` answers `false` for
+        // whatever it did not name, which is a catch-all with nowhere to write.
+        match row.shape {
+            Shape::Bullet | Shape::Row => {}
+            Shape::Inline => continue,
         }
         let retires = row.body.lines().any(|line| {
             retirement_on(line).is_some_and(|(_, attribution)| {
